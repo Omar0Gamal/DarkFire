@@ -28,7 +28,7 @@ Contributions are what make the open-source community such an amazing place to l
 5. Open a Pull Request
 
 ## License :scroll:
-Distributed under the MIT License. See `[LICENSE](https://github.com/Omar0Gamal/DarkFire/blob/main/LICENSE)` for more information.
+Distributed under the MIT License. See [LICENSE](https://github.com/Omar0Gamal/DarkFire/blob/main/LICENSE) for more information.
 
 ## Contact :phone:
 Omar Gamal - [omar.gamal.m@gmail.com]

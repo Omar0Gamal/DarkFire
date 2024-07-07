@@ -1,5 +1,5 @@
 -- premake5.lua
-workspace "New Project"
+workspace "DarkFire"
    architecture "x64"
    configurations { "Debug", "Release", "Dist" }
    startproject "App"
@@ -14,4 +14,4 @@ group "Core"
 	include "Core/Build-Core.lua"
 group ""
 
-include "App/Build-App.lua"
+include "SandBox/Build-App.lua"

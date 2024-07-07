@@ -38,7 +38,3 @@ Project Link: [LINK](https://github.com/Omar0Gamal/DarkFire)
 ![Background](background.png)
 
 Thank you for visiting the DarkFire Game Engine repository! :heart: Happy coding!
-
----
-
-This README is a template and does not include actual contact information or a repository link. Please replace placeholders with your actual data.

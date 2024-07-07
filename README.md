@@ -35,7 +35,7 @@ Omar Gamal - [omar.gamal.m@gmail.com]
 
 Project Link: [LINK](https://github.com/Omar0Gamal/DarkFire)
 
-![Background](background.jpg)
+![Background](background.png)
 
 Thank you for visiting the DarkFire Game Engine repository! :heart: Happy coding!
 

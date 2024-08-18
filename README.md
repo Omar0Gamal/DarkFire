@@ -1,4 +1,4 @@
-![Main](darkFire.jpeg)
+<img src="https://github.com/Omar0Gamal/DarkFire/blob/dff6c428c0a7dec5ddc5c9b58bcfddd03f3d112e/darkFire.jpeg" width=50% height=50%>
 # DarkFire Game Engine :fire:
 
 Welcome to the DarkFire Game Engine repository! This powerful engine is designed with an entity component system and utilizes DirectX 11 to bring you the best performance and graphics for game development. :video_game:

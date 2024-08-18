@@ -1,3 +1,4 @@
+![Main](darkFire.jpeg)
 # DarkFire Game Engine :fire:
 
 Welcome to the DarkFire Game Engine repository! This powerful engine is designed with an entity component system and utilizes DirectX 11 to bring you the best performance and graphics for game development. :video_game:

@@ -1,12 +1,12 @@
 #include "Core/Graphics/GraphicsEngine.h"
 #include "Core/Graphics/SwapChain.h"
-#include "Core/Graphics/GraphicsEngine.h"
 #include "Core/Graphics/VertexBuffer.h"
 #include "Core/Graphics/IndexBuffer.h"
 #include "Core/Graphics/ConstantBuffer.h"
 #include "Core/Graphics/Shader.h"
 #include "Core/Resource/Material.h"
 #include "Core/Resource/Texture.h"
+#include "Core/Graphics/Font2D.h"
 #include "Core/Resource/Mesh.h"
 #include "Core/log/Log.h"
 
@@ -23,9 +23,9 @@ namespace Core
 		};
 
 		UINT creationFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
-		#if defined(DEBUG) || defined(_DEBUG)
-			//creationFlags |= D3D11_CREATE_DEVICE_DEBUG;
-		#endif
+#if defined(DEBUG) || defined(_DEBUG)
+		creationFlags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
 
 		D3D_FEATURE_LEVEL featureLevels[] =
 		{
@@ -34,7 +34,6 @@ namespace Core
 
 		UINT numDriverTypes = ARRAYSIZE(driverTypes);
 		UINT numFeatureLevels = ARRAYSIZE(featureLevels);
-
 
 		HRESULT hr = 0;
 		D3D_FEATURE_LEVEL m_feature_level;
@@ -50,6 +49,25 @@ namespace Core
 			}
 		}
 
+#if defined(DEBUG) || defined(_DEBUG)
+		if (FAILED(hr))
+		{
+			// Fallback without debug layer in case Windows Graphics Tools optional feature is not installed
+			creationFlags &= ~D3D11_CREATE_DEVICE_DEBUG;
+			for (UINT driverTypeIndex = 0; driverTypeIndex < numDriverTypes; driverTypeIndex++)
+			{
+				auto driverType = driverTypes[driverTypeIndex];
+				hr = D3D11CreateDevice(NULL, driverType, NULL, creationFlags, featureLevels, numFeatureLevels,
+					D3D11_SDK_VERSION, &m_d3dDevice, &m_feature_level, &m_immediateContext);
+
+				if (SUCCEEDED(hr))
+				{
+					break;
+				}
+			}
+		}
+#endif
+
 		if (FAILED(hr))
 		{
 			darklog.error(L"Failed to create D3D11 device");
@@ -59,6 +77,8 @@ namespace Core
 		m_d3dDevice->QueryInterface(__uuidof(IDXGIDevice), (void**)&m_dxgiDevice);
 		m_dxgiDevice->GetParent(__uuidof(IDXGIAdapter), (void**)&m_dxgiAdapter);
 		m_dxgiAdapter->GetParent(__uuidof(IDXGIFactory), (void**)&m_dxgiFactory);
+
+		m_uiRender = std::make_unique<UIRender>(this);
 
 		initRasterizerState();
 		compilePrivateShaders();
@@ -93,7 +113,10 @@ namespace Core
 		return std::make_shared<Texture2D>(path, this);
 	}
 
-
+	Font2DPtr GraphicsEngine::CreateFont2D(const wchar_t* path)
+	{
+		return std::make_shared<Font2D>(path, this);
+	}
 
 	void GraphicsEngine::clearColor(const SwapChainPtr& swap_chain, const Vector4d& color)
 	{
@@ -109,6 +132,11 @@ namespace Core
 	{
 		auto dsv = reinterpret_cast<ID3D11DepthStencilView*>(swap_chain->getDepthStencilView());
 		m_immediateContext->ClearDepthStencilView(dsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1, 0);
+	}
+	void GraphicsEngine::clearState()
+	{
+		m_immediateContext->ClearState();
+		m_immediateContext->OMSetBlendState(m_blend_state.Get(), 0, 0xFFFFFFFF);
 	}
 	void GraphicsEngine::clearColor(const Texture2DPtr& render_target, const Vector4d& color)
 	{
@@ -155,6 +183,11 @@ namespace Core
 	{
 		m_immediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 		m_immediateContext->Draw(vertex_count, start_vertex_index);
+	}
+	void GraphicsEngine::drawFilledRectangle(const Box& size, MaterialPtr material)
+	{
+		if (!m_uiRender) return;
+		m_uiRender->drawFilledRectangle(size);
 	}
 	void GraphicsEngine::setViewportSize(int width, int height)
 	{
@@ -242,6 +275,11 @@ namespace Core
 		}
 
 	}
+	void GraphicsEngine::drawImage(const Texture2DPtr& texture, const Box& size)
+	{
+		if (!m_uiRender) return;
+		m_uiRender->drawImage(texture, size);
+	}
 	void GraphicsEngine::compilePrivateShaders()
 	{
 		ID3DBlob* blob = nullptr;
@@ -297,5 +335,22 @@ namespace Core
 
 		desc.FillMode = D3D11_FILL_WIREFRAME;
 		m_d3dDevice->CreateRasterizerState(&desc, &m_debug_state);
+
+		D3D11_BLEND_DESC blendDesc = {};
+
+		blendDesc.AlphaToCoverageEnable = FALSE;
+		blendDesc.IndependentBlendEnable = FALSE;
+
+		blendDesc.RenderTarget[0].BlendEnable = TRUE;
+		blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+		blendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+		blendDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+		blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
+		blendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+
+		m_d3dDevice->CreateBlendState(&blendDesc, &m_blend_state);
+		m_immediateContext->OMSetBlendState(m_blend_state.Get(), 0, 0xFFFFFFFF);
 	}
 }

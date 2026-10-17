@@ -5,10 +5,12 @@
 
 #include "Core/Graphics/Texture2D.h"
 #include "Core/Graphics/SwapChain.h"
+#include "UIRender.h"
 #include <vector>
 
 #include <d3d11.h>
 #include <wrl.h>
+
 
 namespace Core
 {
@@ -24,9 +26,11 @@ namespace Core
 		ShaderPtr CreateShader(const ShaderDesc& desc);
 		Texture2DPtr CreateTexture2D(const Texture2DDesc& desc);
 		Texture2DPtr CreateTexture2D(const wchar_t* path);
+		Font2DPtr CreateFont2D(const wchar_t* path);
 	public:
 		void clearColor(const  SwapChainPtr& swap_chain, const Vector4d& color);
 		void clearDepthStencil(const  SwapChainPtr& swap_chain);
+		void clearState();
 
 		void clearColor(const  Texture2DPtr& render_target, const Vector4d& color);
 		void clearDepthStencil(const  Texture2DPtr& depth_stencil);
@@ -40,6 +44,7 @@ namespace Core
 		void drawTriangleList(int vertex_count, int start_vertex_index);
 		void drawIndexedTriangleList(int index_count, int start_vertex_index, int start_index_location);
 		void drawTriangleStrip(int vertex_count, int start_vertex_index);
+		void drawFilledRectangle(const Box& size, MaterialPtr material);
 
 		void setViewportSize(int width, int height);
 		void setShader(const  ShaderPtr& shader);
@@ -51,6 +56,7 @@ namespace Core
 		void setMaterial(const  MaterialPtr& material);
 		void drawMesh(const  MeshPtr& mesh, const std::vector<MaterialPtr>& list_materials);
 		void drawSphere(const MeshPtr& mesh, const std::vector<MaterialPtr>& list_materials);
+		void drawImage(const Texture2DPtr& texture, const Box& size);
 	private:
 		void compilePrivateShaders();
 		void initRasterizerState();
@@ -64,9 +70,17 @@ namespace Core
 		Microsoft::WRL::ComPtr <ID3D11RasterizerState> m_cull_front_state;
 		Microsoft::WRL::ComPtr <ID3D11RasterizerState> m_cull_back_state;
 		Microsoft::WRL::ComPtr <ID3D11RasterizerState> m_debug_state;
+		Microsoft::WRL::ComPtr <ID3D11BlendState> m_blend_state;
+	private:
+		std::unique_ptr<UIRender> m_uiRender;
 	private:
 		unsigned char m_meshLayoutByteCode[1024];
 		size_t m_meshLayoutSize = 0;
+	private:
+		unsigned char m_uiLayoutByteCode[1024];
+		size_t m_uiLayoutSize = 0;
+		Microsoft::WRL::ComPtr<ID3D11VertexShader> m_uiVertexShader;
+		Microsoft::WRL::ComPtr<ID3D11PixelShader> m_uiPixelShader;
 	private:
 		friend class  SwapChain;
 		friend class  VertexBuffer;
@@ -74,6 +88,8 @@ namespace Core
 		friend class  ConstantBuffer;
 		friend class  Texture2D;
 		friend class  Shader;
+		friend class  Font2D;
+		friend class  UIRender;
 	};
 }
 

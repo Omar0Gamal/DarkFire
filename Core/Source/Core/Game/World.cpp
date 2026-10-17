@@ -1,10 +1,10 @@
 #include "World.h"
 namespace Core
 {
-	World::World(const char* name, GamePtr game)
+	World::World(const char* name, Game* game)
 		: m_Name(name), m_Game(game), mainCameraID(0)
 	{
-		m_ECS = std::make_unique<ECS>(m_Game.get());
+		m_ECS = std::make_unique<ECS>(m_Game);
 	}
 
 	World::~World()

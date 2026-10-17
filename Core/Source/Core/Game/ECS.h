@@ -2,7 +2,10 @@
 #include "Core/Log/log.h"
 #include "Core/Util/String.h"
 #include "Core/Game/SparseSet.h"
+#include "Core/Game/ComponentTypeID.h"
 #include "Game.h"
+#include <stdexcept>
+#include <typeindex>
 
 namespace Core
 {
@@ -15,6 +18,36 @@ namespace Core
 	{
 	public:
 		ECS(Game* game) : m_game(game){}
+		
+		/// Check if we're currently iterating (unsafe to delete entities)
+		bool isIterating() const { return m_iterationDepth > 0; }
+		
+		/// Mark an entity for destruction (safe to call during iteration)
+		void markForDestroy(EntityID id) {
+			if (m_iterationDepth > 0) {
+				m_pendingDestroy.push_back(id);
+			} else {
+				DeleteEntity(id);
+			}
+		}
+		
+		/// Process all pending entity destructions
+		void flushPendingDestroy() {
+			for (auto id : m_pendingDestroy) {
+				DeleteEntity(id);
+			}
+			m_pendingDestroy.clear();
+		}
+		
+		/// Get count of entities
+		size_t getEntityCount() const { return m_maxEntityID - m_availableEntities.size(); }
+		
+		/// Get count of a specific component type
+		template<typename T>
+		size_t getComponentCount() {
+			auto* pool = tryGetComponentPool<T>();
+			return pool ? pool->Data().size() : 0;
+		}
 
 		EntityID CreateEntity(std::string_view name) {
             EntityID id = tombstone;
@@ -73,7 +106,7 @@ namespace Core
 			RemoveFromGroup(mask, id);
 
 			// Destroy component associations
-			for (int i = 0; i < MAX_COMPONENTS; i++)
+			for (size_t i = 0; i < m_componentPools.size(); i++)
 				if (mask[i] == 1) {
 					m_componentPools[i]->Delete(id);
 				}
@@ -90,10 +123,10 @@ namespace Core
 		*/
 		template <typename T>
 		void RegisterComponent() {
-			TypeName name = typeid(T).name();
-			if (m_componentBitPosition.find(name) != m_componentBitPosition.end())
+			std::type_index typeIdx(typeid(T));
+			if (m_componentBitPosition.find(typeIdx) != m_componentBitPosition.end())
 			{
-				darklog.warn(L"Component with name '" + ToWide(std::string(name)) + L"' already registered");
+				darklog.warn(L"Component with name '" + ToWide(std::string(typeid(T).name())) + L"' already registered");
 				return;
 			}
 				
@@ -105,7 +138,7 @@ namespace Core
 			}
 				
 
-			m_componentBitPosition.emplace(name, m_componentPools.size());
+			m_componentBitPosition.emplace(typeIdx, m_componentPools.size());
 			m_componentPools.push_back(std::make_unique<SparseSet<T>>());
 		}
 
@@ -140,11 +173,17 @@ namespace Core
 
 		template <typename T>
 		T& Get(EntityID id) {
-			SparseSet<T>& pool = GetComponentPool<T>();
-			T* component = pool.Get(id);
+			SparseSet<T>* pool = tryGetComponentPool<T>();
+			if (!pool) {
+				darklog.error(L"Attempting to get unregistered component '" + ToWide(std::string(typeid(T).name())) + L"'");
+				throw std::runtime_error("Unregistered component type");
+			}
 
-			if (!component)
-				darklog.warn(L"Entity " + std::to_wstring(id) + L" has no component " + ToWide(std::string(typeid(T).name())));
+			T* component = pool->Get(id);
+			if (!component) {
+				darklog.error(L"Entity " + std::to_wstring(id) + L" has no component " + ToWide(std::string(typeid(T).name())));
+				throw std::runtime_error("Entity does not have component");
+			}
 
 			return *component;
 		}
@@ -154,8 +193,8 @@ namespace Core
 			if (id == NULL_ENTITY) return;
 			if (id == tombstone) return;
 
-			SparseSet<T>& pool = GetComponentPool<T>();
-			if (!pool.Get(id))
+			SparseSet<T>* pool = tryGetComponentPool<T>();
+			if (!pool || !pool->Get(id))
 			{
 				darklog.warn(L"Entity " + std::to_wstring(id) + L" does not have component " + ToWide(std::string(typeid(T).name())));
 				return;
@@ -171,7 +210,7 @@ namespace Core
 			// Shift to new group with new mask
 			AssignToGroup(mask, id);
 
-			pool.Delete(id);
+			pool->Delete(id);
 		}
 
 		template <typename... Ts>
@@ -181,14 +220,21 @@ namespace Core
 
 		template <typename T>
 		bool Has(EntityID id) {
-			SparseSet<T>& pool = GetComponentPool<T>();
-			return pool.Get(id) ? true : false;
+			SparseSet<T>* pool = tryGetComponentPool<T>();
+			if (!pool) return false;
+			return pool->Get(id) != nullptr;
 		}
 
 		
 		template <typename ...Components>
 		std::vector<EntityID> ViewIDs() {
 			std::vector<EntityID> result;
+			
+			// Check if all components are registered
+			if (!(tryGetComponentPool<Components>() && ...)) {
+				return result; // Return empty if any component is unregistered
+			}
+			
 			ComponentMask targetMask = GetMask<Components...>();
 
 			for (auto& [mask, ids] : m_groupings) {
@@ -201,6 +247,12 @@ namespace Core
 		template <typename ...Components>
 		std::vector<std::tuple<EntityID, Components&...>> View() {
 			std::vector<std::tuple<EntityID, Components&...>> result;
+			
+			// Check if all components are registered
+			if (!(tryGetComponentPool<Components>() && ...)) {
+				return result; // Return empty if any component is unregistered
+			}
+			
 			ComponentMask targetMask = GetMask<Components...>();
 
 			for (auto& [mask, ids] : m_groupings) {
@@ -217,43 +269,76 @@ namespace Core
 
 		template <typename ...Components, typename Func>
 		void ForEach(Func&& func) {
-			std::vector<std::tuple<EntityID, Components&...>> result;
-			ComponentMask targetMask = GetMask<Components...>();
+		// Check if all components are registered
+		if (!(tryGetComponentPool<Components>() && ...)) {
+		return; // Skip if any component is unregistered
+		}
+			
+		ComponentMask targetMask = GetMask<Components...>();
+			
+			// Track iteration depth for safe destruction
+			m_iterationDepth++;
+			
+			// Cache the pools for faster access during iteration
+			auto pools = std::make_tuple(tryGetComponentPool<Components>()...);
 
 			for (auto& [mask, ids] : m_groupings) {
 				if ((mask & targetMask) == targetMask) {
-					for (EntityID id : ids.Data()) {
+					// Copy IDs to allow modification during iteration
+					auto idsCopy = ids.Data();
+					for (EntityID id : idsCopy) {
+						// Skip if entity was marked for destruction
+						if (std::find(m_pendingDestroy.begin(), m_pendingDestroy.end(), id) != m_pendingDestroy.end())
+							continue;
 
 						if constexpr (std::is_invocable_v<Func, EntityID, Components&...>) {
-							func(id, Get<Components>(id)...);
+							func(id, *std::get<SparseSet<Components>*>(pools)->Get(id)...);
 						}
-
-						// This branch is for [](Component& c1, Component& c2);
 						else if constexpr (std::is_invocable_v<Func, Components&...>) {
-							func(Get<Components>(id)...);
+							func(*std::get<SparseSet<Components>*>(pools)->Get(id)...);
 						}
-
 						else {
-							darklog.error(L"Invalid lambda signature");
+							static_assert(std::is_invocable_v<Func, Components&...>, 
+								"Lambda must accept (EntityID, Components&...) or (Components&...)");
 						}
-
 					}
 				}
 			}
+			
+			m_iterationDepth--;
+			
+			// Flush pending destroys when we exit the outermost iteration
+			if (m_iterationDepth == 0) {
+				flushPendingDestroy();
+			}
 		}
-		Game* getGame() { return m_game.get(); }
+		Game* getGame() { return m_game; }
+		
 	private:
 		using ComponentMask = std::bitset<MAX_COMPONENTS>;
-		using TypeName = const char*;
+		using TypeName = std::type_index;
+		
+		// Iteration safety
+		int m_iterationDepth = 0;
+		std::vector<EntityID> m_pendingDestroy;
 
 		template <typename T>
 		size_t GetComponentBitPosition() {
-			TypeName name = typeid(T).name();
-			auto it = m_componentBitPosition.find(name);
+			std::type_index typeIdx(typeid(T));
+			auto it = m_componentBitPosition.find(typeIdx);
 			if (it == m_componentBitPosition.end())
 				return tombstone;
 
 			return it->second;
+		}
+		
+		/// Try to get a component pool without registering (returns nullptr if not found)
+		template <typename T>
+		SparseSet<T>* tryGetComponentPool() {
+			size_t bitPos = GetComponentBitPosition<T>();
+			if (bitPos == tombstone || bitPos >= m_componentPools.size())
+				return nullptr;
+			return dynamic_cast<SparseSet<T>*>(m_componentPools[bitPos].get());
 		}
 		template <typename T>
 		SparseSet<T>& GetComponentPool(bool registerIfNotFound = false) {
@@ -265,19 +350,22 @@ namespace Core
 					bitPos = GetComponentBitPosition<T>();
 				}
 				else {
-					darklog.warn(L"Attempting to operate on unregistered component" + ToWide(std::string(typeid(T).name())));
+					darklog.error(L"Attempting to operate on unregistered component '" + ToWide(std::string(typeid(T).name())) + L"'");
+					throw std::runtime_error("Unregistered component type");
 				}
 			}
 
-			if (!(bitPos < m_componentPools.size() && bitPos >= 0)) {
-				darklog.warn(L"(Internal): Attempting to index into m_componentPools with out of range bit position");
+			if (bitPos >= m_componentPools.size()) {
+				darklog.error(L"(Internal): Attempting to index into m_componentPools with out of range bit position");
+				throw std::runtime_error("Component pool index out of range");
 			}
 
 			// Downcast the generic pointer to the specific sparse set
 			ISparseSet* genericPtr = m_componentPools[bitPos].get();
 			SparseSet<T>* pool = dynamic_cast<SparseSet<T>*>(genericPtr);
 			if (!pool) {
-				darklog.warn(L"Dynamic cast failed for component pool '" + ToWide(std::string(typeid(T).name())) + L"'");
+				darklog.error(L"Dynamic cast failed for component pool '" + ToWide(std::string(typeid(T).name())) + L"'");
+				throw std::runtime_error("Component pool type mismatch");
 			}
 
 			return *pool;
@@ -286,8 +374,10 @@ namespace Core
 		template <typename Component>
 		void SetComponentBit(ComponentMask& mask, bool val) {
 			size_t bitPos = GetComponentBitPosition<Component>();
-			if (bitPos == tombstone)
+			if (bitPos == tombstone || bitPos >= MAX_COMPONENTS) {
 				darklog.warn(L"Attempting to operate on unregistered component '" + ToWide(std::string(typeid(Component).name())) + L"'");
+				return;
+			}
 
 			mask[bitPos] = val;
 		}
@@ -295,8 +385,10 @@ namespace Core
 		template <typename Component>
 		ComponentMask::reference GetComponentBit(ComponentMask& mask) {
 			size_t bitPos = GetComponentBitPosition<Component>();
-			if (bitPos == tombstone)
+			if (bitPos == tombstone || bitPos >= MAX_COMPONENTS) {
 				darklog.warn(L"Attempting to operate on unregistered component '" + ToWide(std::string(typeid(Component).name())) + L"'");
+				return mask[0]; // Return reference to first bit as fallback
+			}
 
 			return mask[bitPos];
 		}
@@ -352,7 +444,7 @@ namespace Core
 			std::unordered_map<EntityID, std::string> m_entityNames;
 			std::vector<std::unique_ptr<ISparseSet>> m_componentPools;
 			std::unordered_map<TypeName, size_t> m_componentBitPosition;
-			std::unique_ptr<Game> m_game;
+			Game* m_game = nullptr;
 			EntityID m_maxEntityID = 0;
 			static constexpr size_t tombstone = (std::numeric_limits<size_t>::max)();
 	};

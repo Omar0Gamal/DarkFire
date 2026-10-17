@@ -27,6 +27,10 @@ namespace Core
 		CullMode m_cull_mode = CullMode::Back;
 	private:
 		friend class  GraphicsEngine;
+		friend class  UIRender;
 	};
+
+	// Get Deafult Material
+	MaterialPtr GetDefaultMaterial(ResourceManager* manager);
 }
 

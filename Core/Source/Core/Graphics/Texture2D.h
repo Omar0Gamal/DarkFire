@@ -26,6 +26,8 @@ namespace Core
 		Texture2DDesc m_desc = {};
 	private:
 		friend class  GraphicsEngine;
+		friend class  ImageComponent;
+		friend class  UIRender;
 	};
 }
 

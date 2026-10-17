@@ -170,26 +170,30 @@ namespace Core
 	}
 
 	Mesh::Mesh(VertexMesh* vertex_list_data, unsigned int vertex_list_size,
-		unsigned int* index_list_data, unsigned int index_list_size,
-		MaterialSlot* material_slot_list, unsigned int material_slot_list_size, ResourceManager* manager) :
-		Resource(L"", manager)
+	unsigned int* index_list_data, unsigned int index_list_size,
+	MaterialSlot* material_slot_list, unsigned int material_slot_list_size, ResourceManager* manager) :
+	Resource(L"", manager)
 	{
-		auto engine = m_resManager->getGame()->getGraphicsEngine();
+	// Skip buffer creation if no vertex data is provided (e.g., Primitive subclass handles its own buffers)
+	if (vertex_list_data == nullptr || vertex_list_size == 0)
+	return;
 
-		void* shader_byte_code = nullptr;
-		size_t size_shader = 0;
-		m_vertex_buffer = engine->CreateVertexBuffer({ vertex_list_data,
-			sizeof(VertexMesh),
-			(UINT)vertex_list_size });
-		m_index_buffer = engine->CreateIndexBuffer({ index_list_data,
-			(UINT)index_list_size });
+	auto engine = m_resManager->getGame()->getGraphicsEngine();
 
-		m_mat_slots.resize(material_slot_list_size);
+	void* shader_byte_code = nullptr;
+	size_t size_shader = 0;
+	m_vertex_buffer = engine->CreateVertexBuffer({ vertex_list_data,
+	sizeof(VertexMesh),
+	(UINT)vertex_list_size });
+	m_index_buffer = engine->CreateIndexBuffer({ index_list_data,
+	(UINT)index_list_size });
 
-		for (unsigned int i = 0; i < material_slot_list_size; i++)
-		{
-			m_mat_slots[i] = material_slot_list[i];
-		}
+	m_mat_slots.resize(material_slot_list_size);
+
+	for (unsigned int i = 0; i < material_slot_list_size; i++)
+	{
+	m_mat_slots[i] = material_slot_list[i];
+	}
 
 	}
 

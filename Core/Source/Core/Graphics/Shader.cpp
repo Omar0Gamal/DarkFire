@@ -8,31 +8,41 @@ namespace Core
 {
 	Shader::Shader(const ShaderDesc& desc, GraphicsEngine* system)
 	{
-		ID3DBlob* blob = nullptr;
-		ID3DBlob* error_blob = nullptr;
+		Microsoft::WRL::ComPtr<ID3DBlob> vsBlob;
+		Microsoft::WRL::ComPtr<ID3DBlob> psBlob;
+		Microsoft::WRL::ComPtr<ID3DBlob> errorBlob;
 
-		if (FAILED(D3DCompileFromFile(desc.vertexShaderFilePath, nullptr, nullptr, desc.vertexShaderEntryPointName, "vs_5_0", 0, 0, &blob, &error_blob)))
+		HRESULT hr = D3DCompileFromFile(desc.vertexShaderFilePath, nullptr, nullptr, 
+			desc.vertexShaderEntryPointName, "vs_5_0", 0, 0, &vsBlob, &errorBlob);
+		if (FAILED(hr))
 		{
-			std::wstring msg = ToWide((char*)error_blob->GetBufferPointer());
-			darklog.error(L"Failed to compile vertex shader:" +  msg);
-			return;
+			std::wstring msg = errorBlob ? ToWide((char*)errorBlob->GetBufferPointer()) : L"File not found or compile failed";
+			darklog.error(L"Failed to compile vertex shader: " + msg);
+			throw std::runtime_error("Failed to compile vertex shader");
 		}
-		if (FAILED(system->m_d3dDevice->CreateVertexShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &m_vertexShader)))
+
+		hr = system->m_d3dDevice->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &m_vertexShader);
+		if (FAILED(hr))
 		{
 			darklog.error(L"Failed to create vertex shader");
-			return;
+			throw std::runtime_error("Failed to create vertex shader");
 		}
-			
-		if (FAILED(D3DCompileFromFile(desc.pixelShaderFilePath, nullptr, nullptr, desc.pixelShaderEntryPointName, "ps_5_0", 0, 0, &blob, &error_blob)))
+
+		errorBlob.Reset();
+		hr = D3DCompileFromFile(desc.pixelShaderFilePath, nullptr, nullptr, 
+			desc.pixelShaderEntryPointName, "ps_5_0", 0, 0, &psBlob, &errorBlob);
+		if (FAILED(hr))
 		{
-			std::wstring msg = ToWide((char*)error_blob->GetBufferPointer());
-			darklog.error(L"Failed to compile pixel shader:" + msg);
-			return;
+			std::wstring msg = errorBlob ? ToWide((char*)errorBlob->GetBufferPointer()) : L"File not found or compile failed";
+			darklog.error(L"Failed to compile pixel shader: " + msg);
+			throw std::runtime_error("Failed to compile pixel shader");
 		}
-		if (FAILED(system->m_d3dDevice->CreatePixelShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &m_pixelShader)))
+
+		hr = system->m_d3dDevice->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &m_pixelShader);
+		if (FAILED(hr))
 		{
 			darklog.error(L"Failed to create pixel shader");
-			return;
+			throw std::runtime_error("Failed to create pixel shader");
 		}
 	}
 

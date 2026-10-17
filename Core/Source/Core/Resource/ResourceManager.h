@@ -9,19 +9,21 @@ namespace Core
 	class ResourceManager
 	{
 	public:
-		ResourceManager(GamePtr game);
+		ResourceManager(Game* game);
 
 		template <typename T>
 		std::shared_ptr<T> createResourceFromFile(const wchar_t* path)
 		{
 			return std::dynamic_pointer_cast<T>(createResourceFromFileConcrete(path));
 		}
-		GamePtr getGame();
+		Game* getGame();
+		MaterialPtr getDefaultMaterial();
 	private:
 		ResourcePtr createResourceFromFileConcrete(const wchar_t* path);
 	private:
 		std::map<std::wstring, ResourcePtr> m_mapResources;
-		GamePtr m_game = nullptr;
+		MaterialPtr m_defaultMaterial = nullptr;
+		Game* m_game = nullptr;
 	};
 }
 

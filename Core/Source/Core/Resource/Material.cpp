@@ -58,4 +58,10 @@ namespace Core
 	{
 		return m_cull_mode;
 	}
+
+	MaterialPtr GetDefaultMaterial(ResourceManager* manager)
+	{
+		if (!manager) return nullptr;
+		return manager->getDefaultMaterial();
+	}
 }

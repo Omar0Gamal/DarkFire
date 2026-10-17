@@ -7,14 +7,15 @@ namespace Core
 	class Display : public Window
 	{
 	public:
-		Display(const wchar_t* title, int width, int height, GamePtr game);
+		Display(const wchar_t* title, int width, int height, Game* game);
 		virtual ~Display();
 	public:
 		virtual void onSize(const  Box& size) override;
 	public:
 		SwapChainPtr getSwapChain();
 	private:
-		GamePtr m_game;
+		Game* m_game = nullptr;
 		SwapChainPtr m_swapChain;
+		friend class Game;
 	};
 }

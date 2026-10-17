@@ -11,7 +11,13 @@ project "Server"
    {
       "Source",
       "../Libs/asio-1.28.1/include",
-      "../Libs/DarkFireNetworking"
+      "../Libs/DarkFireNetworking/include"
+   }
+
+   links
+   {
+      "ws2_32",
+      "mswsock"
    }
 
    targetdir ("../Binaries/" .. OutputDir .. "/%{prj.name}")
@@ -19,7 +25,7 @@ project "Server"
 
    filter "system:windows"
        systemversion "latest"
-       defines { "WINDOWS" }
+       defines { "WINDOWS", "ASIO_STANDALONE" }
 
    filter "configurations:Debug"
        defines { "DEBUG" }

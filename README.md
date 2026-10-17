@@ -111,7 +111,7 @@ DarkFire/
 │   └── Build-Server.lua       # Premake configuration for Server
 ├── Libs/                      # External Libraries & Dependencies
 │   ├── asio-1.28.1/           # Standalone Asio C++ networking library
-│   ├── DarkFireNetworking/    # Message protocols, connection wrappers, thread-safe queues
+│   ├── DarkFireNetworking/    # DarkFire v2 C++20 Dual-Transport (TCP+UDP) networking library
 │   ├── DirectXTex/            # Microsoft DirectX Texture processing library
 │   ├── DirectXTK/             # Microsoft DirectX Tool Kit (SpriteBatch, SpriteFont)
 │   ├── StackTrace/            # Stack trace diagnostics
@@ -157,7 +157,7 @@ Open `DarkFire.slnx` (or `DarkFire.sln`) in Visual Studio and select **Build Sol
 ```powershell
 .\Binaries\windows-x86_64\Debug\Server\Server.exe 60000
 ```
-The server will initialize its socket acceptor with `SO_REUSEADDR` on port `60000` and wait for incoming connections. Press `Ctrl+C` at any time to shut down gracefully.
+The server will initialize its dual-transport engine (TCP port `60000` for authentication & reliable events, UDP port `60001` for high-frequency flight replication) with `SO_REUSEADDR`. Press `Ctrl+C` at any time to shut down gracefully.
 
 ### Launching the Game Client
 ```powershell

@@ -8,8 +8,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	try
 	{
 		NetworkClient client;
-		client.Connect("127.0.0.1", 60000);
-		SpaceShooterGame game(L"Space Shooter", 1680, 1000,&client);
+		client.ConnectDual("127.0.0.1", 60000, 60001);
+		SpaceShooterGame game(L"Space Shooter", 1680, 1000, &client);
 		game.run();
 	}
 	catch (const std::exception& e)

@@ -2,9 +2,11 @@
 #include <unordered_map>
 #include <chrono>
 #include <thread>
-#include <df_net.h>
+#include <csignal>
+#include <atomic>
+#include <darkfire/darkfire.hpp>
 
-enum class NetworkMsgTypes : uint32_t
+enum class NetworkMsgTypes : uint16_t
 {
 	ServerAccept,
 	ServerDeny,
@@ -35,52 +37,48 @@ struct PlayerShootData
 };
 #pragma pack(pop)
 
-class GameServer : public df::net::server_interface<NetworkMsgTypes>
+DARKFIRE_DECLARE_TRIVIALLY_SERIALIZABLE(PlayerNetState);
+DARKFIRE_DECLARE_TRIVIALLY_SERIALIZABLE(PlayerShootData);
+
+class GameServer : public darkfire::net::DualServer<NetworkMsgTypes>
 {
 public:
-	GameServer(uint16_t nPort) : df::net::server_interface<NetworkMsgTypes>(nPort)
+	GameServer(uint16_t tcpPort, uint16_t udpPort)
+		: darkfire::net::DualServer<NetworkMsgTypes>(tcpPort, udpPort, "DarkFireSecretAuthKey")
 	{
 	}
 
 protected:
-	bool OnClientConnect(std::shared_ptr<df::net::connection<NetworkMsgTypes>> client) override
+	bool OnClientConnect(std::shared_ptr<darkfire::net::TCPConnection> client) override
 	{
-		df::net::message<NetworkMsgTypes> msg;
-		msg.header.id = NetworkMsgTypes::ServerAccept;
-		client->Send(msg);
-
-		std::cout << "[SERVER] Client connection accepted: " << client->GetID() << "\n";
+		std::cout << "[SERVER] Client connection requested, assigning ID " << client->GetId() << "\n";
 		return true;
 	}
 
-	void OnClientValidated(std::shared_ptr<df::net::connection<NetworkMsgTypes>> client) override
+	void OnClientValidated(std::shared_ptr<darkfire::net::TCPConnection> client) override
 	{
-		uint32_t newId = client->GetID();
+		uint32_t newId = client->GetId();
 
-		// 1. Tell the new client its assigned ID
-		df::net::message<NetworkMsgTypes> msgAssign;
-		msgAssign.header.id = NetworkMsgTypes::ClientAssignID;
+		// 1. Tell the new client its assigned ID via TCP
+		darkfire::net::Packet msgAssign(NetworkMsgTypes::ClientAssignID);
 		msgAssign << newId;
-		client->Send(msgAssign);
+		Send(client, msgAssign);
 
-		// 2. Inform existing players about the new player
-		df::net::message<NetworkMsgTypes> msgNewPlayer;
-		msgNewPlayer.header.id = NetworkMsgTypes::PlayerConnect;
+		// 2. Inform existing players about the new player via TCP
+		darkfire::net::Packet msgNewPlayer(NetworkMsgTypes::PlayerConnect);
 		msgNewPlayer << newId;
-		MessageAllClients(msgNewPlayer, client);
+		Broadcast(msgNewPlayer, client);
 
 		// 3. Inform the new player about all existing players
 		for (const auto& [id, state] : m_players)
 		{
-			df::net::message<NetworkMsgTypes> msgExisting;
-			msgExisting.header.id = NetworkMsgTypes::PlayerConnect;
+			darkfire::net::Packet msgExisting(NetworkMsgTypes::PlayerConnect);
 			msgExisting << id;
-			client->Send(msgExisting);
+			Send(client, msgExisting);
 
-			df::net::message<NetworkMsgTypes> msgMove;
-			msgMove.header.id = NetworkMsgTypes::PlayerMove;
+			darkfire::net::Packet msgMove(NetworkMsgTypes::PlayerMove);
 			msgMove << state;
-			client->Send(msgMove);
+			Send(client, msgMove);
 		}
 
 		// Initialize default state for this player
@@ -89,67 +87,82 @@ protected:
 		initial.scale = 1.0f;
 		m_players[newId] = initial;
 
-		std::cout << "[SERVER] Client " << newId << " fully joined. Total players: " << m_players.size() << "\n";
+		std::cout << "[SERVER] Client " << newId << " authenticated & joined. Total players: " << m_players.size() << "\n";
 	}
 
-	void OnClientDisconnect(std::shared_ptr<df::net::connection<NetworkMsgTypes>> client) override
+	void OnClientDisconnect(std::shared_ptr<darkfire::net::TCPConnection> client) override
 	{
-		uint32_t id = client->GetID();
+		uint32_t id = client->GetId();
 		m_players.erase(id);
 
 		std::cout << "[SERVER] Client disconnected: " << id << ". Total players: " << m_players.size() << "\n";
 
-		df::net::message<NetworkMsgTypes> msg;
-		msg.header.id = NetworkMsgTypes::PlayerDisconnect;
+		darkfire::net::Packet msg(NetworkMsgTypes::PlayerDisconnect);
 		msg << id;
-		MessageAllClients(msg, client);
+		Broadcast(msg, client);
+
+		darkfire::net::DualServer<NetworkMsgTypes>::OnClientDisconnect(client);
 	}
 
-	void OnMessage(std::shared_ptr<df::net::connection<NetworkMsgTypes>> client, df::net::message<NetworkMsgTypes>& msg) override
+	// Reliable TCP message handler (critical game events)
+	void OnMessage(std::shared_ptr<darkfire::net::TCPConnection> client, darkfire::net::Packet& msg) override
 	{
-		uint32_t senderId = client->GetID();
+		uint32_t senderId = client->GetId();
+		auto msgId = msg.GetIdAs<NetworkMsgTypes>();
+		auto reader = msg.GetReader();
 
-		switch (msg.header.id)
+		switch (msgId)
+		{
+		case NetworkMsgTypes::ProjectileHit:
+		{
+			uint32_t asteroidId = 0;
+			reader >> asteroidId;
+
+			// Re-broadcast hit to synchronize asteroid destruction
+			darkfire::net::Packet outMsg(NetworkMsgTypes::ProjectileHit);
+			outMsg << asteroidId;
+			Broadcast(outMsg, client);
+			break;
+		}
+
+		default:
+			break;
+		}
+	}
+
+	// High-frequency UDP message handler (fast flight transforms, shooting)
+	void OnUDPMessage(const asio::ip::udp::endpoint& sender, darkfire::net::Packet& msg) override
+	{
+		(void)sender;
+		auto msgId = msg.GetIdAs<NetworkMsgTypes>();
+		auto reader = msg.GetReader();
+
+		switch (msgId)
 		{
 		case NetworkMsgTypes::PlayerMove:
 		{
 			PlayerNetState state{};
-			msg >> state;
-			state.clientID = senderId;
+			reader >> state;
+			uint32_t senderId = state.clientID;
 			m_players[senderId] = state;
 
-			// Broadcast updated movement to all other clients
-			df::net::message<NetworkMsgTypes> outMsg;
-			outMsg.header.id = NetworkMsgTypes::PlayerMove;
+			// Broadcast updated movement to all other clients via UDP
+			darkfire::net::Packet outMsg(NetworkMsgTypes::PlayerMove);
 			outMsg << state;
-			MessageAllClients(outMsg, client);
+			BroadcastUDP(outMsg, senderId);
 			break;
 		}
 
 		case NetworkMsgTypes::PlayerShoot:
 		{
 			PlayerShootData shoot{};
-			msg >> shoot;
-			shoot.clientID = senderId;
+			reader >> shoot;
+			uint32_t senderId = shoot.clientID;
 
-			// Broadcast shot to all other clients
-			df::net::message<NetworkMsgTypes> outMsg;
-			outMsg.header.id = NetworkMsgTypes::PlayerShoot;
+			// Broadcast projectile shot to all other clients via UDP
+			darkfire::net::Packet outMsg(NetworkMsgTypes::PlayerShoot);
 			outMsg << shoot;
-			MessageAllClients(outMsg, client);
-			break;
-		}
-
-		case NetworkMsgTypes::ProjectileHit:
-		{
-			uint32_t asteroidId = 0;
-			msg >> asteroidId;
-
-			// Re-broadcast hit to synchronize asteroid destruction
-			df::net::message<NetworkMsgTypes> outMsg;
-			outMsg.header.id = NetworkMsgTypes::ProjectileHit;
-			outMsg << asteroidId;
-			MessageAllClients(outMsg, client);
+			BroadcastUDP(outMsg, senderId);
 			break;
 		}
 
@@ -161,9 +174,6 @@ protected:
 private:
 	std::unordered_map<uint32_t, PlayerNetState> m_players;
 };
-
-#include <csignal>
-#include <atomic>
 
 static std::atomic<bool> g_serverRunning{ true };
 
@@ -180,36 +190,38 @@ int main(int argc, char* argv[])
 
 	try
 	{
-		uint16_t port = 60000;
+		uint16_t tcpPort = 60000;
+		uint16_t udpPort = 60001;
 		if (argc > 1)
 		{
-			port = static_cast<uint16_t>(std::atoi(argv[1]));
+			tcpPort = static_cast<uint16_t>(std::atoi(argv[1]));
+			udpPort = tcpPort + 1;
 		}
 
 		std::cout << "========================================\n";
-		std::cout << "   DarkFire SpaceShooter Dedicated Server\n";
-		std::cout << "   Port: " << port << "\n";
+		std::cout << "   DarkFire v2 Dedicated Dual-Server\n";
+		std::cout << "   TCP Port: " << tcpPort << " | UDP Port: " << udpPort << "\n";
 		std::cout << "========================================" << std::endl;
 
-		GameServer server(port);
+		GameServer server(tcpPort, udpPort);
 
-		if (!server.Start())
+		if (!server.StartDual())
 		{
-			std::cerr << "[ERROR] Failed to start server on port " << port << "!" << std::endl;
+			std::cerr << "[ERROR] Failed to start dual server on ports TCP:" << tcpPort << " UDP:" << udpPort << "!" << std::endl;
 			return 1;
 		}
 
-		std::cout << "[INFO] Server started successfully. Waiting for clients...\n";
+		std::cout << "[INFO] Dual-server started successfully. Waiting for clients...\n";
 		std::cout << "[INFO] Press Ctrl+C to stop the server." << std::endl;
 
 		while (g_serverRunning)
 		{
-			server.Update(64, true);
-			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+			server.UpdateDual(64, false);
+			std::this_thread::sleep_for(std::chrono::milliseconds(5));
 		}
 
 		std::cout << "\n[INFO] Shutting down server gracefully..." << std::endl;
-		server.Stop();
+		server.StopDual();
 	}
 	catch (const std::exception& e)
 	{

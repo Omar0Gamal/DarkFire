@@ -15,12 +15,14 @@ project "SandBox"
 	  "../Core/Source",
       "../Libs/asio-1.28.1/include",
       "../Libs/DirectXTK/include",
-      "../Libs/DarkFireNetworking"
+      "../Libs/DarkFireNetworking/include"
    }
 
    links
    {
-      "Core"
+      "Core",
+      "ws2_32",
+      "mswsock"
    }
 
    targetdir ("../Binaries/" .. OutputDir .. "/%{prj.name}")
@@ -28,7 +30,7 @@ project "SandBox"
 
    filter "system:windows"
        systemversion "latest"
-       defines { "WINDOWS" }
+       defines { "WINDOWS", "ASIO_STANDALONE" }
 
    filter "configurations:Debug"
        defines { "DEBUG" }

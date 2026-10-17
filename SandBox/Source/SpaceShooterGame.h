@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/All.h"
-#include "df_net.h"
+#include <darkfire/darkfire.hpp>
+#include <functional>
 
 using namespace Core;
 
@@ -17,7 +18,7 @@ struct WorldData
 	std::vector<AsteroidData> asteroids;
 };
 
-enum class NetworkMsgTypes : uint32_t
+enum class NetworkMsgTypes : uint16_t
 {
 	ServerAccept,
 	ServerDeny,
@@ -48,9 +49,21 @@ struct PlayerShootData
 };
 #pragma pack(pop)
 
-class NetworkClient : public df::net::client_interface<NetworkMsgTypes>
+DARKFIRE_DECLARE_TRIVIALLY_SERIALIZABLE(PlayerNetState);
+DARKFIRE_DECLARE_TRIVIALLY_SERIALIZABLE(PlayerShootData);
+
+class NetworkClient : public darkfire::net::DualClient<NetworkMsgTypes>
 {
 public:
+	using PacketCallback = std::function<void(darkfire::net::Packet&)>;
+
+	NetworkClient() : darkfire::net::DualClient<NetworkMsgTypes>("DarkFireSecretAuthKey") {}
+
+	void setPacketHandler(PacketCallback cb)
+	{
+		m_packetHandler = std::move(cb);
+	}
+
 	void sendMove(const TransformComponent& transform)
 	{
 		if (!IsConnected()) return;
@@ -64,10 +77,9 @@ public:
 		state.rotZ = transform.m_Rotation.z;
 		state.scale = transform.m_Scale.x;
 
-		df::net::message<NetworkMsgTypes> msg;
-		msg.header.id = NetworkMsgTypes::PlayerMove;
-		msg << state;
-		Send(msg);
+		darkfire::net::Packet pkt(NetworkMsgTypes::PlayerMove);
+		pkt << state;
+		SendUDPSequenced(pkt);
 	}
 
 	void sendShoot(const Vector3d& pos, const Vector3d& dir, float speed)
@@ -83,26 +95,41 @@ public:
 		shoot.dirZ = dir.z;
 		shoot.speed = speed;
 
-		df::net::message<NetworkMsgTypes> msg;
-		msg.header.id = NetworkMsgTypes::PlayerShoot;
-		msg << shoot;
-		Send(msg);
+		darkfire::net::Packet pkt(NetworkMsgTypes::PlayerShoot);
+		pkt << shoot;
+		SendUDPReliable(pkt);
 	}
 
 	void sendHit(uint32_t asteroidID)
 	{
 		if (!IsConnected()) return;
-		df::net::message<NetworkMsgTypes> msg;
-		msg.header.id = NetworkMsgTypes::ProjectileHit;
-		msg << asteroidID;
-		Send(msg);
+		darkfire::net::Packet pkt(NetworkMsgTypes::ProjectileHit);
+		pkt << asteroidID;
+		SendTCP(pkt);
 	}
 
-	void setMyClientID(uint32_t id) { m_myClientID = id; }
+	void setMyClientID(uint32_t id)
+	{
+		m_myClientID = id;
+		RegisterUDP(id);
+	}
+
 	uint32_t getMyClientID() const { return m_myClientID; }
+
+protected:
+	void OnMessage(darkfire::net::Packet& pkt) override
+	{
+		if (m_packetHandler) m_packetHandler(pkt);
+	}
+
+	void OnUDPMessage(darkfire::net::Packet& pkt) override
+	{
+		if (m_packetHandler) m_packetHandler(pkt);
+	}
 
 private:
 	uint32_t m_myClientID = 0;
+	PacketCallback m_packetHandler;
 };
 
 class SpaceShooterGame : public Core::Game
@@ -118,6 +145,7 @@ public:
 	int getFPS() { return m_fps; }
 private:
 	void handleNetworkMessages();
+	void processPacket(darkfire::net::Packet& pkt);
 	void spawnRemotePlayer(uint32_t id);
 	void removeRemotePlayer(uint32_t id);
 private:
@@ -134,4 +162,3 @@ private:
 	MeshPtr m_remoteShipMesh = nullptr;
 	std::vector<MaterialPtr> m_remoteShipMaterials;
 };
-

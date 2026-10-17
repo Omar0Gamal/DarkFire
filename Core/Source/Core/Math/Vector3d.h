@@ -5,7 +5,7 @@ namespace Core
 	class Vector3d
 	{
 	public:
-		Vector3d() {}
+		Vector3d() : x(0.0f), y(0.0f), z(0.0f) {}
 		Vector3d(float x, float y, float z) :x(x), y(y), z(z) {}
 		Vector3d(const  Vector3d& vector) :x(vector.x), y(vector.y), z(vector.z) {}
 

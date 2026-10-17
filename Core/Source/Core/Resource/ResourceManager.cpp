@@ -2,11 +2,12 @@
 #include "Texture.h"
 #include "Mesh.h"
 #include "Material.h"
+#include "Font.h"
 
 #include <filesystem>
 namespace Core
 {
-	ResourceManager::ResourceManager(GamePtr game) :m_game(game) {}
+	ResourceManager::ResourceManager(Game* game) :m_game(game) {}
 
 	ResourcePtr ResourceManager::createResourceFromFileConcrete(const wchar_t* path)
 	{
@@ -58,12 +59,36 @@ namespace Core
 				return ptr;
 			}
 		}
+		else if (!ext.compare(L".font"))
+		{
+			//font resource
+			auto ptr = std::make_shared<Font>(resPath.c_str(), this);
+			if (ptr)
+			{
+				m_mapResources.emplace(path, ptr);
+				return ptr;
+			}
+		}
 
 		return ResourcePtr();
 	}
 
-	GamePtr ResourceManager::getGame()
+	Game* ResourceManager::getGame()
 	{
 		return m_game;
+	}
+
+	MaterialPtr ResourceManager::getDefaultMaterial()
+	{
+		if (!m_defaultMaterial)
+		{
+			if (std::filesystem::exists(L"Assets/Shaders/default_material.hlsl"))
+				m_defaultMaterial = createResourceFromFile<Material>(L"Assets/Shaders/default_material.hlsl");
+			else if (std::filesystem::exists(L"Assets/Shaders/base.hlsl"))
+				m_defaultMaterial = createResourceFromFile<Material>(L"Assets/Shaders/base.hlsl");
+			else if (std::filesystem::exists(L"SandBox/Assets/Shaders/base.hlsl"))
+				m_defaultMaterial = createResourceFromFile<Material>(L"SandBox/Assets/Shaders/base.hlsl");
+		}
+		return m_defaultMaterial;
 	}
 }

@@ -36,36 +36,39 @@ namespace Core
 		tex_desc.ArraySize = 1;
 		tex_desc.CPUAccessFlags = 0;
 
-		auto hr = engine->m_d3dDevice->CreateTexture2D(&tex_desc, nullptr, (ID3D11Texture2D**)&m_texture);
+		auto hr = engine->m_d3dDevice->CreateTexture2D(&tex_desc, nullptr, m_texture.ReleaseAndGetAddressOf());
 		if (FAILED(hr))
 		{
 			darklog.error(L"Texture2D not created successfully");
-			return;
+			throw std::runtime_error("CreateTexture2D failed");
 		}
 
-		if (desc.type == TextureType::RenderTarget)
+		if (desc.type == TextureType::RenderTarget || desc.type == TextureType::Normal)
 		{
-			hr = engine->m_d3dDevice->CreateShaderResourceView(this->m_texture.Get(), NULL, &this->m_shader_res_view);
+			hr = engine->m_d3dDevice->CreateShaderResourceView(this->m_texture.Get(), NULL, this->m_shader_res_view.ReleaseAndGetAddressOf());
 			if (FAILED(hr))
 			{
-				darklog.error(L"Texture2D not created successfully");
-				return;
+				darklog.error(L"Texture2D SRV not created successfully");
+				throw std::runtime_error("CreateShaderResourceView failed");
 			}
 
-			hr = engine->m_d3dDevice->CreateRenderTargetView(this->m_texture.Get(), NULL, &this->m_render_target_view);
-			if (FAILED(hr))
+			if (desc.type == TextureType::RenderTarget)
 			{
-				darklog.error(L"Texture2D not created successfully");
-				return;
+				hr = engine->m_d3dDevice->CreateRenderTargetView(this->m_texture.Get(), NULL, this->m_render_target_view.ReleaseAndGetAddressOf());
+				if (FAILED(hr))
+				{
+					darklog.error(L"Texture2D RTV not created successfully");
+					throw std::runtime_error("CreateRenderTargetView failed");
+				}
 			}
 		}
 		else if (desc.type == TextureType::DepthStencil)
 		{
-			hr = engine->m_d3dDevice->CreateDepthStencilView(this->m_texture.Get(), NULL, &this->m_depth_stencil_view);
+			hr = engine->m_d3dDevice->CreateDepthStencilView(this->m_texture.Get(), NULL, this->m_depth_stencil_view.ReleaseAndGetAddressOf());
 			if (FAILED(hr))
 			{
-				darklog.error(L"Texture2D not created successfully");
-				return;
+				darklog.error(L"Texture2D DSV not created successfully");
+				throw std::runtime_error("CreateDepthStencilView failed");
 			}
 		}
 
@@ -76,55 +79,57 @@ namespace Core
 		auto engine = system;
 		DirectX::ScratchImage image_data;
 		HRESULT res = DirectX::LoadFromWICFile(path, DirectX::WIC_FLAGS_IGNORE_SRGB, nullptr, image_data);
+		if (FAILED(res))
+		{
+			darklog.error(L"Failed to load texture from file: " + std::wstring(path));
+			throw std::runtime_error("LoadFromWICFile failed");
+		}
 
 		DirectX::TexMetadata meta_data = {};
 		DirectX::ScratchImage mip_chain = {};
-		DirectX::GenerateMipMaps(image_data.GetImages(), image_data.GetImageCount(), image_data.GetMetadata(), DirectX::TEX_FILTER_DEFAULT | DirectX::TEX_FILTER_SEPARATE_ALPHA, 0, mip_chain);
-
-		if (SUCCEEDED(res))
+		res = DirectX::GenerateMipMaps(image_data.GetImages(), image_data.GetImageCount(), image_data.GetMetadata(), 
+			DirectX::TEX_FILTER_DEFAULT | DirectX::TEX_FILTER_SEPARATE_ALPHA, 0, mip_chain);
+		if (FAILED(res))
 		{
-			res = DirectX::CreateTexture(engine->m_d3dDevice.Get(), mip_chain.GetImages(),
-				mip_chain.GetImageCount(), mip_chain.GetMetadata(), (ID3D11Resource**)m_texture.GetAddressOf());
-
-			if (FAILED(res))
-			{
-				darklog.error(L"Texture2D not created successfully");
-				return;
-			}
-
-			D3D11_SHADER_RESOURCE_VIEW_DESC desc = {};
-			desc.Format = image_data.GetMetadata().format;
-			desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-			desc.Texture2D.MipLevels = (UINT)mip_chain.GetMetadata().mipLevels;
-			desc.Texture2D.MostDetailedMip = 0;
-
-			D3D11_SAMPLER_DESC sampler_desc = {};
-			sampler_desc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
-			sampler_desc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
-			sampler_desc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
-			sampler_desc.Filter = D3D11_FILTER_ANISOTROPIC;
-			sampler_desc.MinLOD = 0.0f;
-			sampler_desc.MaxLOD = (FLOAT)mip_chain.GetMetadata().mipLevels;
-
-			res = engine->m_d3dDevice->CreateSamplerState(&sampler_desc, &m_sampler_state);
-			if (FAILED(res))
-			{
-				darklog.error(L"Texture2D not created successfully");
-				return;
-			}
-
-			res = engine->m_d3dDevice->CreateShaderResourceView(m_texture.Get(), &desc,
-				&m_shader_res_view);
-			if (FAILED(res))
-			{
-				darklog.error(L"Texture2D not created successfully");
-				return;
-			}
+			darklog.error(L"Failed to generate mipmaps for texture: " + std::wstring(path));
+			throw std::runtime_error("GenerateMipMaps failed");
 		}
-		else
+
+		res = DirectX::CreateTexture(engine->m_d3dDevice.Get(), mip_chain.GetImages(),
+			mip_chain.GetImageCount(), mip_chain.GetMetadata(), (ID3D11Resource**)m_texture.ReleaseAndGetAddressOf());
+		if (FAILED(res))
 		{
 			darklog.error(L"Texture2D not created successfully");
-			return;
+			throw std::runtime_error("CreateTexture failed");
+		}
+
+		D3D11_SHADER_RESOURCE_VIEW_DESC desc = {};
+		desc.Format = image_data.GetMetadata().format;
+		desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+		desc.Texture2D.MipLevels = (UINT)mip_chain.GetMetadata().mipLevels;
+		desc.Texture2D.MostDetailedMip = 0;
+
+		D3D11_SAMPLER_DESC sampler_desc = {};
+		sampler_desc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+		sampler_desc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+		sampler_desc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+		sampler_desc.Filter = D3D11_FILTER_ANISOTROPIC;
+		sampler_desc.MinLOD = 0.0f;
+		sampler_desc.MaxLOD = (FLOAT)mip_chain.GetMetadata().mipLevels;
+
+		res = engine->m_d3dDevice->CreateSamplerState(&sampler_desc, m_sampler_state.ReleaseAndGetAddressOf());
+		if (FAILED(res))
+		{
+			darklog.error(L"Texture2D sampler state not created successfully");
+			throw std::runtime_error("CreateSamplerState failed");
+		}
+
+		res = engine->m_d3dDevice->CreateShaderResourceView(m_texture.Get(), &desc,
+			m_shader_res_view.ReleaseAndGetAddressOf());
+		if (FAILED(res))
+		{
+			darklog.error(L"Texture2D SRV not created successfully");
+			throw std::runtime_error("CreateShaderResourceView failed");
 		}
 	}
 }

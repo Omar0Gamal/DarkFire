@@ -13,6 +13,8 @@ namespace Core {
 	class  IndexBuffer;
 	class  ConstantBuffer;
 	class  Texture2D;
+	class  Font2D;
+	class  UIRender;
 
 	class InputManager;
 
@@ -20,7 +22,9 @@ namespace Core {
 	class  Resource;
 	class  Texture;
 	class  Mesh;
+	class  Primitive;
 	class  Material;
+	class  Font;
 
 	class Game;
 	class PhysicsEngine;
@@ -32,6 +36,14 @@ namespace Core {
 	class ColliderComponent;
 	class SphereColliderComponent;
 	class TransformComponent;
+	class ImageComponent;
+
+	enum class PrimitiveType
+	{
+		Cube,
+		Sphere,
+		Plane
+	};
 
 	typedef std::shared_ptr<SwapChain> SwapChainPtr;
 	typedef std::shared_ptr<VertexBuffer> VertexBufferPtr;
@@ -40,9 +52,12 @@ namespace Core {
 	typedef std::shared_ptr<Resource> ResourcePtr;
 	typedef std::shared_ptr<Texture> TexturePtr;
 	typedef std::shared_ptr<Mesh> MeshPtr;
+	typedef std::shared_ptr<Primitive> PrimitivePtr;
 	typedef std::shared_ptr<Material> MaterialPtr;
+	typedef std::shared_ptr<Font> FontPtr;
 	typedef std::shared_ptr<Shader> ShaderPtr;
 	typedef std::shared_ptr<Texture2D> Texture2DPtr;
+	typedef std::shared_ptr<Font2D> Font2DPtr;
 	typedef std::shared_ptr<Game> GamePtr;
 	typedef std::shared_ptr<World> WorldPtr;
 	typedef std::shared_ptr<ECS> ECSPtr;

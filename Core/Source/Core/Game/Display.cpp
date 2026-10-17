@@ -5,7 +5,7 @@
 
 namespace Core
 {
-	Display::Display(const wchar_t* title, int width, int height, GamePtr game)
+	Display::Display(const wchar_t* title, int width, int height, Game* game)
 		: Window(title, width, height)
 	{
 		m_game = game;
@@ -16,8 +16,10 @@ namespace Core
 	}
 	void Display::onSize(const Box& size)
 	{
-		m_swapChain->resize(size);
-		m_game->onDisplaySize(size);
+		if (m_swapChain)
+			m_swapChain->resize(size);
+		if (m_game)
+			m_game->onDisplaySize(size);
 	}
 	SwapChainPtr Display::getSwapChain()
 	{

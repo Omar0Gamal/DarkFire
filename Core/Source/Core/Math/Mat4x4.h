@@ -3,13 +3,14 @@
 #include "Vector3d.h"
 #include "Vector4d.h"
 #include <memory>
+#include <cmath>
 
 namespace Core
 {
 	class Mat4x4
 	{
 	public:
-		Mat4x4(){}
+		Mat4x4() { setIdentity(); }
 		Mat4x4(float m00, float m01, float m02, float m03,
 			float m10, float m11, float m12, float m13,
 			float m20, float m21, float m22, float m23,
@@ -47,34 +48,34 @@ namespace Core
 		void setRotationX(float angle)
 		{
 			setIdentity();
-			m[1][1] = cos(angle);
-			m[1][2] = sin(angle);
-			m[2][1] = -sin(angle);
-			m[2][2] = cos(angle);
+			m[1][1] = std::cos(angle);
+			m[1][2] = std::sin(angle);
+			m[2][1] = -std::sin(angle);
+			m[2][2] = std::cos(angle);
 		}
 
 		void setRotationY(float angle)
 		{
 			setIdentity();
-			m[0][0] = cos(angle);
-			m[0][2] = -sin(angle);
-			m[2][0] = sin(angle);
-			m[2][2] = cos(angle);
+			m[0][0] = std::cos(angle);
+			m[0][2] = -std::sin(angle);
+			m[2][0] = std::sin(angle);
+			m[2][2] = std::cos(angle);
 		}
 
 		void setRotationZ(float angle)
 		{
 			setIdentity();
-			m[0][0] = cos(angle);
-			m[0][1] = sin(angle);
-			m[1][0] = -sin(angle);
-			m[1][1] = cos(angle);
+			m[0][0] = std::cos(angle);
+			m[0][1] = std::sin(angle);
+			m[1][0] = -std::sin(angle);
+			m[1][1] = std::cos(angle);
 		}
 
 		void setPerspectiveFovLH(float fov, float aspect, float znear, float zfar)
 		{
 			setIdentity();
-			float yscale = 1.0f / tan(fov / 2.0f);
+			float yscale = 1.0f / std::tan(fov / 2.0f);
 			float xscale = yscale / aspect;
 			m[0][0] = xscale;
 			m[1][1] = yscale;
@@ -188,10 +189,11 @@ namespace Core
 				}
 				v.cross(vec[0], vec[1], vec[2]);
 
-				out.m[0][i] = (float) pow(-1.0f, i) * v.x / det;
-				out.m[1][i] = (float) pow(-1.0f, i) * v.y / det;
-				out.m[2][i] = (float) pow(-1.0f, i) * v.z / det;
-				out.m[3][i] = (float) pow(-1.0f, i) * v.w / det;
+				float sign = ((i % 2 == 0) ? 1.0f : -1.0f);
+				out.m[0][i] = sign * v.x / det;
+				out.m[1][i] = sign * v.y / det;
+				out.m[2][i] = sign * v.z / det;
+				out.m[3][i] = sign * v.w / det;
 			}
 
 			this->setMatrix(out);

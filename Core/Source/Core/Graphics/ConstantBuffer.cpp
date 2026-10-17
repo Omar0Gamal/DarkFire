@@ -9,22 +9,34 @@ namespace Core
 	{
 		D3D11_BUFFER_DESC buff_desc = {};
 		buff_desc.Usage = D3D11_USAGE_DEFAULT;
-		buff_desc.ByteWidth = desc.bufferSize;
+		buff_desc.ByteWidth = (desc.bufferSize + 15) & ~15;
 		buff_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 		buff_desc.CPUAccessFlags = 0;
 		buff_desc.MiscFlags = 0;
 
 		D3D11_SUBRESOURCE_DATA init_data = {};
-		init_data.pSysMem = desc.buffer;
+		D3D11_SUBRESOURCE_DATA* pInitData = nullptr;
+		if (desc.buffer)
+		{
+			init_data.pSysMem = desc.buffer;
+			pInitData = &init_data;
+		}
+
 		auto device = m_system->m_d3dDevice;
 
-		if (FAILED(device->CreateBuffer(&buff_desc, &init_data, &m_buffer)))
-			darklog.error(L"CXConstantBuffer not created successfully");
+		if (FAILED(device->CreateBuffer(&buff_desc, pInitData, &m_buffer)))
+		{
+			darklog.error(L"ConstantBuffer not created successfully");
+			throw std::runtime_error("ConstantBuffer not created successfully");
+		}
 	}
 
 	void ConstantBuffer::update(void* buffer)
 	{
-		m_system->m_immediateContext->UpdateSubresource(this->m_buffer.Get(), NULL, NULL, buffer, NULL, NULL);
+		if (m_buffer && buffer && m_system && m_system->m_immediateContext)
+		{
+			m_system->m_immediateContext->UpdateSubresource(this->m_buffer.Get(), NULL, NULL, buffer, NULL, NULL);
+		}
 	}
 
 	void* ConstantBuffer::getBuffer()

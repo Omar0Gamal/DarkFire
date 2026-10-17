@@ -11,6 +11,15 @@ namespace Core
 	{
 		switch (msg)
 		{
+		case WM_NCCREATE:
+		{
+			auto createStruct = reinterpret_cast<CREATESTRUCT*>(lparam);
+			if (createStruct)
+			{
+				SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(createStruct->lpCreateParams));
+			}
+			return DefWindowProc(hwnd, msg, wparam, lparam);
+		}
 		case WM_SIZE:
 		{
 			// Event fired when the window is resized
@@ -69,7 +78,7 @@ namespace Core
 		wc.lpfnWndProc = &WndProc;
 
 		ATOM classId = 0;
-		if (!GetClassInfoEx(HINSTANCE(), L" DarkWindow", &wc))
+		if (!GetClassInfoEx(GetModuleHandle(nullptr), L"DarkWindow", &wc))
 		{
 			classId = RegisterClassEx(&wc);
 			if (!classId) throw std::runtime_error("RegisterClassEx failed");
@@ -78,15 +87,18 @@ namespace Core
 		RECT wr = { 0, 0, m_width, m_height };
 		AdjustWindowRect(&wr, WS_OVERLAPPEDWINDOW, FALSE);
 
-		m_hwnd = CreateWindowEx(NULL, MAKEINTATOM(classId), m_title,
-			WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, m_width, m_height, 
-			NULL, NULL, NULL, NULL);
+		m_hwnd = CreateWindowEx(NULL, L"DarkWindow", m_title,
+			WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 
+			wr.right - wr.left, wr.bottom - wr.top, 
+			HWND(), HMENU(), GetModuleHandle(nullptr), this);
 
 		if (!m_hwnd)
 		{
 			darklog.error(L"Failed to create window");
 			return;
 		}
+
+		SetWindowLongPtr(m_hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
 
 		ShowWindow(m_hwnd, SW_SHOW);
 		UpdateWindow(m_hwnd);
@@ -98,6 +110,7 @@ namespace Core
 	{
 		if (m_hwnd)
 		{
+			SetWindowLongPtr(m_hwnd, GWLP_USERDATA, 0);
 			if (!DestroyWindow(m_hwnd))
 			{
 				darklog.error(L"Failed to destroy window");
@@ -105,7 +118,7 @@ namespace Core
 			}
 			m_hwnd = NULL;
 		}
-		UnregisterClass(L"DarkWindow", NULL);
+		UnregisterClass(L"DarkWindow", GetModuleHandle(nullptr));
 	}
 
 	Box Window::getClientSize()

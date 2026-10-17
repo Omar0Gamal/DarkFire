@@ -28,7 +28,7 @@ namespace Core
 			const  Vector3d& v0, const  Vector3d& v1, const  Vector3d& v2,
 			const  Vector2d& t0, const  Vector2d& t1, const  Vector2d& t2,
 			Vector3d& tangent, Vector3d& binormal);
-	private:
+	protected:
 		VertexBufferPtr m_vertex_buffer;
 		IndexBufferPtr m_index_buffer;
 		std::vector<MaterialSlot> m_mat_slots;
@@ -37,7 +37,7 @@ namespace Core
 		Vector3d m_minCorner = Vector3d(10000, 10000, 10000);
 
 	private:
-		friend class  GraphicsEngine;
+		friend class GraphicsEngine;
 	};
 }
 

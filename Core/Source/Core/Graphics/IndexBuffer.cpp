@@ -20,7 +20,10 @@ namespace Core
 		m_desc = desc;
 
 		if (FAILED(m_system->m_d3dDevice->CreateBuffer(&buff_desc, &init_data, &m_buffer)))
+		{
 			darklog.error(L"IndexBuffer not created successfully");
+			throw std::runtime_error("IndexBuffer not created successfully");
+		}
 	}
 
 	unsigned int IndexBuffer::getIndicesListSize()

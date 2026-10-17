@@ -12,6 +12,7 @@
 #include "Component/LightComponent.h"
 #include "Component/MeshComponent.h"
 #include "Component/ColliderComponent.h"
+#include "Core/Resource/Primitive.h"
 
 namespace Core
 {
@@ -57,11 +58,19 @@ namespace Core
 	public:
 		EntityID getID() const { return m_ID; }
 		const char* getName() const { return m_Name; }
+		
+		/// Remove this entity (safe to call during iteration)
 		void remove() 
 		{ 
 			onDestroy();
 			m_World->removeEntity(m_ID);
-			m_World->getECS()->DeleteEntity(m_ID);
+			m_World->getECS()->markForDestroy(m_ID);
+		}
+		
+		/// Check if this entity is marked for destruction
+		bool isMarkedForDestroy() const
+		{
+			return m_ID == NULL_ENTITY;
 		}
 	protected:
 		EntityID m_ID;
@@ -150,5 +159,43 @@ namespace Core
 	private:
 		MeshPtr m_Mesh;
 		std::vector<MaterialPtr> m_Materials;
+	};
+
+	class PrimitiveEntity : public Entity
+	{
+	public:
+		PrimitiveEntity(PrimitiveType type = PrimitiveType::Cube) 
+			: m_Type(type) {}
+		PrimitiveEntity(PrimitiveType type, MaterialPtr material) 
+			: m_Type(type), m_Material(material) {}
+		virtual ~PrimitiveEntity() = default;
+	public:
+		virtual void onCreate() override
+		{
+			Entity::onCreate();
+			
+			auto manager = m_World->getGame()->getResourceManager();
+			
+			// Create primitive mesh
+			if (m_Material)
+				m_Primitive = std::make_shared<Primitive>(m_Type, m_Material, manager);
+			else
+				m_Primitive = std::make_shared<Primitive>(m_Type, manager);
+			
+			// Cast Primitive to MeshPtr (Primitive inherits from Mesh)
+			MeshPtr meshPtr = std::static_pointer_cast<Mesh>(m_Primitive);
+			
+			// Add mesh component with the primitive
+			std::vector<MaterialPtr> materials = { m_Primitive->getMaterial() };
+			addComponent<MeshComponent>(MeshComponent(meshPtr, materials));
+			addComponent<SphereColliderComponent>(SphereColliderComponent(0.5));
+		}
+		virtual void onDestroy() override {}
+		virtual void onUpdate(float delta) override {}
+
+	private:
+		PrimitiveType m_Type;
+		MaterialPtr m_Material;
+		PrimitivePtr m_Primitive;
 	};
 }

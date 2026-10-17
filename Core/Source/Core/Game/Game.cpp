@@ -5,12 +5,19 @@
 #include "Component/TransformComponent.h"
 #include "Component/LightComponent.h"
 #include "Component/MeshComponent.h"
+#include "Component/TextComponent.h"
+#include "Component/ImageComponent.h"
 #include "Core/Resource/ResourceManager.h"
 #include "Core/Math/Mat4x4.h"
 #include "Core/Resource/Material.h"
 #include "Core/Resource/Texture.h"
 #include "Core/Resource/Mesh.h"
+#include "Core/Resource/Font.h"
 #include "Core/Graphics/GraphicsEngine.h"
+#include "Core/Graphics/Font2D.h"
+#include "Core/Graphics/RenderPipeline.h"
+#include "Core/Graphics/MeshRenderPass.h"
+#include "Core/Graphics/UIRenderPass.h"
 #include "Core/Input/InputManager.h"
 #include "Core/Game/WorldManager.h"
 #include "Core/Game/PhysicsEngine.h"
@@ -18,55 +25,47 @@
 
 namespace Core
 {
-	__declspec(align(16))
-		struct LightData
-	{
-		Vector4d lightColor;
-		Vector4d lightDirection;
-		Vector4d lightPosition;
-	};
-
-
-	__declspec(align(16))
-		struct GraphicsData
-	{
-		Mat4x4 world;
-		Mat4x4 view;
-		Mat4x4 proj;
-		Vector4d cameraPosition;
-		LightData lights[32];
-		int numLights = 0;
-	};
-
 	Game::Game(const wchar_t* title, int width, int height)
 	{
-		GamePtr game = std::shared_ptr<Game>(this);
 		m_inputManager = std::make_unique<InputManager>();
 		m_graphicsEngine = std::make_unique<GraphicsEngine>();
-		m_resourceManager = std::make_unique<ResourceManager>(game);
-		m_display = std::make_unique<Display>(title,width,height, game);
-		m_physicsEngine = std::make_unique<PhysicsEngine>(game);
-		m_worldManager = std::make_unique<WorldManager>(game);
+		m_resourceManager = std::make_unique<ResourceManager>(this);
+		m_display = std::make_unique<Display>(title, width, height, this);
+		m_physicsEngine = std::make_unique<PhysicsEngine>(this);
+		m_worldManager = std::make_unique<WorldManager>(this);
+		m_renderPipeline = std::make_unique<RenderPipeline>();
+
 		Box rc;
 		rc.height = height;
 		rc.width = width;
 		m_inputManager->setScreenArea(rc);
 
 		m_world = m_worldManager->createWorld("MainWorld");
+
+		// Initialize default render passes
+		initDefaultRenderPasses();
 	}
 
-	Game::~Game() {}
+	void Game::initDefaultRenderPasses()
+	{
+		// Add default passes - users can remove/replace these
+		m_renderPipeline->addPass<MeshRenderPass>();
+		m_renderPipeline->addPass<UIRenderPass>();
+	}
+
+	Game::~Game()
+	{
+	}
+
 	void Game::run()
 	{
 		onCreate();
-
 		updateCamerasViewportSize();
-
 
 		while (m_isRunning)
 		{
 			MSG msg;
-			//WINDOW PROCESSING
+			// WINDOW PROCESSING
 			while (PeekMessage(&msg, HWND(), 0, 0, PM_REMOVE))
 			{
 				if (msg.message == WM_QUIT)
@@ -86,47 +85,61 @@ namespace Core
 
 		onQuit();
 	}
+
 	void Game::quit() {}
+
 	InputManager* Game::getInputManager()
 	{
 		return m_inputManager.get();
 	}
+
 	GraphicsEngine* Game::getGraphicsEngine()
 	{
 		return m_graphicsEngine.get();
 	}
+
 	Display* Game::getDisplay()
 	{
 		return m_display.get();
 	}
+
 	ResourceManager* Game::getResourceManager()
 	{
 		return m_resourceManager.get();
 	}
+
 	WorldManager* Game::getWorldManager()
 	{
 		return m_worldManager.get();
 	}
+
 	MaterialPtr Game::createMaterial(const wchar_t* path)
 	{
 		return m_resourceManager->createResourceFromFile<Material>(path);
 	}
+
 	TexturePtr Game::createTexture(const wchar_t* path)
 	{
 		return m_resourceManager->createResourceFromFile<Texture>(path);
 	}
+
 	MeshPtr Game::createMesh(const wchar_t* path)
 	{
 		return m_resourceManager->createResourceFromFile<Mesh>(path);
 	}
+
+	FontPtr Game::createFont(const wchar_t* path)
+	{
+		return m_resourceManager->createResourceFromFile<Font>(path);
+	}
+
 	void Game::onDisplaySize(const Box& size)
 	{
 		updateCamerasViewportSize();
-
 		m_inputManager->setScreenArea(size);
-
 		onUpdateInternal();
 	}
+
 	void Game::onUpdateInternal()
 	{
 		m_inputManager->update();
@@ -137,96 +150,102 @@ namespace Core
 			elapsedSeconds = std::chrono::duration<double>();
 		m_oldTime = now;
 
-		m_avgDt += (float)elapsedSeconds.count();
+		m_avgDt += static_cast<float>(elapsedSeconds.count());
 		m_avgCount++;
 
-		float deltaTime = m_avgDt / m_avgCount;
+		m_deltaTime = m_avgDt / m_avgCount;
+		m_totalTime += m_deltaTime;
 
-		unsigned long long max = -1;
 		if (m_avgCount == 2000)
 		{
 			m_avgCount = 0;
-			m_avgDt = (float)elapsedSeconds.count();
+			m_avgDt = static_cast<float>(elapsedSeconds.count());
 		}
 
-		m_physicsEngine->update(deltaTime);
-		
-		onUpdate(deltaTime);
+		m_physicsEngine->update(m_deltaTime);
+		onUpdate(m_deltaTime);
 
 		for (auto& [key, entity] : m_world->getEntities())
 		{
-			entity->onUpdate(deltaTime);
+			entity->onUpdate(m_deltaTime);
 		}
 
-		onGraphicsUpdate(deltaTime);
+		onGraphicsUpdate(m_deltaTime);
 	}
+
+	RenderContext Game::buildRenderContext()
+	{
+		RenderContext ctx;
+		ctx.deltaTime = m_deltaTime;
+		ctx.totalTime = m_totalTime;
+		ctx.viewportWidth = m_display->getClientSize().width;
+		ctx.viewportHeight = m_display->getClientSize().height;
+
+		// Get camera data
+		auto mainCamera = m_world->getEntity<Entity>(m_world->getMainCameraID());
+		if (mainCamera)
+		{
+			CameraComponent& camComp = mainCamera->getComponent<CameraComponent>();
+			TransformComponent& transComp = mainCamera->getComponent<TransformComponent>();
+			transComp.proccessMatrix();
+			camComp.proccessMatrix(transComp.m_worldMatrix);
+
+			ctx.projection = camComp.m_ProjectionMatrix;
+			ctx.view = camComp.m_ViewMatrix;
+			ctx.cameraPosition = transComp.m_worldMatrix.getTranslation();
+		}
+
+		// Gather lights
+		m_world->getECS()->ForEach<TransformComponent, LightComponent>(
+			[&](TransformComponent& transform, LightComponent& light)
+			{
+				transform.proccessMatrix();
+				LightData ld;
+				ld.lightPosition = transform.m_worldMatrix.getTranslation();
+				ld.lightColor = light.m_Color;
+				ld.lightDirection = transform.m_worldMatrix.getForwardDirection();
+				ctx.lights.push_back(ld);
+			});
+
+		return ctx;
+	}
+
 	void Game::onGraphicsUpdate(float deltaTime)
 	{
+		m_graphicsEngine->clearState();
 		m_graphicsEngine->clearColor(
 			m_display->getSwapChain(), Vector4d(0, 0, 0, 1));
 
-		m_graphicsEngine->setViewportSize(m_display->getClientSize().width,
+		m_graphicsEngine->setViewportSize(
+			m_display->getClientSize().width,
 			m_display->getClientSize().height);
 
-
-		GraphicsData gdata;
-
-		{
-			auto mainCamera = m_world->getEntity<Entity>(m_world->getMainCameraID());
-
-			if (mainCamera)
-			{
-				CameraComponent camComp = mainCamera->getComponent<CameraComponent>();
-				TransformComponent transComp = mainCamera->getComponent<TransformComponent>();
-				transComp.proccessMatrix();
-				camComp.proccessMatrix(transComp.m_worldMatrix);
-				gdata.proj = camComp.m_ProjectionMatrix;
-				gdata.view = camComp.m_ViewMatrix;
-				gdata.cameraPosition = transComp.m_worldMatrix.getTranslation();
-			}
-		}
-
-		
-		{
-			int i = 0;
-			m_world->getECS()->ForEach<TransformComponent, LightComponent>([&](TransformComponent& transform, LightComponent& light)
-			{
-				transform.proccessMatrix();
-				gdata.lights[i].lightPosition = transform.m_worldMatrix.getTranslation();
-				gdata.lights[i].lightColor = light.m_Color;
-				gdata.lights[i].lightDirection = transform.m_worldMatrix.getForwardDirection();
-				i++;
-			});
-			gdata.numLights = i + 1;
-		}
-
-		{
-			m_world->getECS()->ForEach<TransformComponent, MeshComponent>([&](TransformComponent& transform, MeshComponent& mesh)
-				{;
-					transform.proccessMatrix();
-					gdata.world = transform.m_worldMatrix;
-
-					for (int i = 0; i < mesh.m_Materials.size(); i++)
-					{
-						mesh.m_Materials[i]->setData(&gdata,sizeof(GraphicsData));
-					}
-
-					m_graphicsEngine->drawMesh(mesh.m_Mesh, mesh.m_Materials);
-				});
-		}
+		// Build render context and execute pipeline
+		RenderContext ctx = buildRenderContext();
+		m_renderPipeline->execute(
+			m_graphicsEngine.get(),
+			m_world->getECS().get(),
+			ctx);
 
 		m_display->getSwapChain()->present(false);
 	}
+
 	void Game::updateCamerasViewportSize()
 	{
 		auto mainCamera = m_world->getEntity<Entity>(m_world->getMainCameraID());
 		if (mainCamera)
 		{
-			CameraComponent camComp = mainCamera->getComponent<CameraComponent>();
+			// Use reference instead of copy!
+			CameraComponent& camComp = mainCamera->getComponent<CameraComponent>();
 			auto displaySize = m_display->getClientSize();
 			camComp.m_Screen.width = displaySize.width;
 			camComp.m_Screen.height = displaySize.height;
-			camComp.m_ProjectionMatrix.setPerspectiveFovLH(1.3f, (float)displaySize.width / (float)displaySize.height, 0.1f, camComp.m_FarClip);
+			camComp.m_ProjectionMatrix.setPerspectiveFovLH(
+				1.3f,
+				static_cast<float>(displaySize.width) / static_cast<float>(displaySize.height),
+				0.1f,
+				camComp.m_FarClip
+			);
 		}
 	}
 }

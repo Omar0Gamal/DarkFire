@@ -9,7 +9,7 @@ namespace Core
 	class World : public std::enable_shared_from_this<World>
 	{
 	public:
-		World(const char* name,GamePtr game);
+		World(const char* name, Game* game);
 		~World();
 	public:
 		const char* getName() const;
@@ -88,7 +88,7 @@ namespace Core
 		void setMainCamera(EntityID id);
 		EntityID getMainCameraID() const;
 	public:
-		GamePtr getGame() { return m_Game; }
+		Game* getGame() { return m_Game; }
         ECSPtr& getECS() { return m_ECS; }
 	public:
 		std::string getEntityName(EntityID id) { return m_EntityNames[id]; }
@@ -98,7 +98,7 @@ namespace Core
 		void setGravity(float gravity) { m_gravity = gravity; }
 	private:
 		ECSPtr m_ECS;
-		GamePtr m_Game;
+		Game* m_Game = nullptr;
 		std::string m_Name;
 		EntityID mainCameraID;
 		std::unordered_map<EntityID, std::shared_ptr<IEntity>> m_Entities;

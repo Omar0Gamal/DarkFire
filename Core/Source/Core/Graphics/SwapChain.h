@@ -10,6 +10,7 @@ namespace Core
 	{
 	public:
 		SwapChain(HWND hwnd, int width, int height, GraphicsEngine* system);
+		virtual ~SwapChain();
 		void setFullScreen(bool fullscreen, const Box& size);
 		void resize(const Box& size);
 		bool present(bool vsync);

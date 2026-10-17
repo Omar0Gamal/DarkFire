@@ -38,6 +38,14 @@ namespace Core
 		reloadBuffers(size);
 	}
 
+	SwapChain::~SwapChain()
+	{
+		if (m_swap_chain)
+		{
+			m_swap_chain->SetFullscreenState(FALSE, nullptr);
+		}
+	}
+
 	bool SwapChain::present(bool vsync)
 	{
 		m_swap_chain->Present(vsync, NULL);
@@ -53,10 +61,29 @@ namespace Core
 	}
 	void SwapChain::resize(const Box& size)
 	{
+		if (!m_swap_chain) return;
+
+		if (m_system && m_system->m_immediateContext)
+		{
+			ID3D11RenderTargetView* nullRTV = nullptr;
+			m_system->m_immediateContext->OMSetRenderTargets(1, &nullRTV, nullptr);
+			m_system->m_immediateContext->ClearState();
+			m_system->m_immediateContext->Flush();
+		}
+
 		m_rtv.Reset();
 		m_dsv.Reset();
 
-		m_swap_chain->ResizeBuffers(1, size.width, size.height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
+		UINT width = (size.width > 0) ? size.width : 1;
+		UINT height = (size.height > 0) ? size.height : 1;
+
+		HRESULT hr = m_swap_chain->ResizeBuffers(1, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
+		if (FAILED(hr))
+		{
+			darklog.error(L"Failed to resize swap chain buffers");
+			return;
+		}
+
 		reloadBuffers(size);
 	}
 	void SwapChain::setFullScreen(bool fullscreen, const Box& size)
@@ -68,8 +95,8 @@ namespace Core
 	{
 		HRESULT hr = 0;
 		auto device = m_system->m_d3dDevice;
-		ID3D11Texture2D* back_buffer = NULL;
-		hr = m_swap_chain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&back_buffer);
+		Microsoft::WRL::ComPtr<ID3D11Texture2D> back_buffer;
+		hr = m_swap_chain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)back_buffer.GetAddressOf());
 
 		if (FAILED(hr))
 		{
@@ -77,12 +104,12 @@ namespace Core
 			return;
 		}
 
-		hr = device->CreateRenderTargetView(back_buffer, NULL, &m_rtv);
-		back_buffer->Release();
+		hr = device->CreateRenderTargetView(back_buffer.Get(), NULL, &m_rtv);
 
 		if (FAILED(hr))
 		{
 			darklog.error(L"Failed to create render target view");
+			return;
 		}
 
 		D3D11_TEXTURE2D_DESC tex_desc = {};
@@ -98,8 +125,8 @@ namespace Core
 		tex_desc.ArraySize = 1;
 		tex_desc.CPUAccessFlags = 0;
 
-
-		hr = device->CreateTexture2D(&tex_desc, nullptr, &back_buffer);
+		Microsoft::WRL::ComPtr<ID3D11Texture2D> depth_buffer;
+		hr = device->CreateTexture2D(&tex_desc, nullptr, &depth_buffer);
 
 		if (FAILED(hr))
 		{
@@ -107,9 +134,7 @@ namespace Core
 			return;
 		}
 
-
-		hr = device->CreateDepthStencilView(back_buffer, NULL, &m_dsv);
-		back_buffer->Release();
+		hr = device->CreateDepthStencilView(depth_buffer.Get(), NULL, &m_dsv);
 
 		if (FAILED(hr))
 		{

@@ -3,7 +3,7 @@
 
 namespace Core
 {
-    WorldManager::WorldManager(GamePtr game)
+    WorldManager::WorldManager(Game* game)
 		: m_Game(game) {}
 
     WorldManager::~WorldManager()

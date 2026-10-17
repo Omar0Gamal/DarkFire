@@ -6,7 +6,7 @@
 
 namespace Core
 {
-	PhysicsEngine::PhysicsEngine(GamePtr game)
+	PhysicsEngine::PhysicsEngine(Game* game)
 		: m_Game(game) {}
 
 	PhysicsEngine::~PhysicsEngine()

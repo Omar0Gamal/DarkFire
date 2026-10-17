@@ -7,7 +7,7 @@ namespace Core
 	class WorldManager
 	{
 	public:
-		WorldManager(GamePtr game);
+		WorldManager(Game* game);
 		~WorldManager();
 	public:
 		WorldPtr createWorld(const char* name);
@@ -16,10 +16,10 @@ namespace Core
 		void destroyWorld(World world);
 		void destroyAllWorlds();
 	public:
-		GamePtr getGame() { return m_Game; }
+		Game* getGame() { return m_Game; }
 	private:
 		std::map<std::string, WorldPtr> m_Worlds;
-		GamePtr m_Game;
+		Game* m_Game = nullptr;
 	};
 }
 

@@ -9,8 +9,16 @@ project "Core"
 
    includedirs
    {
-      "Source"
+      "Source",
+
+      -- Include Libraries
+      "../Libs/DirectXTex/include",
+      "../Libs/DirectXTK/include",
+      "../Libs/StackTrace",
+      "../Libs/tinyobjloader/include"
    }
+
+   libdirs { "../Libs/DirectXTex/bin", "../Libs/DirectXTK/bin" }
 
    targetdir ("../Binaries/" .. OutputDir .. "/%{prj.name}")
    objdir ("../Binaries/Intermediates/" .. OutputDir .. "/%{prj.name}")
@@ -23,15 +31,18 @@ project "Core"
        defines { "DEBUG" }
        runtime "Debug"
        symbols "On"
+       links { "DirectXTexD", "DirectXTKD", "d3d11", "dxgi", "d3dcompiler" }
 
    filter "configurations:Release"
        defines { "RELEASE" }
        runtime "Release"
        optimize "On"
        symbols "On"
+       links { "DirectXTex", "DirectXTK", "d3d11", "dxgi", "d3dcompiler" }
 
    filter "configurations:Dist"
        defines { "DIST" }
        runtime "Release"
        optimize "On"
        symbols "Off"
+       links { "DirectXTex", "DirectXTK", "d3d11", "dxgi", "d3dcompiler" }

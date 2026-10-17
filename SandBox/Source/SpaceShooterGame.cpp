@@ -7,10 +7,15 @@
 #include "Projectile.h"
 
 
-SpaceShooterGame::SpaceShooterGame(const wchar_t* titles, int width, int height,NetworkClient * client)
+SpaceShooterGame::SpaceShooterGame(const wchar_t* titles, int width, int height, NetworkClient* client)
 	: Core::Game(titles, width, height), m_client(client)
 {
-
+	if (m_client)
+	{
+		m_client->setPacketHandler([this](darkfire::net::Packet& pkt) {
+			processPacket(pkt);
+		});
+	}
 }
 
 SpaceShooterGame::~SpaceShooterGame()
@@ -145,90 +150,92 @@ void SpaceShooterGame::removeRemotePlayer(uint32_t id)
 void SpaceShooterGame::handleNetworkMessages()
 {
 	if (!m_client || !m_client->IsConnected()) return;
+	m_client->UpdateDual();
+}
 
-	while (!m_client->Incoming().empty())
+void SpaceShooterGame::processPacket(darkfire::net::Packet& pkt)
+{
+	auto msgId = pkt.GetIdAs<NetworkMsgTypes>();
+	auto reader = pkt.GetReader();
+
+	switch (msgId)
 	{
-		auto msg = m_client->Incoming().pop_front().msg;
-
-		switch (msg.header.id)
+	case NetworkMsgTypes::ServerAccept:
+	{
+		std::cout << "[CLIENT] Server Accepted Connection\n";
+		break;
+	}
+	case NetworkMsgTypes::ServerDeny:
+	{
+		std::cout << "[CLIENT] Server Denied Connection\n";
+		break;
+	}
+	case NetworkMsgTypes::ClientAssignID:
+	{
+		uint32_t myId = 0;
+		reader >> myId;
+		if (m_client) m_client->setMyClientID(myId);
+		std::cout << "[CLIENT] Assigned Client ID: " << myId << "\n";
+		break;
+	}
+	case NetworkMsgTypes::PlayerConnect:
+	{
+		uint32_t newPlayerId = 0;
+		reader >> newPlayerId;
+		if (m_client && newPlayerId != m_client->getMyClientID())
 		{
-		case NetworkMsgTypes::ServerAccept:
-		{
-			std::cout << "[CLIENT] Server Accepted Connection\n";
-			break;
+			spawnRemotePlayer(newPlayerId);
+			std::cout << "[CLIENT] Remote Player Joined: " << newPlayerId << "\n";
 		}
-		case NetworkMsgTypes::ServerDeny:
+		break;
+	}
+	case NetworkMsgTypes::PlayerDisconnect:
+	{
+		uint32_t leftPlayerId = 0;
+		reader >> leftPlayerId;
+		removeRemotePlayer(leftPlayerId);
+		std::cout << "[CLIENT] Remote Player Left: " << leftPlayerId << "\n";
+		break;
+	}
+	case NetworkMsgTypes::PlayerMove:
+	{
+		PlayerNetState state{};
+		reader >> state;
+		if (m_client && state.clientID != m_client->getMyClientID())
 		{
-			std::cout << "[CLIENT] Server Denied Connection\n";
-			break;
-		}
-		case NetworkMsgTypes::ClientAssignID:
-		{
-			uint32_t myId = 0;
-			msg >> myId;
-			m_client->setMyClientID(myId);
-			std::cout << "[CLIENT] Assigned Client ID: " << myId << "\n";
-			break;
-		}
-		case NetworkMsgTypes::PlayerConnect:
-		{
-			uint32_t newPlayerId = 0;
-			msg >> newPlayerId;
-			if (newPlayerId != m_client->getMyClientID())
+			if (m_remotePlayers.find(state.clientID) == m_remotePlayers.end())
 			{
-				spawnRemotePlayer(newPlayerId);
-				std::cout << "[CLIENT] Remote Player Joined: " << newPlayerId << "\n";
+				spawnRemotePlayer(state.clientID);
 			}
-			break;
-		}
-		case NetworkMsgTypes::PlayerDisconnect:
-		{
-			uint32_t leftPlayerId = 0;
-			msg >> leftPlayerId;
-			removeRemotePlayer(leftPlayerId);
-			std::cout << "[CLIENT] Remote Player Left: " << leftPlayerId << "\n";
-			break;
-		}
-		case NetworkMsgTypes::PlayerMove:
-		{
-			PlayerNetState state{};
-			msg >> state;
-			if (state.clientID != m_client->getMyClientID())
+			auto ent = getActiveWorld()->getEntity<ModelEntity>(m_remotePlayers[state.clientID]);
+			if (ent)
 			{
-				if (m_remotePlayers.find(state.clientID) == m_remotePlayers.end())
-				{
-					spawnRemotePlayer(state.clientID);
-				}
-				auto ent = getActiveWorld()->getEntity<ModelEntity>(m_remotePlayers[state.clientID]);
-				if (ent)
-				{
-					ent->getComponent<TransformComponent>()
-						.setPosition(Vector3d(state.posX, state.posY, state.posZ))
-						.setRotation(Vector3d(state.rotX, state.rotY, state.rotZ))
-						.setScale(Vector3d(state.scale, state.scale, state.scale));
-				}
+				ent->getComponent<TransformComponent>()
+					.setPosition(Vector3d(state.posX, state.posY, state.posZ))
+					.setRotation(Vector3d(state.rotX, state.rotY, state.rotZ))
+					.setScale(Vector3d(state.scale, state.scale, state.scale));
 			}
-			break;
 		}
-		case NetworkMsgTypes::PlayerShoot:
+		break;
+	}
+	case NetworkMsgTypes::PlayerShoot:
+	{
+		PlayerShootData shoot{};
+		reader >> shoot;
+		if (m_client && shoot.clientID != m_client->getMyClientID())
 		{
-			PlayerShootData shoot{};
-			msg >> shoot;
-			if (shoot.clientID != m_client->getMyClientID())
-			{
-				auto proj = getActiveWorld()->createEntity<Projectile>("RemoteProj");
-				TransformComponent& projTrans = proj->getComponent<TransformComponent>();
-				projTrans.m_Position = Vector3d(shoot.posX, shoot.posY, shoot.posZ);
-				proj->setDirection(Vector3d(shoot.dirX, shoot.dirY, shoot.dirZ));
-				proj->setSpeed(shoot.speed > 0 ? shoot.speed : 500.0f);
-				proj->setLifeTime(15.0f);
-				proj->setDamage(10.0f);
-			}
-			break;
+			auto proj = getActiveWorld()->createEntity<Projectile>("RemoteProj");
+			TransformComponent& projTrans = proj->getComponent<TransformComponent>();
+			projTrans.m_Position = Vector3d(shoot.posX, shoot.posY, shoot.posZ);
+			proj->setDirection(Vector3d(shoot.dirX, shoot.dirY, shoot.dirZ));
+			proj->setSpeed(shoot.speed > 0 ? shoot.speed : 500.0f);
+			proj->setLifeTime(15.0f);
+			proj->setDamage(10.0f);
 		}
-		default:
-			break;
-		}
+		break;
+	}
+	default:
+		break;
 	}
 }
 
@@ -274,5 +281,5 @@ void SpaceShooterGame::onUpdate(float deltaTime)
 void SpaceShooterGame::onQuit()
 {
 	if (m_client)
-		m_client->Disconnect();
+		m_client->DisconnectDual();
 }

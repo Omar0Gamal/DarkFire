@@ -1,5 +1,5 @@
 project "SandBox"
-   kind "ConsoleApp"
+   kind "WindowedApp"
    language "C++"
    cppdialect "C++20"
    targetdir "Binaries/%{cfg.buildcfg}"
@@ -12,7 +12,10 @@ project "SandBox"
       "Source",
 
 	  -- Include Core
-	  "../Core/Source"
+	  "../Core/Source",
+      "../Libs/asio-1.28.1/include",
+      "../Libs/DirectXTK/include",
+      "../Libs/DarkFireNetworking"
    }
 
    links

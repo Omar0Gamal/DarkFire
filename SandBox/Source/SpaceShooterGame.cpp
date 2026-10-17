@@ -1,7 +1,11 @@
 #include "SpaceShooterGame.h"
 #include "Core/Graphics/SwapChain.h"
 #include "Spaceship.h"
+#include <unordered_map>
+#include <functional>
 #include "Asteroid.h"
+#include "Projectile.h"
+
 
 SpaceShooterGame::SpaceShooterGame(const wchar_t* titles, int width, int height,NetworkClient * client)
 	: Core::Game(titles, width, height), m_client(client)
@@ -16,6 +20,9 @@ SpaceShooterGame::~SpaceShooterGame()
 void SpaceShooterGame::onCreate()
 {
 	getActiveWorld()->setGravity(0);
+
+	auto font = createFont(L"Assets/Fonts/arial.font");
+
 	//Adding SkyBox
 	{
 		auto mat = createMaterial(L"Assets/Shaders/skybox.hlsl");
@@ -78,56 +85,194 @@ void SpaceShooterGame::onCreate()
 		auto mat = createMaterial(L"Assets/Shaders/base.hlsl");
 		mat->addTexture(createTexture(L"Assets/Textures/spaceship.jpg"));
 
-		auto entity = getActiveWorld()->createEntity<Spaceship>("Spaceship", createMesh(L"Assets/Meshes/spaceship.obj"),std::vector<MaterialPtr> {mat}, cam->getID(), m_client);
+		m_remoteShipMesh = createMesh(L"Assets/Meshes/spaceship.obj");
+		m_remoteShipMaterials = { mat };
+
+		auto entity = getActiveWorld()->createEntity<Spaceship>("Spaceship", m_remoteShipMesh, std::vector<MaterialPtr> {mat}, cam->getID(), m_client);
 		m_spaceID = entity->getID();
 	}
+
+	//Text
+	{
+		auto entity = getActiveWorld()->createEntity<Entity>("Text");
+		std::wstringstream ss;
+		ss << "FPS: {FPS}";
+		ss << "\nEntities: {Entities}";
+		ss << "\nAsteroids: {Asteroids}";
+		ss << "\nSpaceship: {Spaceship}";
+
+		entity->addComponent<TextComponent>(TextComponent(ss.str(), font));
+		entity->getComponent<TextComponent>().setPosition({ 0,0 }).setScale({1.0f, 1.0f}).setColor(DirectX::Colors::Aqua);
+
+		m_UI = entity->getID();
+	}
+
+	//UI Cross
+
+	{
+		auto tex = createTexture(L"Assets/Textures/UI/cross.png");
+		auto entity = getActiveWorld()->createEntity<Entity>("Cross");
+		entity->addComponent<ImageComponent>(ImageComponent(tex->getTexture2D(), Box(0, 0, 50, 50)));
+		entity->getComponent<ImageComponent>().SetPosition({ getDisplay()->getClientSize().width / 2.0F - 25, getDisplay()->getClientSize().height / 2.0F - 25 });
+
+		m_Cross = entity->getID();
+	}
+
+
 
 	//Enable Play Mode - Cursor locked at the center of screen and invisible
 	getInputManager()->enablePlayMode(m_input);
 }
 
+void SpaceShooterGame::spawnRemotePlayer(uint32_t id)
+{
+	if (m_remotePlayers.find(id) != m_remotePlayers.end()) return;
+	std::string name = "RemoteShip_" + std::to_string(id);
+	auto remoteShip = getActiveWorld()->createEntity<ModelEntity>(name.c_str(), m_remoteShipMesh, m_remoteShipMaterials);
+	m_remotePlayers[id] = remoteShip->getID();
+}
+
+void SpaceShooterGame::removeRemotePlayer(uint32_t id)
+{
+	auto it = m_remotePlayers.find(id);
+	if (it != m_remotePlayers.end())
+	{
+		getActiveWorld()->destroyEntity<ModelEntity>(it->second);
+		m_remotePlayers.erase(it);
+	}
+}
+
+void SpaceShooterGame::handleNetworkMessages()
+{
+	if (!m_client || !m_client->IsConnected()) return;
+
+	while (!m_client->Incoming().empty())
+	{
+		auto msg = m_client->Incoming().pop_front().msg;
+
+		switch (msg.header.id)
+		{
+		case NetworkMsgTypes::ServerAccept:
+		{
+			std::cout << "[CLIENT] Server Accepted Connection\n";
+			break;
+		}
+		case NetworkMsgTypes::ServerDeny:
+		{
+			std::cout << "[CLIENT] Server Denied Connection\n";
+			break;
+		}
+		case NetworkMsgTypes::ClientAssignID:
+		{
+			uint32_t myId = 0;
+			msg >> myId;
+			m_client->setMyClientID(myId);
+			std::cout << "[CLIENT] Assigned Client ID: " << myId << "\n";
+			break;
+		}
+		case NetworkMsgTypes::PlayerConnect:
+		{
+			uint32_t newPlayerId = 0;
+			msg >> newPlayerId;
+			if (newPlayerId != m_client->getMyClientID())
+			{
+				spawnRemotePlayer(newPlayerId);
+				std::cout << "[CLIENT] Remote Player Joined: " << newPlayerId << "\n";
+			}
+			break;
+		}
+		case NetworkMsgTypes::PlayerDisconnect:
+		{
+			uint32_t leftPlayerId = 0;
+			msg >> leftPlayerId;
+			removeRemotePlayer(leftPlayerId);
+			std::cout << "[CLIENT] Remote Player Left: " << leftPlayerId << "\n";
+			break;
+		}
+		case NetworkMsgTypes::PlayerMove:
+		{
+			PlayerNetState state{};
+			msg >> state;
+			if (state.clientID != m_client->getMyClientID())
+			{
+				if (m_remotePlayers.find(state.clientID) == m_remotePlayers.end())
+				{
+					spawnRemotePlayer(state.clientID);
+				}
+				auto ent = getActiveWorld()->getEntity<ModelEntity>(m_remotePlayers[state.clientID]);
+				if (ent)
+				{
+					ent->getComponent<TransformComponent>()
+						.setPosition(Vector3d(state.posX, state.posY, state.posZ))
+						.setRotation(Vector3d(state.rotX, state.rotY, state.rotZ))
+						.setScale(Vector3d(state.scale, state.scale, state.scale));
+				}
+			}
+			break;
+		}
+		case NetworkMsgTypes::PlayerShoot:
+		{
+			PlayerShootData shoot{};
+			msg >> shoot;
+			if (shoot.clientID != m_client->getMyClientID())
+			{
+				auto proj = getActiveWorld()->createEntity<Projectile>("RemoteProj");
+				TransformComponent& projTrans = proj->getComponent<TransformComponent>();
+				projTrans.m_Position = Vector3d(shoot.posX, shoot.posY, shoot.posZ);
+				proj->setDirection(Vector3d(shoot.dirX, shoot.dirY, shoot.dirZ));
+				proj->setSpeed(shoot.speed > 0 ? shoot.speed : 500.0f);
+				proj->setLifeTime(15.0f);
+				proj->setDamage(10.0f);
+			}
+			break;
+		}
+		default:
+			break;
+		}
+	}
+}
 
 void SpaceShooterGame::onUpdate(float deltaTime)
 {
-
 	if (getInputManager()->isKeyUp(Core::Key::Escape))
 	{
 		m_input = !m_input;
 		getInputManager()->enablePlayMode(m_input);
 	}
 
-	if(getInputManager()->isKeyUp(Core::Key::Space))
+	if (getInputManager()->isKeyUp(Core::Key::Space))
 	{
-
 		m_fullscreen = !m_fullscreen;
 		getDisplay()->getSwapChain()->setFullScreen(m_fullscreen, getDisplay()->getScreenSize());
-
 	}
 
-	if (m_client->IsConnected())
+	handleNetworkMessages();
+
+	auto entity = getActiveWorld()->getEntity<Entity>(m_UI);
+	auto pos = getActiveWorld()->getEntity<Spaceship>(m_spaceID)->getComponent<TransformComponent>().m_Position;
+
+	auto entityCross = getActiveWorld()->getEntity<Entity>(m_Cross);
+	entityCross->getComponent<ImageComponent>().SetPosition({ getDisplay()->getClientSize().width / 2.0F - 25, getDisplay()->getClientSize().height / 2.0F - 25 });
+	
+	std::wstringstream ss;
+	ss << "FPS: " << (int)(1.0f / deltaTime);
+	if (m_client && m_client->IsConnected())
 	{
-		if (!m_client->Incoming().empty())
-		{
-			auto msg = m_client->Incoming().pop_front().msg;
-
-			switch (msg.header.id)
-			{
-			case NetworkMsgTypes::ServerAccept:
-			{
-				std::cout << "Server Accepted Connection\n";
-				break;
-			}
-			case NetworkMsgTypes::ServerDeny:
-			{
-				std::cout << "Server Denied Connection\n";
-				break;
-			}
-			}
-		}
+		ss << " | Multiplayer: ONLINE (ID: " << m_client->getMyClientID() << ", Remote Players: " << m_remotePlayers.size() << ")";
 	}
+	else
+	{
+		ss << " | Multiplayer: OFFLINE (Single Player)";
+	}
+	ss << "\n\nPress 'ESC' to toggle cursor\nPress 'SPACE' to toggle fullscreen";
+	ss << "\nEntities: " << getActiveWorld()->getEntities().size()
+	   << "\nAsteroids: " << getActiveWorld()->getAllEntities<Asteroid>().size()
+	   << "\nSpaceship: " << pos.x << ", " << pos.y << ", " << pos.z;
+	entity->getComponent<TextComponent>().setText(ss.str().c_str());	
 }
 
 void SpaceShooterGame::onQuit()
 {
-	m_client->Disconnect();
+	if (m_client)
+		m_client->Disconnect();
 }

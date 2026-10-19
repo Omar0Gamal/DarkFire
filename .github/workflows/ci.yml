@@ -1,0 +1,42 @@
+name: DarkFire CI
+
+on:
+  push:
+    branches: [ main, v2-engine ]
+  pull_request:
+    branches: [ main, v2-engine ]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          lfs: true
+
+      - name: Setup Visual Studio MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Generate Projects
+        run: cmd /c Scripts\Setup.bat
+
+      - name: Build Debug
+        run: cmd /c Scripts\Build.bat Debug
+
+      - name: Run Tests (Debug)
+        run: cmd /c Scripts\Test.bat Debug
+
+      - name: Build Release
+        run: cmd /c Scripts\Build.bat Release
+
+      - name: Run Tests (Release)
+        run: cmd /c Scripts\Test.bat Release
+
+      - name: Build Debug-ASan
+        run: cmd /c Scripts\Build.bat Debug-ASan
+
+      - name: Run Tests (Debug-ASan)
+        run: cmd /c Scripts\Test.bat Debug-ASan

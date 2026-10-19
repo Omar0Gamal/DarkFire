@@ -1,0 +1,5 @@
+Package: backward-cpp
+Repository: https://github.com/bombela/backward-cpp
+Version: v1.6
+License: MIT
+Description: Beautiful stack trace pretty printer for C++

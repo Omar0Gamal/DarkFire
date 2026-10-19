@@ -1,0 +1,5 @@
+Package: tinyobjloader
+Repository: https://github.com/tinyobjloader/tinyobjloader
+Version: v2.0.0-rc.10
+License: MIT
+Description: Tiny but powerful single file wavefront obj loader

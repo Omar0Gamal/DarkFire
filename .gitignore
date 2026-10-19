@@ -1,18 +1,29 @@
-# Directories
+# Visual Studio / IDE
 .vs/
-Binaries/
-x64/
-
-# Files
 *.vcxproj
 *.vcxproj.user
 *.vcxproj.filters
 *.sln
 *.slnx
-*.log
-*.ini
 *.i64
 Makefile
 
-# Exclude
-!Vendor/Binaries
+# Build Output Directories
+/bin/
+/bin-int/
+Binaries/
+x64/
+
+# Crash dumps, logs & caches
+*.log
+*.dmp
+Cache/
+.tracy/
+
+# Configuration files (ignore by default, allow in Templates/ and Editor/Config/)
+*.ini
+!Templates/**/*.ini
+!Editor/Config/**/*.ini
+
+# Whitelist Vendor Binaries
+!Vendor/Binaries/**

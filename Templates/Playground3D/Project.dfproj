@@ -1,0 +1,10 @@
+{
+  "Project": {
+    "Name": "Playground3D",
+    "Version": "1.0.0",
+    "EngineVersion": "2.0.0",
+    "AssetDirectory": "Assets",
+    "StartScene": "Scenes/Showcase.scene",
+    "Module": "Binaries/%CONFIG%/Playground3D.dll"
+  }
+}

@@ -38,6 +38,7 @@ namespace Core
 		class UICanvas* getUICanvas();
 		class TrackEditor* getTrackEditor();
 		class InputActionMap* getInputActionMap();
+		class ParticleSystem* getParticleSystem();
 	public:
 		MaterialPtr createMaterial(const wchar_t* path);
 		TexturePtr createTexture(const wchar_t* path);
@@ -66,6 +67,7 @@ namespace Core
 		std::unique_ptr<class UICanvas> m_canvas;
 		std::unique_ptr<class TrackEditor> m_trackEditor;
 		std::unique_ptr<class InputActionMap> m_inputActionMap;
+		std::unique_ptr<class ParticleSystem> m_particleSystem;
 
 		WorldPtr m_world;
 

@@ -76,6 +76,11 @@ public:
         {
             m_kartEntity->addComponent<Core::SphereColliderComponent>(Core::SphereColliderComponent(1.8f));
             m_kartEntity->addComponent<Core::RigidbodyComponent>(Core::RigidbodyComponent(950.0f, false));
+
+            // Attach dynamic particle emitter component
+            auto exhaust = Core::ParticleEmitterComponent::CreateFlames();
+            exhaust.emissionRate = 25.0f;
+            m_kartEntity->addComponent<Core::ParticleEmitterComponent>(exhaust);
         }
 
         // 6. UI HUD Setup
@@ -101,8 +106,8 @@ public:
 
             // Controls Guide
             m_controlsLabel = canvas->addElement<Core::UILabel>(
-                L"[F1] Physics Debug Wireframes | [F2] Track Editor Mode\n"
-                L"[Drive] W/S or Up/Down: Throttle/Brake | A/D or Left/Right: Steer | Space: Boost\n"
+                L"[F1] Physics Debug | [F2] Track Editor Mode | [F3] Particle Burst\n"
+                L"[Drive] W/S or Up/Down: Throttle/Brake | A/D or Left/Right: Steer | Space: Boost (Exhaust Nitro)\n"
                 L"[Editor] WASD+RMB: Fly Cam | 1-6: Palette | LMB: Place | R: Rotate | W: Waypoints | F5: Save | F9: Load",
                 Core::Vector2d(20, 80),
                 Core::UIAnchor::TopLeft
@@ -323,6 +328,44 @@ public:
                     settings.radialBlurIntensity = 0.0f;
                     settings.radialBlurEnabled = false;
                 }
+            }
+        }
+
+        // Dynamic Exhaust & Boost Particle FX
+        if (m_kartEntity->hasComponent<Core::ParticleEmitterComponent>())
+        {
+            auto& emitter = m_kartEntity->getComponent<Core::ParticleEmitterComponent>();
+            emitter.direction = -forward;
+
+            if (boosting)
+            {
+                emitter.emissionRate = 140.0f;
+                emitter.startColor = Core::Vector4d(0.2f, 0.75f, 1.0f, 1.0f); // Blue nitro flames
+                emitter.endColor = Core::Vector4d(0.05f, 0.2f, 0.9f, 0.0f);
+                emitter.speedMin = 6.0f;
+                emitter.speedMax = 15.0f;
+            }
+            else if (throttle)
+            {
+                emitter.emissionRate = 60.0f;
+                emitter.startColor = Core::Vector4d(1.0f, 0.85f, 0.2f, 1.0f); // Fiery orange exhaust
+                emitter.endColor = Core::Vector4d(0.9f, 0.2f, 0.02f, 0.0f);
+                emitter.speedMin = 3.0f;
+                emitter.speedMax = 8.0f;
+            }
+            else
+            {
+                emitter.emissionRate = 18.0f;
+                emitter.startColor = Core::Vector4d(0.5f, 0.5f, 0.55f, 0.4f); // Idle smoke
+                emitter.endColor = Core::Vector4d(0.3f, 0.3f, 0.3f, 0.0f);
+                emitter.speedMin = 1.0f;
+                emitter.speedMax = 3.0f;
+            }
+
+            // F3 key: trigger a spark burst explosion
+            if (input->isKeyPressed(Core::Key::F3))
+            {
+                emitter.burst(80);
             }
         }
 

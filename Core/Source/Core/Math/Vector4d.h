@@ -1,22 +1,59 @@
 #pragma once
 #include "Vector3d.h"
+
 namespace Core
 {
 	class Vector4d
 	{
 	public:
-		Vector4d() :x(0), y(0), z(0), w(0)
+		Vector4d() : x(0), y(0), z(0), w(0)
 		{
 		}
-		Vector4d(float x, float y, float z, float w) :x(x), y(y), z(z), w(w)
+		Vector4d(float x, float y, float z, float w) : x(x), y(y), z(z), w(w)
 		{
 		}
-		Vector4d(const Vector4d& vector) :x(vector.x), y(vector.y), z(vector.z), w(vector.w)
+		Vector4d(const Vector4d& vector) : x(vector.x), y(vector.y), z(vector.z), w(vector.w)
+		{
+		}
+		Vector4d(const Vector3d& vector) : x(vector.x), y(vector.y), z(vector.z), w(1)
 		{
 		}
 
-		Vector4d(const Vector3d& vector) :x(vector.x), y(vector.y), z(vector.z), w(1)
+		static Vector4d lerp(const Vector4d& start, const Vector4d& end, float delta)
 		{
+			return Vector4d(
+				start.x * (1.0f - delta) + end.x * delta,
+				start.y * (1.0f - delta) + end.y * delta,
+				start.z * (1.0f - delta) + end.z * delta,
+				start.w * (1.0f - delta) + end.w * delta
+			);
+		}
+
+		Vector4d operator +(const Vector4d& v) const
+		{
+			return Vector4d(x + v.x, y + v.y, z + v.z, w + v.w);
+		}
+
+		Vector4d operator -(const Vector4d& v) const
+		{
+			return Vector4d(x - v.x, y - v.y, z - v.z, w - v.w);
+		}
+
+		Vector4d operator *(float scalar) const
+		{
+			return Vector4d(x * scalar, y * scalar, z * scalar, w * scalar);
+		}
+
+		Vector4d& operator +=(const Vector4d& v)
+		{
+			x += v.x; y += v.y; z += v.z; w += v.w;
+			return *this;
+		}
+
+		Vector4d& operator *=(float scalar)
+		{
+			x *= scalar; y *= scalar; z *= scalar; w *= scalar;
+			return *this;
 		}
 
 		void cross(Vector4d& v1, Vector4d& v2, Vector4d& v3)
@@ -32,6 +69,6 @@ namespace Core
 		}
 
 	public:
-		float x ,y ,z ,w;
+		float x, y, z, w;
 	};
 }

@@ -18,7 +18,13 @@
 #include "Core/Graphics/RenderPipeline.h"
 #include "Core/Graphics/MeshRenderPass.h"
 #include "Core/Graphics/UIRenderPass.h"
+#include "Core/Graphics/PostProcessPipeline.h"
+#include "Core/Graphics/PostProcessRenderPass.h"
+#include "Core/Graphics/DebugRenderPass.h"
 #include "Core/Input/InputManager.h"
+#include "Core/Input/InputActionMap.h"
+#include "Core/UI/UICanvas.h"
+#include "Core/Game/TrackEditor.h"
 #include "Core/Game/WorldManager.h"
 #include "Core/Game/PhysicsEngine.h"
 #include "Display.h"
@@ -34,6 +40,12 @@ namespace Core
 		m_physicsEngine = std::make_unique<PhysicsEngine>(this);
 		m_worldManager = std::make_unique<WorldManager>(this);
 		m_renderPipeline = std::make_unique<RenderPipeline>();
+		m_postProcessPipeline = std::make_shared<PostProcessPipeline>(m_graphicsEngine.get(), width, height);
+
+		m_inputActionMap = std::make_unique<InputActionMap>(m_inputManager.get());
+
+		m_canvas = std::make_unique<UICanvas>();
+		m_canvas->setScreenSize(width, height);
 
 		Box rc;
 		rc.height = height;
@@ -41,6 +53,7 @@ namespace Core
 		m_inputManager->setScreenArea(rc);
 
 		m_world = m_worldManager->createWorld("MainWorld");
+		m_trackEditor = std::make_unique<TrackEditor>(this);
 
 		// Initialize default render passes
 		initDefaultRenderPasses();
@@ -48,9 +61,11 @@ namespace Core
 
 	void Game::initDefaultRenderPasses()
 	{
-		// Add default passes - users can remove/replace these
+		// Default pipeline: Geometry (100) -> Debug Wireframe (250) -> PostProcess (300) -> UI (500)
 		m_renderPipeline->addPass<MeshRenderPass>();
-		m_renderPipeline->addPass<UIRenderPass>();
+		m_renderPipeline->addPass<DebugRenderPass>();
+		m_renderPipeline->addPass<PostProcessRenderPass>(m_postProcessPipeline, m_display->getSwapChain());
+		m_renderPipeline->addPass<UIRenderPass>(m_canvas.get());
 	}
 
 	Game::~Game()
@@ -113,6 +128,11 @@ namespace Core
 		return m_worldManager.get();
 	}
 
+	PhysicsEngine* Game::getPhysicsEngine()
+	{
+		return m_physicsEngine.get();
+	}
+
 	MaterialPtr Game::createMaterial(const wchar_t* path)
 	{
 		return m_resourceManager->createResourceFromFile<Material>(path);
@@ -128,6 +148,11 @@ namespace Core
 		return m_resourceManager->createResourceFromFile<Mesh>(path);
 	}
 
+	PostProcessPipeline* Game::getPostProcessPipeline()
+	{
+		return m_postProcessPipeline.get();
+	}
+
 	FontPtr Game::createFont(const wchar_t* path)
 	{
 		return m_resourceManager->createResourceFromFile<Font>(path);
@@ -135,6 +160,14 @@ namespace Core
 
 	void Game::onDisplaySize(const Box& size)
 	{
+		if (m_postProcessPipeline)
+		{
+			m_postProcessPipeline->resize(size.width, size.height);
+		}
+		if (m_canvas)
+		{
+			m_canvas->setScreenSize(size.width, size.height);
+		}
 		updateCamerasViewportSize();
 		m_inputManager->setScreenArea(size);
 		onUpdateInternal();
@@ -163,6 +196,17 @@ namespace Core
 		}
 
 		m_physicsEngine->update(m_deltaTime);
+
+		if (m_trackEditor)
+		{
+			m_trackEditor->update(m_deltaTime);
+		}
+
+		if (m_canvas)
+		{
+			m_canvas->update(m_deltaTime, m_inputManager.get());
+		}
+
 		onUpdate(m_deltaTime);
 
 		for (auto& [key, entity] : m_world->getEntities())
@@ -212,16 +256,29 @@ namespace Core
 
 	void Game::onGraphicsUpdate(float deltaTime)
 	{
-		m_graphicsEngine->clearState();
-		m_graphicsEngine->clearColor(
-			m_display->getSwapChain(), Vector4d(0, 0, 0, 1));
-
-		m_graphicsEngine->setViewportSize(
-			m_display->getClientSize().width,
-			m_display->getClientSize().height);
+		if (m_postProcessPipeline && m_postProcessPipeline->isEnabled())
+		{
+			m_postProcessPipeline->beginScene(Vector4d(0.02f, 0.02f, 0.04f, 1.0f));
+		}
+		else
+		{
+			m_graphicsEngine->clearState();
+			m_graphicsEngine->clearColor(
+				m_display->getSwapChain(), Vector4d(0, 0, 0, 1));
+			m_graphicsEngine->clearDepthStencil(m_display->getSwapChain());
+			m_graphicsEngine->setViewportSize(
+				m_display->getClientSize().width,
+				m_display->getClientSize().height);
+		}
 
 		// Build render context and execute pipeline
 		RenderContext ctx = buildRenderContext();
+
+		if (m_trackEditor)
+		{
+			m_trackEditor->render(m_graphicsEngine.get(), ctx);
+		}
+
 		m_renderPipeline->execute(
 			m_graphicsEngine.get(),
 			m_world->getECS().get(),
@@ -247,5 +304,20 @@ namespace Core
 				camComp.m_FarClip
 			);
 		}
+	}
+
+	UICanvas* Game::getUICanvas()
+	{
+		return m_canvas.get();
+	}
+
+	TrackEditor* Game::getTrackEditor()
+	{
+		return m_trackEditor.get();
+	}
+
+	InputActionMap* Game::getInputActionMap()
+	{
+		return m_inputActionMap.get();
 	}
 }

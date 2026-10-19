@@ -14,6 +14,8 @@
 
 namespace Core
 {
+	class RenderStateManager;
+
 	class GraphicsEngine
 	{
 	public:
@@ -43,14 +45,20 @@ namespace Core
 
 		void drawTriangleList(int vertex_count, int start_vertex_index);
 		void drawIndexedTriangleList(int index_count, int start_vertex_index, int start_index_location);
+		void drawIndexedInstanced(int index_count_per_instance, int instance_count, int start_index_location, int base_vertex_location, int start_instance_location);
 		void drawTriangleStrip(int vertex_count, int start_vertex_index);
 		void drawFilledRectangle(const Box& size, MaterialPtr material);
 
 		void setViewportSize(int width, int height);
 		void setShader(const  ShaderPtr& shader);
 		void setConstantBuffer(const  ConstantBufferPtr& buffer);
+		void setConstantBuffer(unsigned int slot, const ConstantBufferPtr& buffer);
+		void setConstantBuffer(unsigned int slot, ID3D11Buffer* buffer);
 		void setRasterizerState(bool cull_front);
 
+		RenderStateManager* getRenderStateManager();
+		ID3D11Device* getD3DDevice() const;
+		ID3D11DeviceContext* getImmediateContext() const;
 
 		void setTexture(const  TexturePtr* texture, unsigned int num_textures);
 		void setMaterial(const  MaterialPtr& material);
@@ -60,6 +68,8 @@ namespace Core
 	private:
 		void compilePrivateShaders();
 		void initRasterizerState();
+	private:
+		std::unique_ptr<class RenderStateManager> m_stateManager;
 	private:
 		Microsoft::WRL::ComPtr <ID3D11Device> m_d3dDevice;
 		Microsoft::WRL::ComPtr <ID3D11DeviceContext> m_immediateContext;

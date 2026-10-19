@@ -29,6 +29,16 @@ namespace Core
 		{
 			return Vector2d(x - vec.x, y - vec.y);
 		}
+
+		bool operator ==(const Vector2d& vec) const
+		{
+			return x == vec.x && y == vec.y;
+		}
+
+		bool operator !=(const Vector2d& vec) const
+		{
+			return x != vec.x || y != vec.y;
+		}
 		~Vector2d() {}
 	public:
 		float x, y;

@@ -12,6 +12,7 @@ namespace Core
 
 		std::wstring getPath();
 		std::wstring getName();
+		ResourceManager* getResourceManager() const { return m_resManager; }
 	protected:
 		std::wstring m_full_path;
 		ResourceManager* m_resManager = nullptr;

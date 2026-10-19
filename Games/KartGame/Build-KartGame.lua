@@ -1,5 +1,5 @@
-project "Server"
-   kind "ConsoleApp"
+project "KartGame"
+   kind "WindowedApp"
    language "C++"
    cppdialect "C++20"
    targetdir "Binaries/%{cfg.buildcfg}"
@@ -10,18 +10,28 @@ project "Server"
    includedirs
    {
       "Source",
-      "../Libs/asio-1.28.1/include",
-      "../Libs/DarkFireNetworking/include"
+      "../../Core/Source",
+      "../../Libs/asio-1.28.1/include",
+      "../../Libs/DirectXTK/include",
+      "../../Libs/DarkFireNetworking/include"
+   }
+
+   libdirs
+   {
+      "../../Libs/DirectXTex/bin",
+      "../../Libs/DirectXTK/bin"
    }
 
    links
    {
+      "Core",
       "ws2_32",
       "mswsock"
    }
 
-   targetdir ("../Binaries/" .. OutputDir .. "/%{prj.name}")
-   objdir ("../Binaries/Intermediates/" .. OutputDir .. "/%{prj.name}")
+   targetdir ("../../Binaries/" .. OutputDir .. "/%{prj.name}")
+   objdir ("../../Binaries/Intermediates/" .. OutputDir .. "/%{prj.name}")
+   debugdir "."
 
    filter "system:windows"
        systemversion "latest"

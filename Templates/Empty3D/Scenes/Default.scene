@@ -1,0 +1,50 @@
+{
+  "scene_version": 1,
+  "entities": [
+    {
+      "uuid": 2001,
+      "name": "Main Camera",
+      "tag": "MainCamera",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 2.0, -5.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "CameraComponent": {
+          "fov": 60.0,
+          "nearZ": 0.1,
+          "farZ": 1000.0,
+          "isPrimary": true,
+          "isOrthographic": false,
+          "orthoWidth": 10.0,
+          "orthoHeight": 10.0
+        }
+      }
+    },
+    {
+      "uuid": 2002,
+      "name": "Directional Light",
+      "tag": "Light",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 10.0, 0.0],
+          "rotation": [0.3826834, 0.0, 0.0, 0.9238795],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [45.0, 0.0, 0.0]
+        },
+        "LightComponent": {
+          "type": 0,
+          "color": [1.0, 1.0, 1.0, 1.0],
+          "intensity": 1.0,
+          "range": 100.0,
+          "spotInnerAngle": 30.0,
+          "spotOuterAngle": 45.0
+        }
+      }
+    }
+  ]
+}

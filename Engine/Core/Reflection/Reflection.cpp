@@ -334,6 +334,8 @@ namespace Core
 				if (j.contains("angularDrag")) comp.angularDrag = j["angularDrag"].get<float>();
 				if (j.contains("isKinematic")) comp.isKinematic = j["isKinematic"].get<bool>();
 				if (j.contains("useGravity")) comp.useGravity = j["useGravity"].get<bool>();
+				if (j.contains("restitution")) comp.restitution = j["restitution"].get<float>();
+				if (j.contains("friction")) comp.friction = j["friction"].get<float>();
 			};
 			registerComponent(std::move(desc));
 		}
@@ -349,7 +351,8 @@ namespace Core
 				{ "size", FieldType::Vec3, {} },
 				{ "radius", FieldType::Float, {} },
 				{ "height", FieldType::Float, {} },
-				{ "isTrigger", FieldType::Bool, {} }
+				{ "isTrigger", FieldType::Bool, {} },
+				{ "layer", FieldType::Int, {} }
 			};
 			desc.hasComponent = [](const Scene& scene, entt::entity e) {
 				return scene.getRegistry().all_of<ColliderComponent>(e);
@@ -371,6 +374,7 @@ namespace Core
 				j["radius"] = comp.radius;
 				j["height"] = comp.height;
 				j["isTrigger"] = comp.isTrigger;
+				j["layer"] = comp.layer;
 			};
 			desc.deserializeFromJson = [](Scene& scene, entt::entity e, const void* jsonNode) {
 				const auto& j = *static_cast<const nlohmann::ordered_json*>(jsonNode);
@@ -383,6 +387,7 @@ namespace Core
 				if (j.contains("radius")) comp.radius = j["radius"].get<float>();
 				if (j.contains("height")) comp.height = j["height"].get<float>();
 				if (j.contains("isTrigger")) comp.isTrigger = j["isTrigger"].get<bool>();
+				if (j.contains("layer")) comp.layer = j["layer"].get<uint8_t>();
 			};
 			registerComponent(std::move(desc));
 		}
@@ -445,7 +450,91 @@ namespace Core
 			registerComponent(std::move(desc));
 		}
 
-		// 9. RigidbodyRuntimeState (Runtime only)
+		// 9. ScriptsComponent
+		{
+			ComponentDesc desc;
+			desc.name = "ScriptsComponent";
+			desc.typeId = entt::type_hash<ScriptsComponent>::value();
+			desc.isAuthored = true;
+			desc.hasComponent = [](const Scene& scene, entt::entity e) {
+				return scene.getRegistry().all_of<ScriptsComponent>(e);
+			};
+			desc.addDefaultComponent = [](Scene& scene, entt::entity e) {
+				scene.getRegistry().emplace_or_replace<ScriptsComponent>(e);
+			};
+			desc.removeComponent = [](Scene& scene, entt::entity e) {
+				scene.getRegistry().remove<ScriptsComponent>(e);
+			};
+			desc.copyComponent = [](const Scene& src, entt::entity s, Scene& dst, entt::entity d) {
+				const auto& srcComp = src.getRegistry().get<ScriptsComponent>(s);
+				auto& dstComp = dst.getRegistry().emplace_or_replace<ScriptsComponent>(d);
+				dstComp.missingScripts = srcComp.missingScripts;
+				for (const auto& scr : srcComp.scripts)
+				{
+					ScriptInstance copyInst;
+					copyInst.scriptName = scr.scriptName;
+					copyInst.isEnabled = scr.isEnabled;
+					copyInst.isStarted = false;
+					dstComp.scripts.push_back(std::move(copyInst));
+				}
+			};
+			desc.serializeToJson = [](const Scene& scene, entt::entity e, void* jsonNode) {
+				auto& j = *static_cast<nlohmann::ordered_json*>(jsonNode);
+				const auto& comp = scene.getRegistry().get<ScriptsComponent>(e);
+				auto scriptsArray = nlohmann::ordered_json::array();
+				for (const auto& scr : comp.scripts)
+				{
+					nlohmann::ordered_json item;
+					item["name"] = scr.scriptName;
+					item["enabled"] = scr.isEnabled;
+					scriptsArray.push_back(item);
+				}
+				j["scripts"] = scriptsArray;
+
+				if (!comp.missingScripts.empty())
+				{
+					auto missingArray = nlohmann::ordered_json::array();
+					for (const auto& m : comp.missingScripts)
+					{
+						nlohmann::ordered_json item;
+						item["name"] = m.scriptName;
+						item["rawJson"] = m.rawJson;
+						missingArray.push_back(item);
+					}
+					j["missingScripts"] = missingArray;
+				}
+			};
+			desc.deserializeFromJson = [](Scene& scene, entt::entity e, const void* jsonNode) {
+				const auto& j = *static_cast<const nlohmann::ordered_json*>(jsonNode);
+				auto& comp = scene.getRegistry().get_or_emplace<ScriptsComponent>(e);
+				comp.scripts.clear();
+				comp.missingScripts.clear();
+
+				if (j.contains("scripts") && j["scripts"].is_array())
+				{
+					for (const auto& item : j["scripts"])
+					{
+						std::string name = item["name"].get<std::string>();
+						bool enabled = item.value("enabled", true);
+						comp.scripts.push_back(ScriptInstance{ name, nullptr, enabled, false });
+					}
+				}
+
+				if (j.contains("missingScripts") && j["missingScripts"].is_array())
+				{
+					for (const auto& item : j["missingScripts"])
+					{
+						MissingScriptData m;
+						m.scriptName = item["name"].get<std::string>();
+						m.rawJson = item.value("rawJson", "");
+						comp.missingScripts.push_back(std::move(m));
+					}
+				}
+			};
+			registerComponent(std::move(desc));
+		}
+
+		// 10. RigidbodyRuntimeState (Runtime only)
 		{
 			ComponentDesc desc;
 			desc.name = "RigidbodyRuntimeState";
@@ -463,7 +552,7 @@ namespace Core
 			registerComponent(std::move(desc));
 		}
 
-		// 10. ParticleRuntimeState (Runtime only)
+		// 11. ParticleRuntimeState (Runtime only)
 		{
 			ComponentDesc desc;
 			desc.name = "ParticleRuntimeState";

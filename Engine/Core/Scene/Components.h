@@ -137,6 +137,8 @@ namespace Core
 		float angularDrag = 0.05f;
 		bool isKinematic = false;
 		bool useGravity = true;
+		float restitution = 0.2f;
+		float friction = 0.5f;
 	};
 
 	enum class ColliderShape : uint8_t
@@ -153,6 +155,7 @@ namespace Core
 		float radius = 0.5f;
 		float height = 1.0f;
 		bool isTrigger = false;
+		uint8_t layer = 0; // Layer index 0..15 for collision filtering
 	};
 
 	struct DF_API ParticleEmitterComponent
@@ -164,4 +167,54 @@ namespace Core
 		Color startColor = Color(1.0f, 1.0f, 1.0f, 1.0f);
 		Color endColor = Color(1.0f, 1.0f, 1.0f, 0.0f);
 	};
+
+	// ==========================================
+	// Scripting Component
+	// ==========================================
+
+	class ScriptableEntity;
+
+	struct DF_API ScriptInstance
+	{
+		std::string scriptName;
+		std::shared_ptr<ScriptableEntity> instance = nullptr;
+		bool isEnabled = true;
+		bool isStarted = false;
+	};
+
+	struct DF_API MissingScriptData
+	{
+		std::string scriptName;
+		std::string rawJson;
+	};
+
+	struct DF_API ScriptsComponent
+	{
+		std::vector<ScriptInstance> scripts;
+		std::vector<MissingScriptData> missingScripts;
+
+		ScriptsComponent() = default;
+
+		template<typename T>
+		T* getScript()
+		{
+			for (auto& s : scripts)
+			{
+				if (s.instance)
+				{
+					if (auto casted = dynamic_cast<T*>(s.instance.get()))
+					{
+						return casted;
+					}
+				}
+			}
+			return nullptr;
+		}
+
+		void addScript(const std::string& name, std::shared_ptr<ScriptableEntity> inst = nullptr)
+		{
+			scripts.push_back(ScriptInstance{ name, std::move(inst), true, false });
+		}
+	};
 }
+

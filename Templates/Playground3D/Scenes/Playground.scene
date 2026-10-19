@@ -1,0 +1,222 @@
+{
+  "scene_version": 1,
+  "entities": [
+    {
+      "uuid": 1001,
+      "name": "Main Camera",
+      "tag": "MainCamera",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 3.0, -8.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "CameraComponent": {
+          "fov": 60.0,
+          "nearZ": 0.1,
+          "farZ": 1000.0,
+          "isPrimary": true,
+          "isOrthographic": false,
+          "orthoWidth": 10.0,
+          "orthoHeight": 10.0
+        }
+      }
+    },
+    {
+      "uuid": 1002,
+      "name": "Directional Light",
+      "tag": "Light",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 10.0, 0.0],
+          "rotation": [0.3826834, 0.0, 0.0, 0.9238795],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [45.0, 0.0, 0.0]
+        },
+        "LightComponent": {
+          "type": 0,
+          "color": [1.0, 0.95, 0.8, 1.0],
+          "intensity": 1.2,
+          "range": 100.0,
+          "spotInnerAngle": 30.0,
+          "spotOuterAngle": 45.0
+        }
+      }
+    },
+    {
+      "uuid": 1003,
+      "name": "Ground Plane",
+      "tag": "Environment",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, -0.5, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [50.0, 1.0, 50.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "/engine/Content/cube.obj",
+          "materialPath": "/engine/Content/Default.mat",
+          "castShadows": false,
+          "receiveShadows": true
+        },
+        "ColliderComponent": {
+          "shape": 0,
+          "size": [50.0, 1.0, 50.0],
+          "radius": 0.5,
+          "height": 1.0,
+          "isTrigger": false,
+          "layer": 0
+        }
+      }
+    },
+    {
+      "uuid": 1004,
+      "name": "Player",
+      "tag": "Player",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 1.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "/engine/Content/cube.obj",
+          "materialPath": "/engine/Content/Default.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        },
+        "ColliderComponent": {
+          "shape": 0,
+          "size": [1.0, 1.0, 1.0],
+          "radius": 0.5,
+          "height": 1.0,
+          "isTrigger": false,
+          "layer": 0
+        },
+        "RigidbodyComponent": {
+          "mass": 1.0,
+          "drag": 0.05,
+          "angularDrag": 0.05,
+          "isKinematic": false,
+          "useGravity": true,
+          "restitution": 0.0,
+          "friction": 0.5
+        },
+        "ScriptsComponent": {
+          "scripts": [
+            { "name": "PlayerController", "enabled": true }
+          ]
+        }
+      }
+    },
+    {
+      "uuid": 1005,
+      "name": "Rotating Cube",
+      "tag": "Obstacle",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [3.0, 1.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "/engine/Content/cube.obj",
+          "materialPath": "/engine/Content/Default.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        },
+        "ColliderComponent": {
+          "shape": 0,
+          "size": [1.0, 1.0, 1.0],
+          "radius": 0.5,
+          "height": 1.0,
+          "isTrigger": false,
+          "layer": 0
+        },
+        "ScriptsComponent": {
+          "scripts": [
+            { "name": "Rotator", "enabled": true }
+          ]
+        }
+      }
+    },
+    {
+      "uuid": 1006,
+      "name": "Trigger Zone",
+      "tag": "Trigger",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [-3.0, 1.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [2.0, 2.0, 2.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "ColliderComponent": {
+          "shape": 0,
+          "size": [2.0, 2.0, 2.0],
+          "radius": 1.0,
+          "height": 2.0,
+          "isTrigger": true,
+          "layer": 0
+        },
+        "ScriptsComponent": {
+          "scripts": [
+            { "name": "TriggerZone", "enabled": true }
+          ]
+        }
+      }
+    },
+    {
+      "uuid": 1007,
+      "name": "Bouncing Sphere",
+      "tag": "PhysicsObject",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 6.0, 2.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "/engine/Content/sphere.obj",
+          "materialPath": "/engine/Content/Default.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        },
+        "ColliderComponent": {
+          "shape": 1,
+          "size": [1.0, 1.0, 1.0],
+          "radius": 0.5,
+          "height": 1.0,
+          "isTrigger": false,
+          "layer": 0
+        },
+        "RigidbodyComponent": {
+          "mass": 1.0,
+          "drag": 0.01,
+          "angularDrag": 0.05,
+          "isKinematic": false,
+          "useGravity": true,
+          "restitution": 0.85,
+          "friction": 0.3
+        },
+        "ScriptsComponent": {
+          "scripts": [
+            { "name": "Bouncer", "enabled": true }
+          ]
+        }
+      }
+    }
+  ]
+}

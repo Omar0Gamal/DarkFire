@@ -9,8 +9,8 @@
 Makefile
 
 # Build Output Directories
-/bin/
-/bin-int/
+bin/
+bin-int/
 Binaries/
 x64/
 

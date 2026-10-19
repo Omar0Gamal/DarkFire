@@ -1,6 +1,8 @@
 #include "Engine/Runtime/EngineContext.h"
-#include "Engine/Runtime/Module.h"
-#include "Engine/Platform/DynamicLibrary.h"
+#include "Engine/Runtime/Application.h"
+#include "Engine/Runtime/Config.h"
+#include "Engine/Runtime/GameModuleLoader.h"
+#include "Engine/Runtime/SceneRuntimeLayer.h"
 #include "Engine/Platform/CrashHandler.h"
 #include <iostream>
 #include <string>
@@ -14,6 +16,8 @@ int main(int argc, char** argv)
 	ctx.log.info("Player", "DarkFire Player Runtime booting up (v2.0)...");
 
 	std::string projectPath = "Templates/Playground3D/Project.dfproj";
+	int maxFrames = -1;
+
 	for (int i = 1; i < argc; ++i)
 	{
 		std::string arg = argv[i];
@@ -21,74 +25,111 @@ int main(int argc, char** argv)
 		{
 			projectPath = argv[++i];
 		}
+		else if (arg == "--frames" && i + 1 < argc)
+		{
+			maxFrames = std::stoi(argv[++i]);
+		}
 	}
 
 	ctx.log.info("Player", "Target Project: {}", projectPath);
 
-	// Determine module path
+	std::filesystem::path projFilePath(projectPath);
+	if (!std::filesystem::exists(projFilePath))
+	{
+		ctx.log.error("Player", "Project file not found: {}", projectPath);
+		return 1;
+	}
+
+	auto configRes = Runtime::ProjectConfig::Load(projFilePath);
+	if (configRes.isErr())
+	{
+		ctx.log.error("Player", "Failed to load project config: {}", configRes.error());
+		return 1;
+	}
+
+	auto config = configRes.value();
+	std::filesystem::path projectDir = projFilePath.parent_path();
+
+	// Resolve config name
 	std::string configName = "Debug";
-#if defined(DF_RELEASE)
+#if defined(DF_ASAN)
+	configName = "Debug-ASan";
+#elif defined(DF_RELEASE)
 	configName = "Release";
 #elif defined(DF_DIST)
 	configName = "Dist";
 #endif
 
-	std::filesystem::path modulePath = "bin/" + configName + "-windows-x86_64/Templates/Playground3D/Playground3D.dll";
+	// Resolve module path
+	std::string modPathStr = config.modulePath;
+	size_t tokenPos = modPathStr.find("%CONFIG%");
+	if (tokenPos != std::string::npos)
+	{
+		modPathStr.replace(tokenPos, 8, configName);
+	}
+
+	std::filesystem::path modulePath = modPathStr;
 	if (!std::filesystem::exists(modulePath))
 	{
-		modulePath = "Templates/Playground3D/Binaries/" + configName + "-windows-x86_64/Playground3D.dll";
+		// Try relative to project directory
+		modulePath = projectDir / modPathStr;
 	}
 	if (!std::filesystem::exists(modulePath))
 	{
-		// Try relative to current executable or local directory
-		modulePath = "Playground3D.dll";
+		// Try root bin directory
+		modulePath = "bin/" + configName + "-windows-x86_64/Templates/" + config.name + "/" + config.name + ".dll";
 	}
 
 	ctx.log.info("Player", "Loading game module from: {}", modulePath.string());
-	auto libRes = Platform::DynamicLibrary::Load(modulePath);
-	if (libRes.isErr())
+	auto moduleRes = Runtime::GameModuleLoader::Load(modulePath, ctx);
+	if (moduleRes.isErr())
 	{
-		ctx.log.error("Player", "Module load error: {}", libRes.error());
+		ctx.log.error("Player", "Failed to load game module: {}", moduleRes.error());
 		return 1;
 	}
 
-	auto& lib = libRes.value();
+	auto gameModule = std::move(moduleRes.value());
+	ctx.log.info("Player", "Loaded Module: '{}' (v{})", gameModule.getInfo().name, gameModule.getInfo().version);
 
-	auto pfnGetInfo = lib.getFunction<PFN_DF_GetModuleInfo>("DF_GetModuleInfo");
-	auto pfnRegisterTypes = lib.getFunction<PFN_DF_RegisterTypes>("DF_RegisterTypes");
-	auto pfnOnLoad = lib.getFunction<PFN_DF_OnLoad>("DF_OnLoad");
-	auto pfnOnUnload = lib.getFunction<PFN_DF_OnUnload>("DF_OnUnload");
-
-	if (!pfnGetInfo || !pfnOnLoad)
+	// Create and initialize Application
+	Runtime::Application app(config);
+	if (!app.init())
 	{
-		ctx.log.error("Player", "Module does not export required DarkFire C API endpoints!");
+		ctx.log.fatal("Player", "Application initialization failed!");
 		return 1;
 	}
 
-	Core::ModuleInfo info = pfnGetInfo();
-	ctx.log.info("Player", "Module Detected: '{}' (v{}) with API Version: {}", info.name, info.version, info.apiVersion);
-
-	if (info.apiVersion != Core::DARKFIRE_API_VERSION)
+	// Create Scene Runtime Layer
+	auto sceneLayer = std::make_shared<Runtime::SceneRuntimeLayer>();
+	std::filesystem::path scenePath = projectDir / config.startScene;
+	if (std::filesystem::exists(scenePath))
 	{
-		ctx.log.error("Player", "API version mismatch! Expected {}, got {}", Core::DARKFIRE_API_VERSION, info.apiVersion);
-		return 1;
+		ctx.log.info("Player", "Loading start scene: {}", scenePath.string());
+		sceneLayer->loadScene(scenePath);
+	}
+	else
+	{
+		ctx.log.warn("Player", "Start scene '{}' not found. Running with empty scene.", scenePath.string());
 	}
 
-	if (pfnRegisterTypes)
+	app.pushLayer(sceneLayer);
+
+	if (maxFrames > 0)
 	{
-		pfnRegisterTypes(ctx);
+		ctx.log.info("Player", "Running in bounded frame test mode (maxFrames = {})...", maxFrames);
+		for (int frame = 0; frame < maxFrames; ++frame)
+		{
+			app.getWindow().pollEvents();
+			sceneLayer->onFixedUpdate(1.0f / 60.0f);
+			sceneLayer->onUpdate(1.0f / 60.0f);
+		}
+		ctx.log.info("Player", "Bounded frame execution completed successfully.");
+	}
+	else
+	{
+		app.run();
 	}
 
-	pfnOnLoad(ctx);
-
-	ctx.log.info("Player", "Module execution verified. Shutting down...");
-
-	if (pfnOnUnload)
-	{
-		pfnOnUnload();
-	}
-
-	lib.unload();
-	ctx.log.info("Player", "DarkFire Player exited cleanly with code 0.");
+	ctx.log.info("Player", "Player shutting down cleanly.");
 	return 0;
 }

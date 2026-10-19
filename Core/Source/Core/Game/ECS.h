@@ -3,7 +3,7 @@
 #include "Core/Util/String.h"
 #include "Core/Game/SparseSet.h"
 #include "Core/Game/ComponentTypeID.h"
-#include "Game.h"
+#include "Core/Graphics/Prerequisites.h"
 #include <stdexcept>
 #include <typeindex>
 
@@ -11,8 +11,6 @@ namespace Core
 {
 	constexpr size_t MAX_ENTITIES = 1000000;
 	constexpr size_t MAX_COMPONENTS = 64;
-	typedef uint64_t EntityID;
-	static constexpr EntityID NULL_ENTITY = (std::numeric_limits<EntityID>::max)();
 
 	class ECS
 	{

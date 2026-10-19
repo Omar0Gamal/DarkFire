@@ -8,6 +8,7 @@
 #include "Core/Resource/Texture.h"
 #include "Core/Graphics/Font2D.h"
 #include "Core/Resource/Mesh.h"
+#include "Core/Graphics/RenderStateManager.h"
 #include "Core/log/Log.h"
 
 #include <d3dcompiler.h>
@@ -79,6 +80,7 @@ namespace Core
 		m_dxgiAdapter->GetParent(__uuidof(IDXGIFactory), (void**)&m_dxgiFactory);
 
 		m_uiRender = std::make_unique<UIRender>(this);
+		m_stateManager = std::make_unique<RenderStateManager>(m_d3dDevice.Get(), m_immediateContext.Get());
 
 		initRasterizerState();
 		compilePrivateShaders();
@@ -179,6 +181,11 @@ namespace Core
 		m_immediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		m_immediateContext->DrawIndexed(index_count, start_index_location, start_vertex_index);
 	}
+	void GraphicsEngine::drawIndexedInstanced(int index_count_per_instance, int instance_count, int start_index_location, int base_vertex_location, int start_instance_location)
+	{
+		m_immediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		m_immediateContext->DrawIndexedInstanced(index_count_per_instance, instance_count, start_index_location, base_vertex_location, start_instance_location);
+	}
 	void GraphicsEngine::drawTriangleStrip(int vertex_count, int start_vertex_index)
 	{
 		m_immediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
@@ -205,9 +212,32 @@ namespace Core
 	}
 	void GraphicsEngine::setConstantBuffer(const ConstantBufferPtr& buffer)
 	{
-		auto buf = reinterpret_cast<ID3D11Buffer*>(buffer->getBuffer());
-		m_immediateContext->VSSetConstantBuffers(0, 1, &buf);
-		m_immediateContext->PSSetConstantBuffers(0, 1, &buf);
+		setConstantBuffer(0, buffer);
+	}
+	void GraphicsEngine::setConstantBuffer(unsigned int slot, const ConstantBufferPtr& buffer)
+	{
+		if (buffer)
+		{
+			auto buf = reinterpret_cast<ID3D11Buffer*>(buffer->getBuffer());
+			setConstantBuffer(slot, buf);
+		}
+	}
+	void GraphicsEngine::setConstantBuffer(unsigned int slot, ID3D11Buffer* buffer)
+	{
+		m_immediateContext->VSSetConstantBuffers(slot, 1, &buffer);
+		m_immediateContext->PSSetConstantBuffers(slot, 1, &buffer);
+	}
+	RenderStateManager* GraphicsEngine::getRenderStateManager()
+	{
+		return m_stateManager.get();
+	}
+	ID3D11Device* GraphicsEngine::getD3DDevice() const
+	{
+		return m_d3dDevice.Get();
+	}
+	ID3D11DeviceContext* GraphicsEngine::getImmediateContext() const
+	{
+		return m_immediateContext.Get();
 	}
 	void GraphicsEngine::setTexture(const TexturePtr* texture, unsigned int num_textures)
 	{

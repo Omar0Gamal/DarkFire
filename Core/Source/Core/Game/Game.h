@@ -34,6 +34,10 @@ namespace Core
 		
 		/// Get the render pipeline to add/remove custom render passes
 		RenderPipeline* getRenderPipeline() { return m_renderPipeline.get(); }
+		class PostProcessPipeline* getPostProcessPipeline();
+		class UICanvas* getUICanvas();
+		class TrackEditor* getTrackEditor();
+		class InputActionMap* getInputActionMap();
 	public:
 		MaterialPtr createMaterial(const wchar_t* path);
 		TexturePtr createTexture(const wchar_t* path);
@@ -58,6 +62,10 @@ namespace Core
 		std::unique_ptr<ResourceManager> m_resourceManager;
 		std::unique_ptr<WorldManager> m_worldManager;
 		std::unique_ptr<RenderPipeline> m_renderPipeline;
+		std::shared_ptr<class PostProcessPipeline> m_postProcessPipeline;
+		std::unique_ptr<class UICanvas> m_canvas;
+		std::unique_ptr<class TrackEditor> m_trackEditor;
+		std::unique_ptr<class InputActionMap> m_inputActionMap;
 
 		WorldPtr m_world;
 

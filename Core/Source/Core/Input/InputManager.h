@@ -10,36 +10,44 @@ namespace Core
 	{
 	public:
 		InputManager();
+		virtual ~InputManager() = default;
 
-		virtual bool isKeyDown(const  Key& key);
-		virtual bool isKeyUp(const  Key& key);
+		virtual bool isKeyDown(const Key& key);
+		virtual bool isKeyUp(const Key& key);
+		virtual bool isKeyPressed(const Key& key);
+		virtual bool isKeyReleased(const Key& key);
 
-		virtual bool isMouseDown(const  MouseButton& button);
-		virtual bool isMouseUp(const  MouseButton& button);
+		virtual bool isMouseDown(const MouseButton& button);
+		virtual bool isMouseUp(const MouseButton& button);
+		virtual bool isMousePressed(const MouseButton& button);
 
 		virtual float getMouseXAxis();
 		virtual float getMouseYAxis();
 
-		virtual void enablePlayMode(bool enable);
+		virtual Vector2d getMousePosition() const { return m_current_mouse_pos; }
+		virtual Vector2d getDeltaMouse() const { return m_deltaMouse; }
 
-		void setScreenArea(const  Box& area);
+		virtual void enablePlayMode(bool enable);
+		bool isPlayModeEnabled() const { return m_playEnable; }
+
+		void setScreenArea(const Box& area);
 		void update();
 
-		bool isPlayModeEnabled() const { return m_playEnable; }
+	public:
+		static short getWinKey(const Key& key);
+
 	private:
 		short m_keys_state[256] = {};
 		short m_old_keys_state[256] = {};
 		short m_keys_state_res[256] = {};
-
-		int states_index = 0;
 
 		bool m_playEnable = false;
 		bool m_first_time = true;
 
 		Box m_screenArea;
 
+		Vector2d m_current_mouse_pos;
 		Vector2d m_old_mouse_pos;
 		Vector2d m_deltaMouse;
 	};
 }
-

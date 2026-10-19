@@ -16,6 +16,17 @@ namespace Core
 	Material::Material(const MaterialPtr& material, ResourceManager* manager) : Resource(L"", manager)
 	{
 		m_shader = material->m_shader;
+		m_cull_mode = material->m_cull_mode;
+		m_blendMode = material->m_blendMode;
+		m_depthMode = material->m_depthMode;
+		m_vec_textures = material->m_vec_textures;
+		m_floatParams = material->m_floatParams;
+		m_vectorParams = material->m_vectorParams;
+		m_namedTextures = material->m_namedTextures;
+	}
+
+	Material::Material(const ShaderPtr& shader, ResourceManager* manager) : Resource(L"", manager), m_shader(shader)
+	{
 	}
 
 	void Material::addTexture(const TexturePtr& texture)
@@ -54,9 +65,60 @@ namespace Core
 		m_cull_mode = mode;
 	}
 
-	CullMode Material::getCullMode()
+	CullMode Material::getCullMode() const
 	{
 		return m_cull_mode;
+	}
+
+	void Material::setFloat(const std::string& name, float value)
+	{
+		m_floatParams[name] = value;
+	}
+
+	float Material::getFloat(const std::string& name, float defaultValue) const
+	{
+		auto it = m_floatParams.find(name);
+		return (it != m_floatParams.end()) ? it->second : defaultValue;
+	}
+
+	void Material::setColor(const std::string& name, const Vector4d& color)
+	{
+		m_vectorParams[name] = color;
+	}
+
+	Vector4d Material::getColor(const std::string& name, const Vector4d& defaultValue) const
+	{
+		auto it = m_vectorParams.find(name);
+		return (it != m_vectorParams.end()) ? it->second : defaultValue;
+	}
+
+	void Material::setVector(const std::string& name, const Vector4d& vec)
+	{
+		m_vectorParams[name] = vec;
+	}
+
+	Vector4d Material::getVector(const std::string& name, const Vector4d& defaultValue) const
+	{
+		auto it = m_vectorParams.find(name);
+		return (it != m_vectorParams.end()) ? it->second : defaultValue;
+	}
+
+	void Material::setTexture(const std::string& name, const TexturePtr& texture)
+	{
+		m_namedTextures[name] = texture;
+		// Keep in m_vec_textures for compatibility with older passes
+		bool found = false;
+		for (const auto& t : m_vec_textures)
+		{
+			if (t == texture) { found = true; break; }
+		}
+		if (!found && texture) m_vec_textures.push_back(texture);
+	}
+
+	TexturePtr Material::getTexture(const std::string& name) const
+	{
+		auto it = m_namedTextures.find(name);
+		return (it != m_namedTextures.end()) ? it->second : nullptr;
 	}
 
 	MaterialPtr GetDefaultMaterial(ResourceManager* manager)

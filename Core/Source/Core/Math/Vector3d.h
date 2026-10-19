@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 
 namespace Core
 {
@@ -43,9 +44,28 @@ namespace Core
 			return Vector3d(-x, -y, -z);
 		}
 
-		Vector3d operator +=(const  Vector3d& vec) const
+		Vector3d& operator +=(const Vector3d& vec)
 		{
-			return Vector3d(x + vec.x, y + vec.y, z + vec.z);
+			x += vec.x; y += vec.y; z += vec.z;
+			return *this;
+		}
+
+		Vector3d& operator -=(const Vector3d& vec)
+		{
+			x -= vec.x; y -= vec.y; z -= vec.z;
+			return *this;
+		}
+
+		Vector3d& operator *=(float num)
+		{
+			x *= num; y *= num; z *= num;
+			return *this;
+		}
+
+		Vector3d& operator /=(float num)
+		{
+			x /= num; y /= num; z /= num;
+			return *this;
 		}
 
 		bool operator !=(const  Vector3d& vec) const
@@ -53,17 +73,37 @@ namespace Core
 			return vec.x != x || vec.y != y || vec.z != z;
 		}
 
+		bool operator ==(const Vector3d& vec) const
+		{
+			return vec.x == x && vec.y == y && vec.z == z;
+		}
+
 
 
 		float length() const
 		{
-			return (float)sqrt((x * x) + (y * y) + (z * z));
+			return (float)std::sqrt((x * x) + (y * y) + (z * z));
+		}
+
+		float sqrLength() const
+		{
+			return (x * x) + (y * y) + (z * z);
+		}
+
+		static float distance(const Vector3d& a, const Vector3d& b)
+		{
+			return (a - b).length();
+		}
+
+		static float dot(const Vector3d& a, const Vector3d& b)
+		{
+			return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
 		}
 
 		static Vector3d normalize(const  Vector3d& vec)
 		{
 			Vector3d res;
-			float len = (float)sqrt((float)(vec.x * vec.x) + (float)(vec.y * vec.y) + (float)(vec.z * vec.z));
+			float len = (float)std::sqrt((float)(vec.x * vec.x) + (float)(vec.y * vec.y) + (float)(vec.z * vec.z));
 			if (!len)
 				return Vector3d();
 

@@ -24,149 +24,164 @@ namespace Core
 		std::string warn;
 		std::string err;
 
-		auto inputfile = std::filesystem::path(full_path).string();//std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(full_path);
-
-		std::string mtldir = inputfile.substr(0, inputfile.find_last_of("\\/"));
-
+		auto inputfile = std::filesystem::path(full_path).string();
+		std::string mtldir = "";
+		auto lastSlash = inputfile.find_last_of("\\/");
+		if (lastSlash != std::string::npos)
+		{
+			mtldir = inputfile.substr(0, lastSlash);
+		}
 
 		bool res = tinyobj::LoadObj(&attribs, &shapes, &materials, &warn, &err, inputfile.c_str(), mtldir.c_str());
 
-		if (!err.empty()) throw std::runtime_error("DMesh not created successfully");
+		if (!res)
+		{
+			std::string errorMsg = "Failed to load obj mesh: " + inputfile;
+			if (!err.empty()) errorMsg += " (" + err + ")";
+			throw std::runtime_error(errorMsg);
+		}
 
-		if (!res) throw std::runtime_error("DMesh not created successfully");
-
+		size_t num_materials = materials.empty() ? 1 : materials.size();
+		m_mat_slots.resize(num_materials);
 
 		std::vector<VertexMesh> list_vertices;
 		std::vector<unsigned int> list_indices;
+		std::vector<std::vector<unsigned int>> slot_indices(num_materials);
 
-		size_t vertex_buffer_size = 0;
-
+		std::unordered_map<VertexMesh, unsigned int, VertexMeshHash> unique_vertices;
 
 		for (size_t s = 0; s < shapes.size(); s++)
 		{
-			vertex_buffer_size += shapes[s].mesh.indices.size();
-		}
-
-
-		list_vertices.reserve(vertex_buffer_size);
-		list_indices.reserve(vertex_buffer_size);
-
-
-		m_mat_slots.resize(materials.size());
-
-		size_t index_global_offset = 0;
-
-		for (size_t m = 0; m < materials.size(); m++)
-		{
-			m_mat_slots[m].start_index = index_global_offset;
-			m_mat_slots[m].material_id = m;
-
-			for (size_t s = 0; s < shapes.size(); s++)
+			size_t index_offset = 0;
+			for (size_t f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++)
 			{
-				size_t index_offset = 0;
+				unsigned char num_face_verts = shapes[s].mesh.num_face_vertices[f];
 
-				for (size_t f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++)
+				int mat_id = 0;
+				if (!shapes[s].mesh.material_ids.empty() && f < shapes[s].mesh.material_ids.size())
 				{
-					if (shapes[s].mesh.material_ids[f] != m) {
-						unsigned char num_face_verts = shapes[s].mesh.num_face_vertices[f];
-						index_offset += num_face_verts;
-						continue;
-					}
-
-					unsigned char num_face_verts = shapes[s].mesh.num_face_vertices[f];
-
-					Vector3d vertices_face[3];
-					Vector2d texcoords_face[3];
-
-					for (unsigned char v = 0; v < num_face_verts; v++)
-					{
-						tinyobj::index_t index = shapes[s].mesh.indices[index_offset + v];
-
-						tinyobj::real_t vx = attribs.vertices[(int)index.vertex_index * 3 + 0];
-						tinyobj::real_t vy = attribs.vertices[(int)index.vertex_index * 3 + 1];
-						tinyobj::real_t vz = -attribs.vertices[(int)index.vertex_index * 3 + 2];
-
-						tinyobj::real_t tx = 0;
-						tinyobj::real_t ty = 0;
-						if (attribs.texcoords.size())
-						{
-							tx = attribs.texcoords[(int)index.texcoord_index * 2 + 0];
-							ty = 1.0f - attribs.texcoords[(int)index.texcoord_index * 2 + 1];
-						}
-						vertices_face[v] = Vector3d(vx, vy, vz);
-						texcoords_face[v] = Vector2d(tx, ty);
-					}
-
-					Vector3d tangent, binormal;
-
-					computeTangents(
-						vertices_face[0], vertices_face[1], vertices_face[2],
-						texcoords_face[0], texcoords_face[1], texcoords_face[2],
-						tangent, binormal);
-
-
-					for (unsigned char v = 0; v < num_face_verts; v++)
-					{
-						tinyobj::index_t index = shapes[s].mesh.indices[index_offset + v];
-
-						tinyobj::real_t vx = attribs.vertices[(int)index.vertex_index * 3 + 0];
-						tinyobj::real_t vy = attribs.vertices[(int)index.vertex_index * 3 + 1];
-						tinyobj::real_t vz = -attribs.vertices[(int)index.vertex_index * 3 + 2];
-
-
-
-						m_maxCorner.x = (m_maxCorner.x < vx) ? vx : m_maxCorner.x;
-						m_maxCorner.y = (m_maxCorner.y < vy) ? vy : m_maxCorner.y;
-						m_maxCorner.z = (m_maxCorner.z < vz) ? vz : m_maxCorner.z;
-
-						m_minCorner.x = (m_minCorner.x > vx) ? vx : m_minCorner.x;
-						m_minCorner.y = (m_minCorner.y > vy) ? vy : m_minCorner.y;
-						m_minCorner.z = (m_minCorner.z > vz) ? vz : m_minCorner.z;
-
-						tinyobj::real_t tx = 0;
-						tinyobj::real_t ty = 0;
-						if (attribs.texcoords.size())
-						{
-							tx = attribs.texcoords[(int)index.texcoord_index * 2 + 0];
-							ty = 1.0f - attribs.texcoords[(int)index.texcoord_index * 2 + 1];
-						}
-
-						tinyobj::real_t nx = 0;
-						tinyobj::real_t ny = 0;
-						tinyobj::real_t nz = 0;
-
-						if (attribs.normals.size())
-						{
-							nx = attribs.normals[(int)index.normal_index * 3 + 0];
-							ny = attribs.normals[(int)index.normal_index * 3 + 1];
-							nz = -attribs.normals[(int)index.normal_index * 3 + 2];
-						}
-
-						Vector3d v_tangent, v_binormal;
-						v_binormal = Vector3d::cross(Vector3d(nx, ny, nz), tangent);
-						v_tangent = Vector3d::cross(v_binormal, Vector3d(nx, ny, nz));
-
-
-						VertexMesh vertex(Vector3d(vx, vy, vz), Vector2d(tx, ty), Vector3d(nx, ny, nz), v_tangent, v_binormal);
-						list_vertices.push_back(vertex);
-
-						list_indices.push_back((unsigned int)index_global_offset + v);
-					}
-
-					index_offset += num_face_verts;
-					index_global_offset += num_face_verts;
+					mat_id = shapes[s].mesh.material_ids[f];
 				}
+				if (mat_id < 0 || (size_t)mat_id >= num_materials)
+				{
+					mat_id = 0;
+				}
+
+				Vector3d vertices_face[3];
+				Vector2d texcoords_face[3];
+
+				for (unsigned char v = 0; v < num_face_verts && v < 3; v++)
+				{
+					tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
+
+					tinyobj::real_t vx = attribs.vertices[(int)idx.vertex_index * 3 + 0];
+					tinyobj::real_t vy = attribs.vertices[(int)idx.vertex_index * 3 + 1];
+					tinyobj::real_t vz = -attribs.vertices[(int)idx.vertex_index * 3 + 2];
+
+					tinyobj::real_t tx = 0;
+					tinyobj::real_t ty = 0;
+					if (attribs.texcoords.size() && idx.texcoord_index >= 0)
+					{
+						tx = attribs.texcoords[(int)idx.texcoord_index * 2 + 0];
+						ty = 1.0f - attribs.texcoords[(int)idx.texcoord_index * 2 + 1];
+					}
+
+					vertices_face[v] = Vector3d(vx, vy, vz);
+					texcoords_face[v] = Vector2d(tx, ty);
+				}
+
+				Vector3d tangent, binormal;
+				computeTangents(
+					vertices_face[0], vertices_face[1], vertices_face[2],
+					texcoords_face[0], texcoords_face[1], texcoords_face[2],
+					tangent, binormal);
+
+				for (unsigned char v = 0; v < num_face_verts; v++)
+				{
+					tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
+
+					tinyobj::real_t vx = attribs.vertices[(int)idx.vertex_index * 3 + 0];
+					tinyobj::real_t vy = attribs.vertices[(int)idx.vertex_index * 3 + 1];
+					tinyobj::real_t vz = -attribs.vertices[(int)idx.vertex_index * 3 + 2];
+
+					m_maxCorner.x = (std::max)(m_maxCorner.x, vx);
+					m_maxCorner.y = (std::max)(m_maxCorner.y, vy);
+					m_maxCorner.z = (std::max)(m_maxCorner.z, vz);
+
+					m_minCorner.x = (std::min)(m_minCorner.x, vx);
+					m_minCorner.y = (std::min)(m_minCorner.y, vy);
+					m_minCorner.z = (std::min)(m_minCorner.z, vz);
+
+					tinyobj::real_t tx = 0;
+					tinyobj::real_t ty = 0;
+					if (attribs.texcoords.size() && idx.texcoord_index >= 0)
+					{
+						tx = attribs.texcoords[(int)idx.texcoord_index * 2 + 0];
+						ty = 1.0f - attribs.texcoords[(int)idx.texcoord_index * 2 + 1];
+					}
+
+					tinyobj::real_t nx = 0;
+					tinyobj::real_t ny = 0;
+					tinyobj::real_t nz = 0;
+					if (attribs.normals.size() && idx.normal_index >= 0)
+					{
+						nx = attribs.normals[(int)idx.normal_index * 3 + 0];
+						ny = attribs.normals[(int)idx.normal_index * 3 + 1];
+						nz = -attribs.normals[(int)idx.normal_index * 3 + 2];
+					}
+
+					Vector3d v_binormal = Vector3d::cross(Vector3d(nx, ny, nz), tangent);
+					Vector3d v_tangent = Vector3d::cross(v_binormal, Vector3d(nx, ny, nz));
+
+					VertexMesh vertex(Vector3d(vx, vy, vz), Vector2d(tx, ty), Vector3d(nx, ny, nz), v_tangent, v_binormal);
+
+					auto it = unique_vertices.find(vertex);
+					unsigned int vert_index = 0;
+					if (it == unique_vertices.end())
+					{
+						vert_index = static_cast<unsigned int>(list_vertices.size());
+						unique_vertices[vertex] = vert_index;
+						list_vertices.push_back(vertex);
+					}
+					else
+					{
+						vert_index = it->second;
+					}
+
+					slot_indices[mat_id].push_back(vert_index);
+				}
+
+				index_offset += num_face_verts;
 			}
-
-			m_mat_slots[m].num_indices = index_global_offset - m_mat_slots[m].start_index;
 		}
-		auto engine = m_resManager->getGame()->getGraphicsEngine();
 
-		void* shader_byte_code = nullptr;
-		size_t size_shader = 0;
-		m_vertex_buffer = engine->CreateVertexBuffer({ &list_vertices[0], sizeof(VertexMesh),
-			(UINT)list_vertices.size() });
-		m_index_buffer = engine->CreateIndexBuffer({ &list_indices[0], (UINT)list_indices.size() });
+		// Flatten slot indices into unified index buffer with slot boundaries
+		for (size_t m = 0; m < num_materials; m++)
+		{
+			m_mat_slots[m].material_id = static_cast<unsigned int>(m);
+			m_mat_slots[m].start_index = list_indices.size();
+			m_mat_slots[m].num_indices = slot_indices[m].size();
+			list_indices.insert(list_indices.end(), slot_indices[m].begin(), slot_indices[m].end());
+		}
+
+		if (list_vertices.empty() || list_indices.empty())
+		{
+			// Fallback: 1 quad triangle pair if model was completely empty
+			VertexMesh v0(Vector3d(-0.5f, -0.5f, 0.0f), Vector2d(0, 1), Vector3d(0, 0, -1), Vector3d(1, 0, 0), Vector3d(0, 1, 0));
+			VertexMesh v1(Vector3d(-0.5f,  0.5f, 0.0f), Vector2d(0, 0), Vector3d(0, 0, -1), Vector3d(1, 0, 0), Vector3d(0, 1, 0));
+			VertexMesh v2(Vector3d( 0.5f,  0.5f, 0.0f), Vector2d(1, 0), Vector3d(0, 0, -1), Vector3d(1, 0, 0), Vector3d(0, 1, 0));
+			VertexMesh v3(Vector3d( 0.5f, -0.5f, 0.0f), Vector2d(1, 1), Vector3d(0, 0, -1), Vector3d(1, 0, 0), Vector3d(0, 1, 0));
+			list_vertices = { v0, v1, v2, v3 };
+			list_indices = { 0, 1, 2, 0, 2, 3 };
+			m_mat_slots.resize(1);
+			m_mat_slots[0] = { 0, 6, 0 };
+			m_minCorner = Vector3d(-0.5f, -0.5f, 0.0f);
+			m_maxCorner = Vector3d(0.5f, 0.5f, 0.0f);
+		}
+
+		auto engine = m_resManager->getGame()->getGraphicsEngine();
+		m_vertex_buffer = engine->CreateVertexBuffer({ list_vertices.data(), sizeof(VertexMesh), (UINT)list_vertices.size() });
+		m_index_buffer = engine->CreateIndexBuffer({ list_indices.data(), (UINT)list_indices.size() });
 	}
 
 	Mesh::Mesh(VertexMesh* vertex_list_data, unsigned int vertex_list_size,

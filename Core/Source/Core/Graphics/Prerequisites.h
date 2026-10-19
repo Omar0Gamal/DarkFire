@@ -1,8 +1,12 @@
 #pragma once
 
 #include <memory>
+#include <cstdint>
 
 namespace Core {
+	typedef uint64_t EntityID;
+	inline constexpr EntityID NULL_ENTITY = 0xFFFFFFFFFFFFFFFFULL;
+
 	class  Window;
 	class  Display;
 
@@ -116,12 +120,17 @@ namespace Core {
 		F10,
 		F11,
 		F12,
+		Up,
+		Down,
+		Left,
+		Right,
 	};
 
 	enum class TextureType
 	{
 		Normal = 0,
 		RenderTarget,
+		RenderTargetHDR,
 		DepthStencil
 	};
 

@@ -201,6 +201,10 @@ namespace Core
 
 		~Mat4x4() {}
 	public:
-		float m[4][4];
+		union
+		{
+			float m[4][4];
+			float mat[4][4];
+		};
 	};
 }

@@ -32,6 +32,9 @@ namespace Core
 		using Mat4x4 = Core::Mat4x4;
 		using Quaternion = Core::Quaternion;
 		using Color = Core::Color;
+		using Ray = Core::Ray;
+		using BoundingSphere = Core::BoundingSphere;
+		using BoundingBox = Core::BoundingBox;
 
 		constexpr float PI = 3.14159265358979323846f;
 		constexpr float TWO_PI = 6.28318530717958647692f;

@@ -20,6 +20,10 @@ workspace "DarkFire"
 			"UNICODE",
 			"_CRT_SECURE_NO_WARNINGS"
 		}
+		includedirs
+		{
+			"%{wks.location}/ThirdParty/DirectXTK/Inc"
+		}
 
 	filter "configurations:Dist"
 		defines

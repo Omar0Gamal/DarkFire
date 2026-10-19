@@ -1,5 +1,6 @@
 #pragma once
 #include <cmath>
+#include <SimpleMath.h>
 
 namespace Core
 {
@@ -9,6 +10,9 @@ namespace Core
 		Vector3d() : x(0.0f), y(0.0f), z(0.0f) {}
 		Vector3d(float x, float y, float z) :x(x), y(y), z(z) {}
 		Vector3d(const  Vector3d& vector) :x(vector.x), y(vector.y), z(vector.z) {}
+		Vector3d(const DirectX::SimpleMath::Vector3& v) : x(v.x), y(v.y), z(v.z) {}
+
+		operator DirectX::SimpleMath::Vector3() const noexcept { return DirectX::SimpleMath::Vector3(x, y, z); }
 
 		static Vector3d lerp(const  Vector3d& start, const  Vector3d& end, float delta)
 		{

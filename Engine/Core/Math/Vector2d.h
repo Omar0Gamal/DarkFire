@@ -1,4 +1,5 @@
 #pragma once
+#include <SimpleMath.h>
 
 namespace Core
 {
@@ -8,6 +9,9 @@ namespace Core
 		Vector2d() : x(0), y(0) {}
 		Vector2d(float x, float y) : x(x), y(y) {}
 		Vector2d(const Vector2d& vec) : x(vec.x), y(vec.y) {}
+		Vector2d(const DirectX::SimpleMath::Vector2& v) : x(v.x), y(v.y) {}
+
+		operator DirectX::SimpleMath::Vector2() const noexcept { return DirectX::SimpleMath::Vector2(x, y); }
 
 		Vector2d operator *(float scalar)
 		{

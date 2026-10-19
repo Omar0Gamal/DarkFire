@@ -18,6 +18,11 @@ namespace Core
 		Vector4d(const Vector3d& vector) : x(vector.x), y(vector.y), z(vector.z), w(1)
 		{
 		}
+		Vector4d(const DirectX::SimpleMath::Vector4& v) : x(v.x), y(v.y), z(v.z), w(v.w)
+		{
+		}
+
+		operator DirectX::SimpleMath::Vector4() const noexcept { return DirectX::SimpleMath::Vector4(x, y, z, w); }
 
 		static Vector4d lerp(const Vector4d& start, const Vector4d& end, float delta)
 		{

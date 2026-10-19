@@ -44,6 +44,7 @@
 #include "Core/Game/Component/MeshComponent.h"
 #include "Core/Game/Component/ColliderComponent.h"
 #include "Core/Game/Component/RigidbodyComponent.h"
+#include "Core/Game/Component/ParticleEmitterComponent.h"
 #include "Core/Game/Component/TextComponent.h"
 #include "Core/Game/Component/ImageComponent.h"
 
@@ -55,6 +56,8 @@
 #include "Core/Graphics/RenderQueue.h"
 #include "Core/Graphics/DebugRenderer.h"
 #include "Core/Graphics/DebugRenderPass.h"
+#include "Core/Graphics/ParticleRenderPass.h"
+#include "Core/Graphics/ParticleSystem.h"
 #include "Core/Graphics/PostProcessPipeline.h"
 #include "Core/Graphics/PostProcessRenderPass.h"
 #include "Core/Graphics/InstancedMeshRenderPass.h"

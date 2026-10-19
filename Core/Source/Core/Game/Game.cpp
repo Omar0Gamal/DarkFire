@@ -21,6 +21,8 @@
 #include "Core/Graphics/PostProcessPipeline.h"
 #include "Core/Graphics/PostProcessRenderPass.h"
 #include "Core/Graphics/DebugRenderPass.h"
+#include "Core/Graphics/ParticleRenderPass.h"
+#include "Core/Graphics/ParticleSystem.h"
 #include "Core/Input/InputManager.h"
 #include "Core/Input/InputActionMap.h"
 #include "Core/UI/UICanvas.h"
@@ -54,6 +56,7 @@ namespace Core
 
 		m_world = m_worldManager->createWorld("MainWorld");
 		m_trackEditor = std::make_unique<TrackEditor>(this);
+		m_particleSystem = std::make_unique<ParticleSystem>(this);
 
 		// Initialize default render passes
 		initDefaultRenderPasses();
@@ -61,9 +64,10 @@ namespace Core
 
 	void Game::initDefaultRenderPasses()
 	{
-		// Default pipeline: Geometry (100) -> Debug Wireframe (250) -> PostProcess (300) -> UI (500)
+		// Default pipeline: Geometry (100) -> Debug Wireframe (250) -> Particles (280) -> PostProcess (300) -> UI (500)
 		m_renderPipeline->addPass<MeshRenderPass>();
 		m_renderPipeline->addPass<DebugRenderPass>();
+		m_renderPipeline->addPass<ParticleRenderPass>();
 		m_renderPipeline->addPass<PostProcessRenderPass>(m_postProcessPipeline, m_display->getSwapChain());
 		m_renderPipeline->addPass<UIRenderPass>(m_canvas.get());
 	}
@@ -202,6 +206,11 @@ namespace Core
 			m_trackEditor->update(m_deltaTime);
 		}
 
+		if (m_particleSystem && m_world && m_world->getECS())
+		{
+			m_particleSystem->update(m_deltaTime, m_world->getECS().get());
+		}
+
 		if (m_canvas)
 		{
 			m_canvas->update(m_deltaTime, m_inputManager.get());
@@ -319,5 +328,10 @@ namespace Core
 	InputActionMap* Game::getInputActionMap()
 	{
 		return m_inputActionMap.get();
+	}
+
+	ParticleSystem* Game::getParticleSystem()
+	{
+		return m_particleSystem.get();
 	}
 }

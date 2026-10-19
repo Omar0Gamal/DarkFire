@@ -25,6 +25,14 @@ namespace Core
 
 	namespace Math
 	{
+		using Vector2 = Core::Vector2;
+		using Vector3 = Core::Vector3;
+		using Vector4 = Core::Vector4;
+		using Matrix = Core::Matrix;
+		using Mat4x4 = Core::Mat4x4;
+		using Quaternion = Core::Quaternion;
+		using Color = Core::Color;
+
 		constexpr float PI = 3.14159265358979323846f;
 		constexpr float TWO_PI = 6.28318530717958647692f;
 		constexpr float HALF_PI = 1.57079632679489661923f;

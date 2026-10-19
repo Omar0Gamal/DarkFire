@@ -12,15 +12,16 @@ namespace Core
 	class Result
 	{
 	public:
-		static Result Ok(T val)
-		{
-			return Result(std::move(val));
-		}
+		static Result Ok(T val) { return Result(std::move(val)); }
+		static Result Err(E err) { return Result(std::move(err), ErrorTag{}); }
+		static Result ok(T val) { return Ok(std::move(val)); }
+		static Result error(E err) { return Err(std::move(err)); }
 
-		static Result Err(E err)
-		{
-			return Result(std::move(err), ErrorTag{});
-		}
+		explicit operator bool() const noexcept { return isOk(); }
+		const T& operator*() const { return value(); }
+		T& operator*() { return value(); }
+		const T* operator->() const { return &value(); }
+		T* operator->() { return &value(); }
 
 		bool isOk() const { return m_storage.index() == 0; }
 		bool isErr() const { return m_storage.index() == 1; }
@@ -68,6 +69,11 @@ namespace Core
 		{
 			return Result(std::move(err));
 		}
+
+		static Result ok() { return Ok(); }
+		static Result error(E err) { return Err(std::move(err)); }
+
+		explicit operator bool() const noexcept { return isOk(); }
 
 		bool isOk() const { return !m_error.has_value(); }
 		bool isErr() const { return m_error.has_value(); }

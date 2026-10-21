@@ -15,8 +15,14 @@
 #include "Editor/Commands/EntityCommands.cpp"
 #include "Editor/SelectionContext.h"
 #include "Editor/Clipboard.cpp"
+#include "Engine/Core/Assets/AssetGuid.h"
+#include "Engine/Core/Assets/AssetTypes.h"
+#include "Engine/Core/Assets/AssetManager.h"
+#include "Engine/Core/Scripting/ScriptRegistry.h"
+#include "Engine/Core/Scripting/ScriptableEntity.h"
 #include <filesystem>
 #include <random>
+#include <fstream>
 
 TEST_SUITE("Editor")
 {
@@ -572,5 +578,335 @@ TEST_SUITE("Editor")
 		scene.updateTransforms();
 		std::string restoredFinalJson = serializer.serializeToString();
 		CHECK(restoredFinalJson == finalSceneJson);
+	}
+
+	class TestMoverScript : public Core::ScriptableEntity
+	{
+	public:
+		void onUpdate(float dt) override
+		{
+			auto& tc = getComponent<Core::TransformComponent>();
+			tc.position.x += 10.0f * dt;
+		}
+	};
+
+	TEST_CASE("Editor - Play Mode Snapshot & Byte-Identical Restoration")
+	{
+		Core::ScriptRegistry::Get().registerScript<TestMoverScript>("TestMoverScript");
+
+		Core::Scene editScene;
+		Core::SceneSerializer serializer(&editScene);
+
+		// Author scene with camera, light, physics box, and scripted entity
+		auto cam = editScene.createEntity("Main Camera");
+		cam.getTransform().position = Core::Vector3(0.0f, 2.0f, -5.0f);
+		auto& camComp = cam.addComponent<Core::CameraComponent>();
+		camComp.isPrimary = true;
+		camComp.fov = 60.0f;
+
+		auto box = editScene.createEntity("DynamicBox");
+		box.getTransform().position = Core::Vector3(0.0f, 10.0f, 0.0f);
+		auto& rb = box.addComponent<Core::RigidbodyComponent>();
+		rb.mass = 1.0f;
+		rb.isKinematic = false;
+		auto& col = box.addComponent<Core::ColliderComponent>();
+		col.shape = Core::ColliderShape::Box;
+		col.size = Core::Vector3(1.0f, 1.0f, 1.0f);
+
+		auto mover = editScene.createEntity("ScriptedEntity");
+		mover.getTransform().position = Core::Vector3(0.0f, 0.0f, 0.0f);
+		auto& sc = mover.addComponent<Core::ScriptsComponent>();
+		sc.addScript("TestMoverScript");
+
+		editScene.updateTransforms();
+		std::string initialSceneJson = serializer.serializeToString();
+
+		// 1. Enter Play Mode: snapshot scene
+		auto activePlayScene = Core::Scene::copy(editScene);
+
+		// Initialize physics and start scripts in play scene
+		Physics::PhysicsWorld physics;
+		physics.init(Core::Vector3(0.0f, -9.81f, 0.0f), 1.0f / 60.0f);
+
+		auto view = activePlayScene->view<Core::ScriptsComponent>();
+		for (auto handle : view)
+		{
+			Core::Entity ent(handle, activePlayScene.get());
+			auto& comp = view.get<Core::ScriptsComponent>(handle);
+			for (auto& s : comp.scripts)
+			{
+				s.instance = Core::ScriptRegistry::Get().instantiate(s.scriptName);
+				if (s.instance)
+				{
+					s.instance->bind(ent, activePlayScene.get());
+					s.instance->onCreate();
+					s.instance->onStart();
+					s.isStarted = true;
+				}
+			}
+		}
+
+		// 2. Simulate 120 ticks (2 seconds of live gameplay at 60Hz)
+		float dt = 1.0f / 60.0f;
+		for (int tick = 0; tick < 120; ++tick)
+		{
+			physics.step(*activePlayScene, dt);
+
+			for (auto handle : view)
+			{
+				auto& comp = view.get<Core::ScriptsComponent>(handle);
+				for (auto& s : comp.scripts)
+				{
+					if (s.isEnabled && s.isStarted && s.instance)
+					{
+						s.instance->onFixedUpdate(dt);
+						s.instance->onUpdate(dt);
+						s.instance->onLateUpdate(dt);
+					}
+				}
+			}
+		}
+
+		activePlayScene->updateTransforms();
+
+		// Verify that play scene mutated significantly
+		Core::SceneSerializer playSerializer(activePlayScene.get());
+		std::string playSceneJson = playSerializer.serializeToString();
+		CHECK(playSceneJson != initialSceneJson);
+
+		auto playBox = activePlayScene->findEntityByName("DynamicBox");
+		CHECK(playBox.getTransform().position.y < 10.0f); // Fell due to gravity
+
+		auto playMover = activePlayScene->findEntityByName("ScriptedEntity");
+		CHECK(playMover.getTransform().position.x > 0.0f); // Moved by script
+
+		// 3. Stop Play Mode: teardown scripts and restore pristine edit scene
+		for (auto handle : view)
+		{
+			auto& comp = view.get<Core::ScriptsComponent>(handle);
+			for (auto& s : comp.scripts)
+			{
+				if (s.isStarted && s.instance)
+				{
+					s.instance->onDestroy();
+					s.isStarted = false;
+				}
+			}
+		}
+
+		activePlayScene.reset();
+
+		// Verify edit scene is 100% byte-identical to before Play Mode
+		editScene.updateTransforms();
+		std::string restoredEditJson = serializer.serializeToString();
+		CHECK(restoredEditJson == initialSceneJson);
+	}
+
+	TEST_CASE("Asset Pipeline - GUID Preservation on Rename & Move")
+	{
+		std::filesystem::path testDir = "Temp_AssetTest";
+		std::filesystem::create_directories(testDir);
+
+		std::filesystem::path texFile = testDir / "test_texture.png";
+		std::filesystem::path meshFile = testDir / "test_mesh.obj";
+
+		{
+			std::ofstream f(texFile);
+			f << "FAKE_PNG_DATA";
+		}
+		{
+			std::ofstream f(meshFile);
+			f << "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
+		}
+
+		auto& assetMgr = Core::AssetManager::Get();
+		assetMgr.init(testDir);
+
+		CHECK(assetMgr.hasAsset(texFile));
+		CHECK(assetMgr.hasAsset(meshFile));
+
+		Core::AssetGuid texGuid = assetMgr.getGuidFromPath(texFile);
+		Core::AssetGuid meshGuid = assetMgr.getGuidFromPath(meshFile);
+		CHECK(texGuid.isValid());
+		CHECK(meshGuid.isValid());
+		CHECK(texGuid != meshGuid);
+
+		// Check .meta files exist on disk
+		CHECK(std::filesystem::exists(texFile.string() + ".meta"));
+		CHECK(std::filesystem::exists(meshFile.string() + ".meta"));
+
+		// 1. Rename asset: test_texture.png -> test_texture_renamed.png
+		std::filesystem::path renamedTexFile = testDir / "test_texture_renamed.png";
+		bool renameOk = assetMgr.renameAsset(texFile, renamedTexFile);
+		CHECK(renameOk == true);
+
+		// Verify on disk
+		CHECK(!std::filesystem::exists(texFile));
+		CHECK(!std::filesystem::exists(texFile.string() + ".meta"));
+		CHECK(std::filesystem::exists(renamedTexFile));
+		CHECK(std::filesystem::exists(renamedTexFile.string() + ".meta"));
+
+		// Verify GUID lookup preserves reference
+		CHECK(assetMgr.getGuidFromPath(renamedTexFile) == texGuid);
+		CHECK(assetMgr.getPathFromGuid(texGuid) == renamedTexFile);
+
+		// 2. Move asset: test_mesh.obj -> SubDir/test_mesh.obj
+		std::filesystem::path subDir = testDir / "SubDir";
+		std::filesystem::create_directories(subDir);
+
+		bool moveOk = assetMgr.moveAsset(meshFile, subDir);
+		CHECK(moveOk == true);
+
+		std::filesystem::path movedMeshFile = subDir / "test_mesh.obj";
+		CHECK(!std::filesystem::exists(meshFile));
+		CHECK(!std::filesystem::exists(meshFile.string() + ".meta"));
+		CHECK(std::filesystem::exists(movedMeshFile));
+		CHECK(std::filesystem::exists(movedMeshFile.string() + ".meta"));
+
+		// Verify GUID lookup preserves reference after move
+		CHECK(assetMgr.getGuidFromPath(movedMeshFile) == meshGuid);
+		CHECK(assetMgr.getPathFromGuid(meshGuid) == movedMeshFile);
+
+		// Clean up
+		assetMgr.deleteAsset(renamedTexFile);
+		assetMgr.deleteAsset(movedMeshFile);
+		assetMgr.shutdown();
+		std::filesystem::remove_all(testDir);
+	}
+
+	TEST_CASE("Asset Pipeline - 50 Concurrent Async Asset Loads")
+	{
+		std::filesystem::path testDir = "Temp_ConcurrentAssets";
+		std::filesystem::create_directories(testDir);
+
+		auto& assetMgr = Core::AssetManager::Get();
+		assetMgr.init(testDir);
+
+		std::vector<Core::AssetGuid> guids;
+		guids.reserve(50);
+
+		// Generate 50 dummy asset files
+		for (int i = 0; i < 50; ++i)
+		{
+			std::filesystem::path path = testDir / ("asset_" + std::to_string(i) + ".bin");
+			{
+				std::ofstream f(path, std::ios::binary);
+				std::vector<char> dummyData(1024 * 8, static_cast<char>(i % 256));
+				f.write(dummyData.data(), dummyData.size());
+			}
+
+			assetMgr.registerAsset(path);
+			guids.push_back(assetMgr.getGuidFromPath(path));
+		}
+
+		REQUIRE(guids.size() == 50);
+
+		// Dispatch 50 async loading tasks concurrently
+		std::vector<std::future<bool>> futures;
+		futures.reserve(50);
+
+		for (int i = 0; i < 50; ++i)
+		{
+			futures.push_back(assetMgr.loadAssetAsync(guids[i]));
+		}
+
+		// Wait for all 50 concurrent loads to complete
+		for (int i = 0; i < 50; ++i)
+		{
+			bool success = futures[i].get();
+			CHECK(success == true);
+		}
+
+		// Verify all 50 assets are marked isLoaded
+		for (int i = 0; i < 50; ++i)
+		{
+			const auto* meta = assetMgr.getMetadata(guids[i]);
+			REQUIRE(meta != nullptr);
+			CHECK(meta->isLoaded == true);
+		}
+
+		// Clean up
+		assetMgr.shutdown();
+		std::filesystem::remove_all(testDir);
+	}
+
+	TEST_CASE("Editor - Prefab Serialization and Instantiation")
+	{
+		std::filesystem::path prefabPath = "Temp_Entity.prefab";
+
+		// 1. Author source entity hierarchy
+		Core::Scene authorScene;
+		auto root = authorScene.createEntity("PrefabRoot");
+		root.getTransform().position = Core::Vector3(1.0f, 2.0f, 3.0f);
+		auto& mesh = root.addComponent<Core::MeshRendererComponent>();
+		mesh.meshPath = "/engine/Content/cube.obj";
+
+		auto child = authorScene.createEntity("PrefabChild");
+		child.getTransform().position = Core::Vector3(0.0f, 5.0f, 0.0f);
+		auto& cam = child.addComponent<Core::CameraComponent>();
+		cam.fov = 80.0f;
+		child.setParent(root, false);
+
+		authorScene.updateTransforms();
+
+		// Save as Prefab
+		{
+			Core::SceneSerializer serializer(&authorScene);
+			std::vector<Core::Entity> subtree = { root, child };
+			std::string serialized = serializer.serializeEntities(subtree);
+
+			std::ofstream pf(prefabPath);
+			pf << serialized;
+		}
+
+		CHECK(std::filesystem::exists(prefabPath));
+
+		// 2. Instantiate Prefab in a new scene
+		Core::Scene targetScene;
+		Core::SceneSerializer targetSerializer(&targetScene);
+
+		std::string content;
+		{
+			std::ifstream pf(prefabPath);
+			content = std::string((std::istreambuf_iterator<char>(pf)), std::istreambuf_iterator<char>());
+		}
+
+		Core::AssetGuid prefabGuid(987654321);
+		auto instantiated = targetSerializer.deserializeEntities(content, true, Core::Vector3(10.0f, 0.0f, 0.0f));
+		REQUIRE(instantiated.size() == 2);
+
+		for (auto e : instantiated)
+		{
+			auto& pComp = e.addComponent<Core::PrefabInstanceComponent>();
+			pComp.prefabGuid = prefabGuid.value();
+			pComp.prefabPath = prefabPath.generic_string();
+		}
+
+		targetScene.updateTransforms();
+
+		// Verify instantiated entities have remapped UUIDs distinct from authorScene
+		auto instRoot = targetScene.findEntityByName("PrefabRoot");
+		auto instChild = targetScene.findEntityByName("PrefabChild");
+
+		CHECK(instRoot.isValid());
+		CHECK(instChild.isValid());
+		CHECK(instRoot.getUUID() != root.getUUID());
+		CHECK(instChild.getUUID() != child.getUUID());
+
+		// Verify components preserved
+		CHECK(instRoot.hasComponent<Core::MeshRendererComponent>());
+		CHECK(instRoot.getComponent<Core::MeshRendererComponent>().meshPath == "/engine/Content/cube.obj");
+		CHECK(instChild.hasComponent<Core::CameraComponent>());
+		CHECK(instChild.getComponent<Core::CameraComponent>().fov == doctest::Approx(80.0f));
+
+		// Verify hierarchy preserved
+		CHECK(instChild.getParent() == instRoot);
+
+		// Verify PrefabInstanceComponent
+		CHECK(instRoot.hasComponent<Core::PrefabInstanceComponent>());
+		CHECK(instRoot.getComponent<Core::PrefabInstanceComponent>().prefabGuid == prefabGuid.value());
+
+		// Clean up
+		std::filesystem::remove(prefabPath);
 	}
 }

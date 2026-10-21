@@ -3,6 +3,9 @@
 #include "Engine/Runtime/Application.h"
 #include "Engine/Core/Scene/SceneRendererBridge.h"
 #include "Engine/Core/Serialization/SceneSerializer.h"
+#include "Engine/Core/Assets/AssetManager.h"
+#include "Engine/Core/Scripting/ScriptRegistry.h"
+#include "Engine/Core/Scripting/ScriptableEntity.h"
 #include "Engine/Platform/Input.h"
 #include "Engine/Platform/KeyCodes.h"
 #include "Engine/Core/Log/Log.h"
@@ -12,6 +15,14 @@
 
 #include <imgui.h>
 #include <ImGuizmo.h>
+#include <fstream>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
 
 namespace Editor
 {
@@ -31,6 +42,8 @@ namespace Editor
 
 		m_hierarchyPanel.setContext(m_activeScene, &m_selectionContext, &m_commandHistory);
 		m_inspectorPanel.setHistory(&m_commandHistory);
+		m_contentBrowserPanel.setOpenSceneCallback([this](const std::filesystem::path& p) { openScene(p); });
+		Core::AssetManager::Get().init("Templates/Playground3D");
 
 		newScene();
 
@@ -369,6 +382,44 @@ namespace Editor
 			}
 		}
 
+		// Function key shortcuts for Play/Simulate/Pause/Step
+		if (!textInputActive)
+		{
+			if (Input::isKeyJustPressed(KeyCode::F5))
+			{
+				if (shiftHeld) onStop();
+				else onPlay();
+			}
+			if (Input::isKeyJustPressed(KeyCode::F6)) onPause();
+			if (Input::isKeyJustPressed(KeyCode::F7)) onSimulate();
+			if (Input::isKeyJustPressed(KeyCode::F10)) onStep();
+		}
+
+		// Runtime simulation tick
+		if ((m_editorMode == EditorMode::Play || m_editorMode == EditorMode::Simulate) && m_playState == PlayState::Playing)
+		{
+			float fixedDt = 1.0f / 60.0f;
+			Runtime::Application::Get().getPhysicsWorld().step(*m_activeScene, fixedDt);
+
+			if (m_editorMode == EditorMode::Play)
+			{
+				auto view = m_activeScene->view<Core::ScriptsComponent>();
+				for (auto handle : view)
+				{
+					auto& sc = view.get<Core::ScriptsComponent>(handle);
+					for (auto& s : sc.scripts)
+					{
+						if (s.isEnabled && s.isStarted && s.instance)
+						{
+							s.instance->onFixedUpdate(fixedDt);
+							s.instance->onUpdate(deltaTime);
+							s.instance->onLateUpdate(deltaTime);
+						}
+					}
+				}
+			}
+		}
+
 		// Autosave tick
 		m_autosaveTimer += deltaTime;
 		if (m_autosaveTimer >= 300.0f)
@@ -466,6 +517,7 @@ namespace Editor
 		ImGui::DockSpaceOverViewport(0, viewport, ImGuiDockNodeFlags_PassthruCentralNode);
 
 		drawMenuBar();
+		drawToolbar();
 		drawSceneViewport();
 
 		if (m_showGameViewport)
@@ -486,6 +538,11 @@ namespace Editor
 		if (m_showConsole)
 		{
 			m_consolePanel.onImGuiRender();
+		}
+
+		if (m_showContentBrowser)
+		{
+			m_contentBrowserPanel.onImGuiRender();
 		}
 
 		if (m_showStats)
@@ -628,6 +685,18 @@ namespace Editor
 				ImGui::EndMenu();
 			}
 
+			if (ImGui::BeginMenu("Play"))
+			{
+				if (ImGui::MenuItem("Play", "F5", m_editorMode == EditorMode::Play && m_playState == PlayState::Playing)) onPlay();
+				if (ImGui::MenuItem("Pause", "F6", m_playState == PlayState::Paused)) onPause();
+				if (ImGui::MenuItem("Step", "F10", false, m_playState == PlayState::Paused)) onStep();
+				if (ImGui::MenuItem("Simulate", "F7", m_editorMode == EditorMode::Simulate)) onSimulate();
+				if (ImGui::MenuItem("Stop", "Shift+F5", m_editorMode != EditorMode::Edit)) onStop();
+				ImGui::Separator();
+				if (ImGui::MenuItem("Play in Standalone...")) onPlayStandalone();
+				ImGui::EndMenu();
+			}
+
 			if (ImGui::BeginMenu("Window"))
 			{
 				ImGui::MenuItem("Scene Viewport", nullptr, nullptr, false);
@@ -636,6 +705,7 @@ namespace Editor
 				ImGui::MenuItem("Hierarchy", nullptr, &m_showHierarchy);
 				ImGui::MenuItem("Inspector", nullptr, &m_showInspector);
 				ImGui::MenuItem("Console", nullptr, &m_showConsole);
+				ImGui::MenuItem("Content Browser", nullptr, &m_showContentBrowser);
 				ImGui::MenuItem("Stats", nullptr, &m_showStats);
 				ImGui::EndMenu();
 			}
@@ -676,6 +746,63 @@ namespace Editor
 		}
 
 		drawGizmo();
+
+		// Drag & drop asset target
+		if (ImGui::BeginDragDropTarget())
+		{
+			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("DARKFIRE_ASSET_PATH"))
+			{
+				const char* pathStr = static_cast<const char*>(payload->Data);
+				std::filesystem::path assetPath = pathStr;
+				if (assetPath.extension() == ".scene")
+				{
+					openScene(assetPath);
+				}
+				else if (assetPath.extension() == ".obj" || assetPath.extension() == ".gltf")
+				{
+					if (m_activeScene)
+					{
+						auto ent = m_activeScene->createEntity(assetPath.stem().string());
+						auto& mesh = ent.addComponent<Core::MeshRendererComponent>();
+						mesh.meshPath = assetPath.generic_string();
+						mesh.materialPath = "/engine/Content/Default.mat";
+						m_commandHistory.execute<CreateEntityCommand>(m_activeScene.get(), ent);
+						m_selectionContext.select(ent, false);
+						m_isSceneDirty = true;
+						updateWindowTitle();
+					}
+				}
+				else if (assetPath.extension() == ".prefab")
+				{
+					if (m_activeScene)
+					{
+						std::ifstream pf(assetPath);
+						if (pf.is_open())
+						{
+							std::string content((std::istreambuf_iterator<char>(pf)), std::istreambuf_iterator<char>());
+							Core::SceneSerializer serializer(m_activeScene.get());
+							auto entities = serializer.deserializeEntities(content, true, Core::Vector3(0.0f, 0.0f, 0.0f));
+							if (!entities.empty())
+							{
+								auto trans = std::make_unique<TransactionCommand>("Instantiate Prefab");
+								m_selectionContext.clear();
+								for (auto e : entities)
+								{
+									auto& pComp = e.addComponent<Core::PrefabInstanceComponent>();
+									pComp.prefabPath = assetPath.generic_string();
+									trans->addCommand(std::make_unique<CreateEntityCommand>(m_activeScene.get(), e));
+									m_selectionContext.select(e, true);
+								}
+								m_commandHistory.execute(std::move(trans));
+								m_isSceneDirty = true;
+								updateWindowTitle();
+							}
+						}
+					}
+				}
+			}
+			ImGui::EndDragDropTarget();
+		}
 
 		// Handle entity picking on click
 		if (ImGui::IsMouseClicked(0) && m_viewportHovered && !m_editorCamera.isFlyModeActive())
@@ -946,6 +1073,256 @@ namespace Editor
 		}
 	}
 
+	void EditorLayer::drawToolbar()
+	{
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 2));
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(0, 0));
+		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+
+		ImGui::Begin("##Toolbar", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+		float size = ImGui::GetWindowHeight() - 4.0f;
+		float availX = ImGui::GetWindowContentRegionMax().x;
+		ImGui::SetCursorPosX((availX * 0.5f) - 180.0f);
+
+		bool isPlaying = (m_playState == PlayState::Playing || m_playState == PlayState::Paused);
+
+		// Play / Stop button
+		if (m_editorMode == EditorMode::Edit)
+		{
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.3f, 0.9f, 0.4f, 1.0f));
+			if (ImGui::Button("[ Play ]", ImVec2(70.0f, size)))
+			{
+				onPlay();
+			}
+			ImGui::PopStyleColor();
+		}
+		else
+		{
+			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 0.6f));
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
+			if (ImGui::Button("[ Stop ]", ImVec2(70.0f, size)))
+			{
+				onStop();
+			}
+			ImGui::PopStyleColor(2);
+		}
+
+		ImGui::SameLine();
+
+		// Pause button
+		if (isPlaying)
+		{
+			const char* pauseLabel = (m_playState == PlayState::Paused) ? "[ Resume ]" : "[ Pause ]";
+			if (ImGui::Button(pauseLabel, ImVec2(75.0f, size)))
+			{
+				onPause();
+			}
+			ImGui::SameLine();
+
+			// Step button
+			if (m_playState == PlayState::Paused)
+			{
+				if (ImGui::Button("[ Step ]", ImVec2(65.0f, size)))
+				{
+					onStep();
+				}
+				ImGui::SameLine();
+			}
+		}
+		else
+		{
+			// Simulate button
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.4f, 0.8f, 1.0f, 1.0f));
+			if (ImGui::Button("[ Simulate ]", ImVec2(80.0f, size)))
+			{
+				onSimulate();
+			}
+			ImGui::PopStyleColor();
+			ImGui::SameLine();
+		}
+
+		// Standalone button
+		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f, 0.7f, 0.2f, 1.0f));
+		if (ImGui::Button("[ Standalone ]", ImVec2(95.0f, size)))
+		{
+			onPlayStandalone();
+		}
+		ImGui::PopStyleColor();
+
+		ImGui::End();
+		ImGui::PopStyleColor();
+		ImGui::PopStyleVar(2);
+	}
+
+	void EditorLayer::onPlay()
+	{
+		if (m_playState == PlayState::Playing) return;
+
+		if (m_playState == PlayState::Paused)
+		{
+			m_playState = PlayState::Playing;
+			updateWindowTitle();
+			return;
+		}
+
+		// 1. Snapshot edit scene
+		m_editScene = m_activeScene;
+		m_activeScene = Core::Scene::copy(*m_editScene);
+
+		m_editorMode = EditorMode::Play;
+		m_playState = PlayState::Playing;
+
+		m_hierarchyPanel.setContext(m_activeScene, &m_selectionContext, &m_commandHistory);
+
+		// 2. Initialize physics & scripts
+		auto& physics = Runtime::Application::Get().getPhysicsWorld();
+		physics.init(Core::Vector3(0.0f, -9.81f, 0.0f), 1.0f / 60.0f);
+
+		// 3. Start scripts
+		auto view = m_activeScene->view<Core::ScriptsComponent>();
+		for (auto handle : view)
+		{
+			Core::Entity ent(handle, m_activeScene.get());
+			auto& sc = view.get<Core::ScriptsComponent>(handle);
+			for (auto& s : sc.scripts)
+			{
+				if (!s.instance)
+				{
+					s.instance = Core::ScriptRegistry::Get().instantiate(s.scriptName);
+					if (s.instance) s.instance->bind(ent, m_activeScene.get());
+				}
+				if (s.instance && !s.isStarted)
+				{
+					s.instance->onCreate();
+					if (s.isEnabled) s.instance->onStart();
+					s.isStarted = true;
+				}
+			}
+		}
+
+		updateWindowTitle();
+		Core::Log::Get().info("Editor", "Entered Play Mode.");
+	}
+
+	void EditorLayer::onPause()
+	{
+		if (m_playState == PlayState::Playing)
+		{
+			m_playState = PlayState::Paused;
+			Core::Log::Get().info("Editor", "Simulation Paused.");
+		}
+		else if (m_playState == PlayState::Paused)
+		{
+			m_playState = PlayState::Playing;
+			Core::Log::Get().info("Editor", "Simulation Resumed.");
+		}
+		updateWindowTitle();
+	}
+
+	void EditorLayer::onStep()
+	{
+		if (m_playState != PlayState::Paused)
+		{
+			m_playState = PlayState::Paused;
+		}
+
+		float dt = 1.0f / 60.0f;
+		// Step physics
+		Runtime::Application::Get().getPhysicsWorld().step(*m_activeScene, dt);
+
+		// Step scripts if Play mode
+		if (m_editorMode == EditorMode::Play)
+		{
+			auto view = m_activeScene->view<Core::ScriptsComponent>();
+			for (auto handle : view)
+			{
+				auto& sc = view.get<Core::ScriptsComponent>(handle);
+				for (auto& s : sc.scripts)
+				{
+					if (s.isEnabled && s.isStarted && s.instance)
+					{
+						s.instance->onFixedUpdate(dt);
+						s.instance->onUpdate(dt);
+						s.instance->onLateUpdate(dt);
+					}
+				}
+			}
+		}
+
+		m_activeScene->updateTransforms();
+	}
+
+	void EditorLayer::onSimulate()
+	{
+		if (m_editorMode == EditorMode::Simulate) return;
+
+		if (m_editorMode == EditorMode::Play)
+		{
+			onStop();
+		}
+
+		// Snapshot edit scene
+		m_editScene = m_activeScene;
+		m_activeScene = Core::Scene::copy(*m_editScene);
+
+		m_editorMode = EditorMode::Simulate;
+		m_playState = PlayState::Playing;
+
+		m_hierarchyPanel.setContext(m_activeScene, &m_selectionContext, &m_commandHistory);
+
+		auto& physics = Runtime::Application::Get().getPhysicsWorld();
+		physics.init(Core::Vector3(0.0f, -9.81f, 0.0f), 1.0f / 60.0f);
+
+		updateWindowTitle();
+		Core::Log::Get().info("Editor", "Entered Simulate Mode (Physics only).");
+	}
+
+	void EditorLayer::onStop()
+	{
+		if (m_editorMode == EditorMode::Edit && m_playState == PlayState::Stopped) return;
+
+		// 1. Destroy active scripts
+		if (m_editorMode == EditorMode::Play && m_activeScene)
+		{
+			auto view = m_activeScene->view<Core::ScriptsComponent>();
+			for (auto handle : view)
+			{
+				auto& sc = view.get<Core::ScriptsComponent>(handle);
+				for (auto& s : sc.scripts)
+				{
+					if (s.isStarted && s.instance)
+					{
+						s.instance->onDestroy();
+						s.isStarted = false;
+					}
+				}
+			}
+		}
+
+		// 2. Revert to pristine snapshot
+		if (m_editScene)
+		{
+			m_activeScene = m_editScene;
+			m_editScene.reset();
+		}
+
+		m_editorMode = EditorMode::Edit;
+		m_playState = PlayState::Stopped;
+
+		m_selectionContext.clear();
+		m_hierarchyPanel.setContext(m_activeScene, &m_selectionContext, &m_commandHistory);
+
+		updateWindowTitle();
+		Core::Log::Get().info("Editor", "Stopped Play/Simulate mode. Restored edit scene.");
+	}
+
+	void EditorLayer::onPlayStandalone()
+	{
+		std::string cmd = "bin\\Release-windows-x86_64\\Player\\Player.exe --project Templates\\Playground3D\\Project.dfproj";
+		WinExec(cmd.c_str(), SW_SHOW);
+	}
+
 	void EditorLayer::performAutosave()
 	{
 		if (!m_activeScene || !m_isSceneDirty)
@@ -974,7 +1351,24 @@ namespace Editor
 	void EditorLayer::updateWindowTitle()
 	{
 		std::string sceneName = m_currentScenePath.empty() ? "Untitled" : m_currentScenePath.filename().string();
-		std::string title = "DarkFire Editor - [" + sceneName + (m_isSceneDirty ? "*]" : "]");
+		std::string stateSuffix;
+		if (m_editorMode == EditorMode::Play)
+		{
+			stateSuffix = (m_playState == PlayState::Paused) ? "] [PLAYING - PAUSED]" : "] [PLAYING]";
+		}
+		else if (m_editorMode == EditorMode::Simulate)
+		{
+			stateSuffix = (m_playState == PlayState::Paused) ? "] [SIMULATING - PAUSED]" : "] [SIMULATING]";
+		}
+		else if (m_isSceneDirty)
+		{
+			stateSuffix = "*]";
+		}
+		else
+		{
+			stateSuffix = "]";
+		}
+		std::string title = "DarkFire Editor - [" + sceneName + stateSuffix;
 		Runtime::Application::Get().getWindow().setTitle(title);
 	}
 }

@@ -231,5 +231,11 @@ namespace Core
 			scripts.push_back(ScriptInstance{ name, std::move(inst), true, false });
 		}
 	};
+
+	struct DF_API PrefabInstanceComponent
+	{
+		uint64_t prefabGuid = 0;
+		std::string prefabPath;
+	};
 }
 

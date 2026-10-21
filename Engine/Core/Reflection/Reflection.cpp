@@ -534,7 +534,44 @@ namespace Core
 			registerComponent(std::move(desc));
 		}
 
-		// 10. RigidbodyRuntimeState (Runtime only)
+		// 10. PrefabInstanceComponent
+		{
+			ComponentDesc desc;
+			desc.name = "PrefabInstanceComponent";
+			desc.typeId = entt::type_hash<PrefabInstanceComponent>::value();
+			desc.isAuthored = true;
+			desc.fields = {
+				{ "prefabGuid", FieldType::String, {} },
+				{ "prefabPath", FieldType::String, {} }
+			};
+			desc.hasComponent = [](const Scene& scene, entt::entity e) {
+				return scene.getRegistry().all_of<PrefabInstanceComponent>(e);
+			};
+			desc.addDefaultComponent = [](Scene& scene, entt::entity e) {
+				scene.getRegistry().emplace_or_replace<PrefabInstanceComponent>(e);
+			};
+			desc.removeComponent = [](Scene& scene, entt::entity e) {
+				scene.getRegistry().remove<PrefabInstanceComponent>(e);
+			};
+			desc.copyComponent = [](const Scene& src, entt::entity s, Scene& dst, entt::entity d) {
+				dst.getRegistry().emplace_or_replace<PrefabInstanceComponent>(d, src.getRegistry().get<PrefabInstanceComponent>(s));
+			};
+			desc.serializeToJson = [](const Scene& scene, entt::entity e, void* jsonNode) {
+				auto& j = *static_cast<nlohmann::ordered_json*>(jsonNode);
+				const auto& comp = scene.getRegistry().get<PrefabInstanceComponent>(e);
+				j["prefabGuid"] = comp.prefabGuid;
+				j["prefabPath"] = comp.prefabPath;
+			};
+			desc.deserializeFromJson = [](Scene& scene, entt::entity e, const void* jsonNode) {
+				const auto& j = *static_cast<const nlohmann::ordered_json*>(jsonNode);
+				auto& comp = scene.getRegistry().get_or_emplace<PrefabInstanceComponent>(e);
+				if (j.contains("prefabGuid")) comp.prefabGuid = j["prefabGuid"].get<uint64_t>();
+				if (j.contains("prefabPath")) comp.prefabPath = j["prefabPath"].get<std::string>();
+			};
+			registerComponent(std::move(desc));
+		}
+
+		// 11. RigidbodyRuntimeState (Runtime only)
 		{
 			ComponentDesc desc;
 			desc.name = "RigidbodyRuntimeState";
@@ -552,7 +589,7 @@ namespace Core
 			registerComponent(std::move(desc));
 		}
 
-		// 11. ParticleRuntimeState (Runtime only)
+		// 12. ParticleRuntimeState (Runtime only)
 		{
 			ComponentDesc desc;
 			desc.name = "ParticleRuntimeState";

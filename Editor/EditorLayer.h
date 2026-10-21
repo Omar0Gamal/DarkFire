@@ -7,6 +7,7 @@
 #include "Editor/Panels/HierarchyPanel.h"
 #include "Editor/Panels/InspectorPanel.h"
 #include "Editor/Panels/ConsolePanel.h"
+#include "Editor/Panels/ContentBrowserPanel.h"
 #include "Editor/Commands/CommandHistory.h"
 #include "Editor/SelectionContext.h"
 #include <memory>
@@ -14,6 +15,20 @@
 
 namespace Editor
 {
+	enum class EditorMode
+	{
+		Edit = 0,
+		Play,
+		Simulate
+	};
+
+	enum class PlayState
+	{
+		Stopped = 0,
+		Playing,
+		Paused
+	};
+
 	class EditorLayer : public Runtime::Layer
 	{
 	public:
@@ -32,23 +47,39 @@ namespace Editor
 		void saveScene();
 		void saveSceneAs();
 
+		void onPlay();
+		void onPause();
+		void onStep();
+		void onSimulate();
+		void onStop();
+		void onPlayStandalone();
+
+		EditorMode getEditorMode() const noexcept { return m_editorMode; }
+		PlayState getPlayState() const noexcept { return m_playState; }
+
 	private:
 		void setupImGuiStyle();
 		void resizeViewport(uint32_t width, uint32_t height);
 		void resizeGameViewport(uint32_t width, uint32_t height);
 		void drawMenuBar();
+		void drawToolbar();
 		void drawSceneViewport();
 		void drawGameViewport();
 		void drawGizmo();
 		void onViewportClick();
 
 		std::shared_ptr<Core::Scene> m_activeScene;
+		std::shared_ptr<Core::Scene> m_editScene;
 		std::filesystem::path m_currentScenePath;
+
+		EditorMode m_editorMode = EditorMode::Edit;
+		PlayState m_playState = PlayState::Stopped;
 
 		EditorCamera m_editorCamera;
 		HierarchyPanel m_hierarchyPanel;
 		InspectorPanel m_inspectorPanel;
 		ConsolePanel m_consolePanel;
+		ContentBrowserPanel m_contentBrowserPanel;
 
 		Core::Renderer::RenderScene m_renderScene;
 		std::shared_ptr<Core::RHI::IGpuTexture> m_viewportTexture;
@@ -74,6 +105,7 @@ namespace Editor
 		bool m_showHierarchy = true;
 		bool m_showInspector = true;
 		bool m_showConsole = true;
+		bool m_showContentBrowser = true;
 		bool m_showStats = true;
 		bool m_showGameViewport = true;
 

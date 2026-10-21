@@ -3,6 +3,11 @@
 
 namespace Core
 {
+	bool Entity::isValid() const noexcept
+	{
+		return m_handle != entt::null && m_scene != nullptr && m_scene->getRegistry().valid(m_handle);
+	}
+
 	UUID Entity::getUUID() const
 	{
 		DF_ASSERT(isValid(), "Entity is invalid!");

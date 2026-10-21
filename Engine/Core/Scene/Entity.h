@@ -53,7 +53,7 @@ namespace Core
 
 		void destroy();
 
-		bool isValid() const noexcept { return m_handle != entt::null && m_scene != nullptr; }
+		bool isValid() const noexcept;
 		operator bool() const noexcept { return isValid(); }
 		operator entt::entity() const noexcept { return m_handle; }
 		entt::entity getHandle() const noexcept { return m_handle; }

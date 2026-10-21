@@ -188,4 +188,175 @@ namespace Core
 		std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 		return deserializeFromString(content);
 	}
+
+	static nlohmann::ordered_json SerializeSingleEntityNode(const Scene* scene, Entity entity)
+	{
+		nlohmann::ordered_json node;
+		auto handle = entity.getHandle();
+		const auto& idComp = entity.getComponent<IdentityComponent>();
+		node["uuid"] = idComp.id.value();
+		node["name"] = idComp.name;
+		node["tag"] = idComp.tag;
+
+		Entity parent = entity.getParent();
+		if (parent.isValid())
+		{
+			node["parent"] = parent.getUUID().value();
+		}
+		else
+		{
+			node["parent"] = 0;
+		}
+
+		nlohmann::ordered_json componentsNode = nlohmann::ordered_json::object();
+		const auto& registry = ComponentRegistry::Get();
+		for (const auto& desc : registry.getAll())
+		{
+			if (desc.isAuthored && desc.name != "IdentityComponent" && desc.hasComponent(*scene, handle))
+			{
+				nlohmann::ordered_json compNode;
+				desc.serializeToJson(*scene, handle, &compNode);
+				componentsNode[desc.name] = compNode;
+			}
+		}
+		node["components"] = componentsNode;
+		return node;
+	}
+
+	std::string SceneSerializer::serializeEntity(Entity entity) const
+	{
+		if (!entity.isValid()) return "";
+		nlohmann::ordered_json node = SerializeSingleEntityNode(m_scene, entity);
+		return node.dump(4);
+	}
+
+	std::string SceneSerializer::serializeEntities(std::span<const Entity> entities) const
+	{
+		nlohmann::ordered_json root;
+		root["version"] = 1;
+		nlohmann::ordered_json arr = nlohmann::ordered_json::array();
+		for (auto e : entities)
+		{
+			if (e.isValid())
+			{
+				arr.push_back(SerializeSingleEntityNode(m_scene, e));
+			}
+		}
+		root["entities"] = arr;
+		return root.dump(4);
+	}
+
+	std::vector<Entity> SceneSerializer::deserializeEntities(const std::string& jsonString, bool remapUuids, const Vector3& positionOffset)
+	{
+		std::vector<Entity> result;
+		nlohmann::ordered_json root;
+		try
+		{
+			root = nlohmann::ordered_json::parse(jsonString);
+		}
+		catch (...)
+		{
+			return result;
+		}
+
+		nlohmann::ordered_json entitiesArray;
+		if (root.is_object() && root.contains("entities") && root["entities"].is_array())
+		{
+			entitiesArray = root["entities"];
+		}
+		else if (root.is_object() && root.contains("uuid"))
+		{
+			entitiesArray = nlohmann::ordered_json::array({ root });
+		}
+		else
+		{
+			return result;
+		}
+
+		std::unordered_map<uint64_t, uint64_t> uuidMap;
+		if (remapUuids)
+		{
+			for (const auto& node : entitiesArray)
+			{
+				uint64_t oldUuid = node["uuid"].get<uint64_t>();
+				uuidMap[oldUuid] = UUID().value();
+			}
+		}
+
+		const auto& registry = ComponentRegistry::Get();
+		struct HierPair { Entity ent; uint64_t parentUuid; };
+		std::vector<HierPair> hierPairs;
+
+		for (const auto& node : entitiesArray)
+		{
+			uint64_t origUuid = node["uuid"].get<uint64_t>();
+			uint64_t actualUuid = remapUuids ? uuidMap[origUuid] : origUuid;
+			std::string name = node.value("name", "Entity");
+			std::string tag = node.value("tag", "Default");
+
+			Entity ent = m_scene->createEntityWithUUID(UUID(actualUuid), name);
+			ent.getComponent<IdentityComponent>().tag = tag;
+
+			uint64_t parentVal = node.value("parent", (uint64_t)0);
+			if (parentVal != 0)
+			{
+				if (remapUuids)
+				{
+					if (uuidMap.contains(parentVal))
+					{
+						hierPairs.push_back({ ent, uuidMap[parentVal] });
+					}
+				}
+				else
+				{
+					hierPairs.push_back({ ent, parentVal });
+				}
+			}
+
+			if (node.contains("components"))
+			{
+				const auto& compObj = node["components"];
+				for (auto it = compObj.begin(); it != compObj.end(); ++it)
+				{
+					const auto* desc = registry.findByName(it.key());
+					if (desc && desc->deserializeFromJson)
+					{
+						desc->deserializeFromJson(*m_scene, ent.getHandle(), &it.value());
+					}
+				}
+			}
+
+			if (remapUuids && (positionOffset.x != 0.0f || positionOffset.y != 0.0f || positionOffset.z != 0.0f))
+			{
+				if (ent.hasComponent<TransformComponent>())
+				{
+					ent.getTransform().position += positionOffset;
+				}
+			}
+
+			result.push_back(ent);
+		}
+
+		for (const auto& hp : hierPairs)
+		{
+			Entity parent = m_scene->findEntityByUUID(UUID(hp.parentUuid));
+			if (parent)
+			{
+				m_scene->reparent(hp.ent, parent, false);
+			}
+		}
+
+		m_scene->updateTransforms();
+		return result;
+	}
+
+	Entity SceneSerializer::deserializeEntity(const std::string& jsonString)
+	{
+		auto entities = deserializeEntities(jsonString, false);
+		if (!entities.empty())
+		{
+			return entities[0];
+		}
+		return Entity{};
+	}
 }

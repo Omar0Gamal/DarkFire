@@ -7,6 +7,8 @@
 #include "Engine/Platform/KeyCodes.h"
 #include "Engine/Core/Log/Log.h"
 #include "Engine/RHI/RHIDefines.h"
+#include "Editor/Clipboard.h"
+#include "Editor/Commands/EntityCommands.h"
 
 #include <imgui.h>
 #include <ImGuizmo.h>
@@ -27,6 +29,9 @@ namespace Editor
 	{
 		setupImGuiStyle();
 
+		m_hierarchyPanel.setContext(m_activeScene, &m_selectionContext, &m_commandHistory);
+		m_inspectorPanel.setHistory(&m_commandHistory);
+
 		newScene();
 
 		// Try loading default Playground scene if it exists
@@ -38,6 +43,7 @@ namespace Editor
 
 		resizeViewport(m_viewportWidth, m_viewportHeight);
 		resizeGameViewport(m_gameViewportWidth, m_gameViewportHeight);
+		updateWindowTitle();
 		Core::Log::Get().info("Editor", "EditorLayer attached and ready.");
 	}
 
@@ -156,8 +162,11 @@ namespace Editor
 	{
 		m_activeScene = std::make_shared<Core::Scene>();
 		m_currentScenePath.clear();
-		m_hierarchyPanel.setScene(m_activeScene);
+		m_commandHistory.clear();
+		m_selectionContext.clear();
+		m_hierarchyPanel.setContext(m_activeScene, &m_selectionContext, &m_commandHistory);
 		m_isSceneDirty = false;
+		updateWindowTitle();
 
 		// Default starter setup: Camera & Directional Light
 		auto cam = m_activeScene->createEntity("Main Camera");
@@ -191,8 +200,11 @@ namespace Editor
 		{
 			m_activeScene = std::move(newSc);
 			m_currentScenePath = path;
-			m_hierarchyPanel.setScene(m_activeScene);
+			m_commandHistory.clear();
+			m_selectionContext.clear();
+			m_hierarchyPanel.setContext(m_activeScene, &m_selectionContext, &m_commandHistory);
 			m_isSceneDirty = false;
+			updateWindowTitle();
 			Core::Log::Get().info("Editor", "Opened scene: {}", path.string());
 		}
 		else
@@ -213,6 +225,7 @@ namespace Editor
 			if (serializer.serializeToFile(m_currentScenePath))
 			{
 				m_isSceneDirty = false;
+				updateWindowTitle();
 				Core::Log::Get().info("Editor", "Saved scene to: {}", m_currentScenePath.string());
 			}
 			else
@@ -254,6 +267,66 @@ namespace Editor
 				if (shiftHeld) saveSceneAs();
 				else saveScene();
 			}
+			if (Input::isKeyJustPressed(KeyCode::Z))
+			{
+				if (shiftHeld)
+				{
+					if (m_commandHistory.redo()) { m_isSceneDirty = true; updateWindowTitle(); }
+				}
+				else
+				{
+					if (m_commandHistory.undo()) { m_isSceneDirty = true; updateWindowTitle(); }
+				}
+			}
+			if (Input::isKeyJustPressed(KeyCode::Y))
+			{
+				if (m_commandHistory.redo()) { m_isSceneDirty = true; updateWindowTitle(); }
+			}
+			if (Input::isKeyJustPressed(KeyCode::C))
+			{
+				Clipboard::Copy(m_selectionContext.getEntities(), m_activeScene.get());
+			}
+			if (Input::isKeyJustPressed(KeyCode::X))
+			{
+				Clipboard::Cut(m_selectionContext.getEntities(), m_activeScene.get(), m_commandHistory);
+				m_selectionContext.clear();
+				m_isSceneDirty = true;
+				updateWindowTitle();
+			}
+			if (Input::isKeyJustPressed(KeyCode::V))
+			{
+				auto pasted = Clipboard::Paste(m_activeScene.get(), m_commandHistory);
+				if (!pasted.empty())
+				{
+					m_selectionContext.clear();
+					for (auto e : pasted) m_selectionContext.select(e, true);
+					m_isSceneDirty = true;
+					updateWindowTitle();
+				}
+			}
+			if (Input::isKeyJustPressed(KeyCode::D))
+			{
+				auto dup = Clipboard::Duplicate(m_selectionContext.getEntities(), m_activeScene.get(), m_commandHistory);
+				if (!dup.empty())
+				{
+					m_selectionContext.clear();
+					for (auto e : dup) m_selectionContext.select(e, true);
+					m_isSceneDirty = true;
+					updateWindowTitle();
+				}
+			}
+			if (Input::isKeyJustPressed(KeyCode::A))
+			{
+				m_selectionContext.clear();
+				if (m_activeScene)
+				{
+					auto view = m_activeScene->view<Core::IdentityComponent>();
+					for (auto handle : view)
+					{
+						m_selectionContext.select(Core::Entity(handle, m_activeScene.get()), true);
+					}
+				}
+			}
 		}
 
 		// Gizmo mode shortcuts when viewport focused & not in fly mode & not typing
@@ -267,7 +340,7 @@ namespace Editor
 			// Focus shortcut 'F'
 			if (Input::isKeyJustPressed(KeyCode::F))
 			{
-				auto sel = m_hierarchyPanel.getSelectedEntity();
+				auto sel = m_selectionContext.getPrimary();
 				if (sel.isValid())
 				{
 					m_editorCamera.focusOn(sel.getTransform().position, 3.0f);
@@ -277,13 +350,31 @@ namespace Editor
 			// Delete shortcut
 			if (Input::isKeyJustPressed(KeyCode::Delete))
 			{
-				auto sel = m_hierarchyPanel.getSelectedEntity();
-				if (sel.isValid())
+				auto selected = m_selectionContext.getEntities();
+				if (!selected.empty())
 				{
-					m_hierarchyPanel.setSelectedEntity({});
-					sel.destroy();
+					auto trans = std::make_unique<TransactionCommand>("Delete Entities");
+					for (auto e : selected)
+					{
+						if (e.isValid())
+						{
+							trans->addCommand(std::make_unique<DeleteEntityCommand>(m_activeScene.get(), e));
+						}
+					}
+					m_selectionContext.clear();
+					m_commandHistory.execute(std::move(trans));
+					m_isSceneDirty = true;
+					updateWindowTitle();
 				}
 			}
+		}
+
+		// Autosave tick
+		m_autosaveTimer += deltaTime;
+		if (m_autosaveTimer >= 300.0f)
+		{
+			m_autosaveTimer = 0.0f;
+			performAutosave();
 		}
 
 		m_editorCamera.onUpdate(deltaTime, m_viewportHovered, m_viewportFocused);
@@ -389,7 +480,7 @@ namespace Editor
 
 		if (m_showInspector)
 		{
-			m_inspectorPanel.onImGuiRender(m_hierarchyPanel.getSelectedEntity());
+			m_inspectorPanel.onImGuiRender(m_selectionContext.getPrimary());
 		}
 
 		if (m_showConsole)
@@ -408,7 +499,12 @@ namespace Editor
 			if (m_activeScene)
 			{
 				ImGui::Text("Entities: %zu", m_activeScene->getEntityCount());
+				ImGui::Text("Selected: %zu", m_selectionContext.getCount());
 			}
+			ImGui::Text("Undo Memory: %.2f / %.2f MB",
+				static_cast<float>(m_commandHistory.getMemoryUsage()) / (1024.0f * 1024.0f),
+				static_cast<float>(m_commandHistory.getMaxMemory()) / (1024.0f * 1024.0f)
+			);
 			ImGui::End();
 		}
 	}
@@ -431,6 +527,95 @@ namespace Editor
 
 			if (ImGui::BeginMenu("Edit"))
 			{
+				bool canUndo = m_commandHistory.canUndo();
+				std::string undoLabel = canUndo ? ("Undo " + std::string(m_commandHistory.getUndoName())) : "Undo";
+				if (ImGui::MenuItem(undoLabel.c_str(), "Ctrl+Z", false, canUndo))
+				{
+					if (m_commandHistory.undo()) { m_isSceneDirty = true; updateWindowTitle(); }
+				}
+
+				bool canRedo = m_commandHistory.canRedo();
+				std::string redoLabel = canRedo ? ("Redo " + std::string(m_commandHistory.getRedoName())) : "Redo";
+				if (ImGui::MenuItem(redoLabel.c_str(), "Ctrl+Y", false, canRedo))
+				{
+					if (m_commandHistory.redo()) { m_isSceneDirty = true; updateWindowTitle(); }
+				}
+
+				ImGui::Separator();
+
+				bool hasSelection = !m_selectionContext.isEmpty();
+				if (ImGui::MenuItem("Cut", "Ctrl+X", false, hasSelection))
+				{
+					Clipboard::Cut(m_selectionContext.getEntities(), m_activeScene.get(), m_commandHistory);
+					m_selectionContext.clear();
+					m_isSceneDirty = true;
+					updateWindowTitle();
+				}
+
+				if (ImGui::MenuItem("Copy", "Ctrl+C", false, hasSelection))
+				{
+					Clipboard::Copy(m_selectionContext.getEntities(), m_activeScene.get());
+				}
+
+				bool hasClipboard = Clipboard::HasClipboardData();
+				if (ImGui::MenuItem("Paste", "Ctrl+V", false, hasClipboard))
+				{
+					auto pasted = Clipboard::Paste(m_activeScene.get(), m_commandHistory);
+					if (!pasted.empty())
+					{
+						m_selectionContext.clear();
+						for (auto e : pasted) m_selectionContext.select(e, true);
+						m_isSceneDirty = true;
+						updateWindowTitle();
+					}
+				}
+
+				if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, hasSelection))
+				{
+					auto dup = Clipboard::Duplicate(m_selectionContext.getEntities(), m_activeScene.get(), m_commandHistory);
+					if (!dup.empty())
+					{
+						m_selectionContext.clear();
+						for (auto e : dup) m_selectionContext.select(e, true);
+						m_isSceneDirty = true;
+						updateWindowTitle();
+					}
+				}
+
+				if (ImGui::MenuItem("Delete", "Delete", false, hasSelection))
+				{
+					auto selected = m_selectionContext.getEntities();
+					if (!selected.empty())
+					{
+						auto trans = std::make_unique<TransactionCommand>("Delete Entities");
+						for (auto e : selected)
+						{
+							if (e.isValid())
+							{
+								trans->addCommand(std::make_unique<DeleteEntityCommand>(m_activeScene.get(), e));
+							}
+						}
+						m_selectionContext.clear();
+						m_commandHistory.execute(std::move(trans));
+						m_isSceneDirty = true;
+						updateWindowTitle();
+					}
+				}
+
+				if (ImGui::MenuItem("Select All", "Ctrl+A"))
+				{
+					m_selectionContext.clear();
+					if (m_activeScene)
+					{
+						auto view = m_activeScene->view<Core::IdentityComponent>();
+						for (auto handle : view)
+						{
+							m_selectionContext.select(Core::Entity(handle, m_activeScene.get()), true);
+						}
+					}
+				}
+
+				ImGui::Separator();
 				if (ImGui::MenuItem("Translate", "W", m_gizmoType == 0)) m_gizmoType = 0;
 				if (ImGui::MenuItem("Rotate", "E", m_gizmoType == 1)) m_gizmoType = 1;
 				if (ImGui::MenuItem("Scale", "R", m_gizmoType == 2)) m_gizmoType = 2;
@@ -566,14 +751,16 @@ namespace Editor
 
 	void EditorLayer::drawGizmo()
 	{
-		auto selectedEntity = m_hierarchyPanel.getSelectedEntity();
+		auto selectedEntity = m_selectionContext.getPrimary();
 		if (!selectedEntity.isValid() || m_gizmoType == -1 || m_editorCamera.isFlyModeActive())
 		{
+			m_gizmoWasUsing = false;
 			return;
 		}
 
 		if (Platform::Input::isMouseButtonPressed(Platform::MouseCode::Right))
 		{
+			m_gizmoWasUsing = false;
 			return;
 		}
 
@@ -622,7 +809,13 @@ namespace Editor
 			m_snapEnabled ? snapValues : nullptr
 		);
 
-		if (ImGuizmo::IsUsing())
+		bool isUsing = ImGuizmo::IsUsing();
+		if (!m_gizmoWasUsing && isUsing)
+		{
+			m_gizmoInitialTransform = tc;
+		}
+
+		if (isUsing)
 		{
 			if (parent.isValid())
 			{
@@ -638,6 +831,15 @@ namespace Editor
 			tc.eulerDegrees = Core::Vector3(Core::Math::toDegrees(rads.x), Core::Math::toDegrees(rads.y), Core::Math::toDegrees(rads.z));
 			m_isSceneDirty = true;
 		}
+
+		if (m_gizmoWasUsing && !isUsing)
+		{
+			m_commandHistory.execute<ModifyTransformCommand>(m_activeScene.get(), selectedEntity.getUUID(), m_gizmoInitialTransform, tc, false);
+			m_isSceneDirty = true;
+			updateWindowTitle();
+		}
+
+		m_gizmoWasUsing = isUsing;
 	}
 
 	static bool RayIntersectsAABB(const Core::Vector3& origin, const Core::Vector3& dir, const Core::Vector3& boxMin, const Core::Vector3& boxMax, float& outDist)
@@ -680,6 +882,9 @@ namespace Editor
 			return;
 		}
 
+		bool ctrlHeld = Platform::Input::isKeyPressed(Platform::KeyCode::LeftControl) ||
+		                Platform::Input::isKeyPressed(Platform::KeyCode::RightControl);
+
 		// 1. Raycast fallback through Physics
 		auto ray = Core::Renderer::SceneRenderer::unprojectRayReversedZ(
 			mouseX, mouseY, viewportWidth, viewportHeight, m_editorCamera.getInverseViewProjectionMatrix()
@@ -688,7 +893,7 @@ namespace Editor
 		Physics::RaycastHit hit;
 		if (Runtime::Application::Get().getPhysicsWorld().raycast(*m_activeScene, ray.position, ray.direction, 1000.0f, hit))
 		{
-			m_hierarchyPanel.setSelectedEntity(hit.entity);
+			m_selectionContext.select(hit.entity, ctrlHeld);
 			return;
 		}
 
@@ -715,7 +920,7 @@ namespace Editor
 
 		if (closestEntity != entt::null)
 		{
-			m_hierarchyPanel.setSelectedEntity(Core::Entity(closestEntity, m_activeScene.get()));
+			m_selectionContext.select(Core::Entity(closestEntity, m_activeScene.get()), ctrlHeld);
 			return;
 		}
 
@@ -729,12 +934,47 @@ namespace Editor
 			entt::entity entHandle = static_cast<entt::entity>(pickedId);
 			if (m_activeScene->getRegistry().valid(entHandle))
 			{
-				m_hierarchyPanel.setSelectedEntity(Core::Entity(entHandle, m_activeScene.get()));
+				m_selectionContext.select(Core::Entity(entHandle, m_activeScene.get()), ctrlHeld);
 				return;
 			}
 		}
 
-		// Clicked on empty background: clear selection
-		m_hierarchyPanel.setSelectedEntity({});
+		// Clicked on empty background: clear selection if not holding ctrl
+		if (!ctrlHeld)
+		{
+			m_selectionContext.clear();
+		}
+	}
+
+	void EditorLayer::performAutosave()
+	{
+		if (!m_activeScene || !m_isSceneDirty)
+		{
+			return;
+		}
+
+		std::filesystem::path autosavePath;
+		if (!m_currentScenePath.empty())
+		{
+			autosavePath = m_currentScenePath;
+			autosavePath.replace_extension(".autosave.scene");
+		}
+		else
+		{
+			autosavePath = "Untitled.autosave.scene";
+		}
+
+		Core::SceneSerializer serializer(m_activeScene.get());
+		if (serializer.serializeToFile(autosavePath))
+		{
+			Core::Log::Get().info("Editor", "Autosaved scene to: {}", autosavePath.string());
+		}
+	}
+
+	void EditorLayer::updateWindowTitle()
+	{
+		std::string sceneName = m_currentScenePath.empty() ? "Untitled" : m_currentScenePath.filename().string();
+		std::string title = "DarkFire Editor - [" + sceneName + (m_isSceneDirty ? "*]" : "]");
+		Runtime::Application::Get().getWindow().setTitle(title);
 	}
 }

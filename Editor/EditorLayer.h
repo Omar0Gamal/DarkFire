@@ -7,6 +7,8 @@
 #include "Editor/Panels/HierarchyPanel.h"
 #include "Editor/Panels/InspectorPanel.h"
 #include "Editor/Panels/ConsolePanel.h"
+#include "Editor/Commands/CommandHistory.h"
+#include "Editor/SelectionContext.h"
 #include <memory>
 #include <filesystem>
 
@@ -76,5 +78,15 @@ namespace Editor
 		bool m_showGameViewport = true;
 
 		bool m_isSceneDirty = false;
+
+		CommandHistory m_commandHistory;
+		SelectionContext m_selectionContext;
+
+		Core::TransformComponent m_gizmoInitialTransform{};
+		bool m_gizmoWasUsing = false;
+
+		float m_autosaveTimer = 0.0f;
+		void performAutosave();
+		void updateWindowTitle();
 	};
 }

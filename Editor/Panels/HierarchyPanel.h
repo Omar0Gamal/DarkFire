@@ -3,6 +3,8 @@
 #include "Engine/Core/Defines.h"
 #include "Engine/Core/Scene/Scene.h"
 #include "Engine/Core/Scene/Entity.h"
+#include "Editor/SelectionContext.h"
+#include "Editor/Commands/CommandHistory.h"
 #include <memory>
 #include <string>
 
@@ -12,13 +14,25 @@ namespace Editor
 	{
 	public:
 		HierarchyPanel() = default;
-		explicit HierarchyPanel(std::shared_ptr<Core::Scene> scene);
+		HierarchyPanel(std::shared_ptr<Core::Scene> scene, SelectionContext* selection, CommandHistory* history);
 
+		void setContext(std::shared_ptr<Core::Scene> scene, SelectionContext* selection, CommandHistory* history);
 		void setScene(std::shared_ptr<Core::Scene> scene);
+
 		void onImGuiRender();
 
-		Core::Entity getSelectedEntity() const noexcept { return m_selectedEntity; }
-		void setSelectedEntity(Core::Entity entity) noexcept { m_selectedEntity = entity; }
+		Core::Entity getSelectedEntity() const noexcept
+		{
+			return m_selection ? m_selection->getPrimary() : Core::Entity{};
+		}
+
+		void setSelectedEntity(Core::Entity entity) noexcept
+		{
+			if (m_selection)
+			{
+				m_selection->select(entity, false);
+			}
+		}
 
 	private:
 		void drawEntityNode(Core::Entity entity);
@@ -26,7 +40,8 @@ namespace Editor
 		void drawPanelContextMenu();
 
 		std::shared_ptr<Core::Scene> m_scene;
-		Core::Entity m_selectedEntity{};
+		SelectionContext* m_selection = nullptr;
+		CommandHistory* m_history = nullptr;
 		char m_searchFilter[128]{};
 	};
 }

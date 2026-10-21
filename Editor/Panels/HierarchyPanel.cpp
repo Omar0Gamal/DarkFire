@@ -1,4 +1,6 @@
 #include "Editor/Panels/HierarchyPanel.h"
+#include "Editor/Clipboard.h"
+#include "Editor/Commands/EntityCommands.h"
 #include "Engine/Core/Scene/Components.h"
 #include <imgui.h>
 #include <cstring>
@@ -6,15 +8,27 @@
 
 namespace Editor
 {
-	HierarchyPanel::HierarchyPanel(std::shared_ptr<Core::Scene> scene)
+	HierarchyPanel::HierarchyPanel(std::shared_ptr<Core::Scene> scene, SelectionContext* selection, CommandHistory* history)
 		: m_scene(std::move(scene))
+		, m_selection(selection)
+		, m_history(history)
 	{
+	}
+
+	void HierarchyPanel::setContext(std::shared_ptr<Core::Scene> scene, SelectionContext* selection, CommandHistory* history)
+	{
+		m_scene = std::move(scene);
+		m_selection = selection;
+		m_history = history;
 	}
 
 	void HierarchyPanel::setScene(std::shared_ptr<Core::Scene> scene)
 	{
 		m_scene = std::move(scene);
-		m_selectedEntity = {};
+		if (m_selection)
+		{
+			m_selection->clear();
+		}
 	}
 
 	void HierarchyPanel::onImGuiRender()
@@ -26,6 +40,11 @@ namespace Editor
 			ImGui::TextDisabled("No active scene loaded.");
 			ImGui::End();
 			return;
+		}
+
+		if (m_selection)
+		{
+			m_selection->removeInvalidEntities();
 		}
 
 		// Search Filter
@@ -54,7 +73,10 @@ namespace Editor
 		// Click on empty space clears selection
 		if (ImGui::IsMouseDown(0) && ImGui::IsWindowHovered())
 		{
-			m_selectedEntity = {};
+			if (m_selection && !ImGui::GetIO().KeyCtrl)
+			{
+				m_selection->clear();
+			}
 		}
 
 		ImGui::End();
@@ -85,7 +107,8 @@ namespace Editor
 		auto children = entity.getChildren();
 		bool hasChildren = !children.empty();
 
-		ImGuiTreeNodeFlags flags = (m_selectedEntity == entity ? ImGuiTreeNodeFlags_Selected : 0);
+		bool isSelected = m_selection && m_selection->isSelected(entity);
+		ImGuiTreeNodeFlags flags = (isSelected ? ImGuiTreeNodeFlags_Selected : 0);
 		flags |= ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
 		if (!hasChildren)
 		{
@@ -96,7 +119,11 @@ namespace Editor
 
 		if (ImGui::IsItemClicked())
 		{
-			m_selectedEntity = entity;
+			bool ctrlHeld = ImGui::GetIO().KeyCtrl;
+			if (m_selection)
+			{
+				m_selection->select(entity, ctrlHeld);
+			}
 		}
 
 		// Context Menu
@@ -124,7 +151,15 @@ namespace Editor
 				Core::Entity droppedEntity(droppedHandle, m_scene.get());
 				if (droppedEntity.isValid() && droppedEntity != entity)
 				{
-					droppedEntity.setParent(entity);
+					if (m_history)
+					{
+						Core::UUID oldParent = droppedEntity.getParent().isValid() ? droppedEntity.getParent().getUUID() : Core::UUID(0);
+						m_history->execute(std::make_unique<ReparentCommand>(m_scene.get(), droppedEntity.getUUID(), oldParent, entity.getUUID()));
+					}
+					else
+					{
+						droppedEntity.setParent(entity);
+					}
 				}
 			}
 			ImGui::EndDragDropTarget();
@@ -147,24 +182,61 @@ namespace Editor
 		{
 			auto child = m_scene->createEntity("Child");
 			child.setParent(entity);
-			m_selectedEntity = child;
+			if (m_history)
+			{
+				m_history->execute(std::make_unique<CreateEntityCommand>(m_scene.get(), child));
+			}
+			if (m_selection)
+			{
+				m_selection->select(child, false);
+			}
 		}
 
-		if (ImGui::MenuItem("Delete Entity"))
+		if (ImGui::MenuItem("Duplicate", "Ctrl+D"))
 		{
-			if (m_selectedEntity == entity)
+			if (m_history && m_selection)
 			{
-				m_selectedEntity = {};
+				auto duplicated = Clipboard::Duplicate({ entity }, m_scene.get(), *m_history);
+				if (!duplicated.empty())
+				{
+					m_selection->select(duplicated[0], false);
+				}
 			}
-			entity.destroy();
+		}
+
+		if (ImGui::MenuItem("Delete Entity", "Delete"))
+		{
+			if (m_selection)
+			{
+				m_selection->deselect(entity);
+			}
+			if (m_history)
+			{
+				m_history->execute(std::make_unique<DeleteEntityCommand>(m_scene.get(), entity));
+			}
+			else
+			{
+				entity.destroy();
+			}
 		}
 	}
 
 	void HierarchyPanel::drawPanelContextMenu()
 	{
+		auto registerNewEntity = [&](Core::Entity ent) {
+			if (m_history)
+			{
+				m_history->execute(std::make_unique<CreateEntityCommand>(m_scene.get(), ent));
+			}
+			if (m_selection)
+			{
+				m_selection->select(ent, false);
+			}
+		};
+
 		if (ImGui::MenuItem("Create Empty Entity"))
 		{
-			m_selectedEntity = m_scene->createEntity("Empty Entity");
+			registerNewEntity(m_scene->createEntity("Empty Entity"));
 		}
 
 		ImGui::Separator();
@@ -175,7 +247,7 @@ namespace Editor
 			ent.getComponent<Core::TransformComponent>().position = Core::Vector3(0.0f, 2.0f, -5.0f);
 			auto& cam = ent.addComponent<Core::CameraComponent>();
 			cam.isPrimary = true;
-			m_selectedEntity = ent;
+			registerNewEntity(ent);
 		}
 
 		if (ImGui::BeginMenu("Light"))
@@ -189,7 +261,7 @@ namespace Editor
 				l.type = Core::LightType::Directional;
 				l.color = Core::Color(1.0f, 0.95f, 0.8f, 1.0f);
 				l.intensity = 1.0f;
-				m_selectedEntity = ent;
+				registerNewEntity(ent);
 			}
 			if (ImGui::MenuItem("Point Light"))
 			{
@@ -200,7 +272,7 @@ namespace Editor
 				l.color = Core::Color(1.0f, 1.0f, 1.0f, 1.0f);
 				l.intensity = 2.0f;
 				l.range = 10.0f;
-				m_selectedEntity = ent;
+				registerNewEntity(ent);
 			}
 			ImGui::EndMenu();
 		}
@@ -217,7 +289,7 @@ namespace Editor
 				auto& col = ent.addComponent<Core::ColliderComponent>();
 				col.shape = Core::ColliderShape::Box;
 				col.size = Core::Vector3(1.0f, 1.0f, 1.0f);
-				m_selectedEntity = ent;
+				registerNewEntity(ent);
 			}
 
 			if (ImGui::MenuItem("Sphere"))
@@ -230,7 +302,7 @@ namespace Editor
 				auto& col = ent.addComponent<Core::ColliderComponent>();
 				col.shape = Core::ColliderShape::Sphere;
 				col.radius = 0.5f;
-				m_selectedEntity = ent;
+				registerNewEntity(ent);
 			}
 
 			if (ImGui::MenuItem("Plane"))
@@ -244,7 +316,7 @@ namespace Editor
 				auto& col = ent.addComponent<Core::ColliderComponent>();
 				col.shape = Core::ColliderShape::Box;
 				col.size = Core::Vector3(10.0f, 0.1f, 10.0f);
-				m_selectedEntity = ent;
+				registerNewEntity(ent);
 			}
 			ImGui::EndMenu();
 		}

@@ -1,4 +1,5 @@
 #include "Editor/Panels/InspectorPanel.h"
+#include "Editor/Commands/EntityCommands.h"
 #include "Engine/Core/Scene/Components.h"
 #include "Engine/Core/Scripting/ScriptRegistry.h"
 #include <imgui.h>
@@ -6,8 +7,16 @@
 
 namespace Editor
 {
-	static void DrawVec3Control(const char* label, Core::Vector3& values, float resetValue = 0.0f, float columnWidth = 100.0f)
+	static bool DrawVec3Control(
+		const char* label,
+		Core::Vector3& values,
+		float resetValue = 0.0f,
+		float columnWidth = 100.0f,
+		bool* outActivated = nullptr,
+		bool* outDeactivated = nullptr
+	)
 	{
+		bool modified = false;
 		ImGui::PushID(label);
 
 		ImGui::Columns(2);
@@ -25,31 +34,54 @@ namespace Editor
 		ImVec2 buttonSize = { lineHeight + 3.0f, lineHeight };
 
 		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{ 0.8f, 0.1f, 0.15f, 1.0f });
-		if (ImGui::Button("X", buttonSize)) values.x = resetValue;
+		if (ImGui::Button("X", buttonSize))
+		{
+			values.x = resetValue;
+			modified = true;
+			if (outDeactivated) *outDeactivated = true;
+		}
 		ImGui::PopStyleColor();
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(itemWidth);
-		ImGui::DragFloat("##X", &values.x, 0.1f, 0.0f, 0.0f, "%.2f");
+		if (ImGui::DragFloat("##X", &values.x, 0.1f, 0.0f, 0.0f, "%.2f")) modified = true;
+		if (ImGui::IsItemActivated() && outActivated) *outActivated = true;
+		if (ImGui::IsItemDeactivatedAfterEdit() && outDeactivated) *outDeactivated = true;
 		ImGui::SameLine();
 
 		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{ 0.2f, 0.7f, 0.2f, 1.0f });
-		if (ImGui::Button("Y", buttonSize)) values.y = resetValue;
+		if (ImGui::Button("Y", buttonSize))
+		{
+			values.y = resetValue;
+			modified = true;
+			if (outDeactivated) *outDeactivated = true;
+		}
 		ImGui::PopStyleColor();
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(itemWidth);
-		ImGui::DragFloat("##Y", &values.y, 0.1f, 0.0f, 0.0f, "%.2f");
+		if (ImGui::DragFloat("##Y", &values.y, 0.1f, 0.0f, 0.0f, "%.2f")) modified = true;
+		if (ImGui::IsItemActivated() && outActivated) *outActivated = true;
+		if (ImGui::IsItemDeactivatedAfterEdit() && outDeactivated) *outDeactivated = true;
 		ImGui::SameLine();
 
 		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{ 0.1f, 0.25f, 0.8f, 1.0f });
-		if (ImGui::Button("Z", buttonSize)) values.z = resetValue;
+		if (ImGui::Button("Z", buttonSize))
+		{
+			values.z = resetValue;
+			modified = true;
+			if (outDeactivated) *outDeactivated = true;
+		}
 		ImGui::PopStyleColor();
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(itemWidth);
-		ImGui::DragFloat("##Z", &values.z, 0.1f, 0.0f, 0.0f, "%.2f");
+		if (ImGui::DragFloat("##Z", &values.z, 0.1f, 0.0f, 0.0f, "%.2f")) modified = true;
+		if (ImGui::IsItemActivated() && outActivated) *outActivated = true;
+		if (ImGui::IsItemDeactivatedAfterEdit() && outDeactivated) *outDeactivated = true;
 
 		ImGui::PopStyleVar();
 		ImGui::Columns(1);
 		ImGui::PopID();
+
+		return modified;
 	}
 
 	void InspectorPanel::onImGuiRender(Core::Entity selectedEntity)
@@ -103,16 +135,40 @@ namespace Editor
 			if (ImGui::TreeNodeEx((void*)typeid(Core::TransformComponent).hash_code(), treeNodeFlags, "Transform"))
 			{
 				auto& tc = entity.getComponent<Core::TransformComponent>();
-				DrawVec3Control("Position", tc.position);
+				bool activated = false;
+				bool deactivated = false;
+
+				DrawVec3Control("Position", tc.position, 0.0f, 100.0f, &activated, &deactivated);
 
 				Core::Vector3 euler = tc.eulerDegrees;
-				DrawVec3Control("Rotation", euler);
-				if (euler != tc.eulerDegrees)
+				if (DrawVec3Control("Rotation", euler, 0.0f, 100.0f, &activated, &deactivated))
 				{
 					tc.setEulerDegrees(euler);
 				}
 
-				DrawVec3Control("Scale", tc.scale, 1.0f);
+				DrawVec3Control("Scale", tc.scale, 1.0f, 100.0f, &activated, &deactivated);
+
+				if (activated && !m_isDraggingTransform)
+				{
+					m_dragInitialTransform = tc;
+					m_isDraggingTransform = true;
+				}
+
+				if (deactivated)
+				{
+					if (m_history)
+					{
+						m_history->execute(std::make_unique<ModifyTransformCommand>(
+							entity.getScene(),
+							entity.getUUID(),
+							m_dragInitialTransform,
+							tc,
+							false
+						));
+					}
+					m_isDraggingTransform = false;
+				}
+
 				ImGui::TreePop();
 			}
 		}

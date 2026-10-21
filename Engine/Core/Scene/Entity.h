@@ -45,6 +45,7 @@ namespace Core
 
 		TransformComponent& getTransform();
 		const TransformComponent& getTransform() const;
+		Matrix getWorldMatrix() const;
 
 		Entity getParent() const;
 		std::vector<Entity> getChildren() const;

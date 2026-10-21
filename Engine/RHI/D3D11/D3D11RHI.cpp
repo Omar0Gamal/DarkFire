@@ -586,11 +586,25 @@ namespace Core::RHI
 
 	void D3D11DeviceContext::updateSubresource(const std::shared_ptr<IGpuBuffer>& buffer, const void* data, size_t size)
 	{
-		(void)size;
 		if (buffer && data)
 		{
 			auto* d3dBuf = static_cast<D3D11Buffer*>(buffer.get())->getD3D11Buffer();
-			m_context->UpdateSubresource(d3dBuf, 0, nullptr, data, 0, 0);
+			const auto& desc = buffer->getDesc();
+			if (size > 0 && size < desc.size)
+			{
+				D3D11_BOX box{};
+				box.left = 0;
+				box.right = static_cast<UINT>(size);
+				box.top = 0;
+				box.bottom = 1;
+				box.front = 0;
+				box.back = 1;
+				m_context->UpdateSubresource(d3dBuf, 0, &box, data, 0, 0);
+			}
+			else
+			{
+				m_context->UpdateSubresource(d3dBuf, 0, nullptr, data, 0, 0);
+			}
 		}
 	}
 
@@ -759,6 +773,10 @@ namespace Core::RHI
 		bDesc.BindFlags = ToDxgiBindFlags(desc.bindFlags);
 		bDesc.CPUAccessFlags = (desc.usage == BufferUsage::Dynamic) ? D3D11_CPU_ACCESS_WRITE : 0;
 		bDesc.StructureByteStride = static_cast<UINT>(desc.structureByteStride);
+		if (desc.structureByteStride > 0)
+		{
+			bDesc.MiscFlags |= D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+		}
 
 		D3D11_SUBRESOURCE_DATA subData{};
 		subData.pSysMem = initialData;

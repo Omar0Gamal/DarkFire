@@ -26,5 +26,7 @@ namespace Core
 		void* (*allocFunc)(size_t sz, void* user_data) = nullptr;
 		void (*freeFunc)(void* ptr, void* user_data) = nullptr;
 		void* userData = nullptr;
+
+		static EditorContext& Get();
 	};
 }

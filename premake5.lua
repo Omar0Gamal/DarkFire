@@ -252,7 +252,8 @@ workspace "DarkFire"
 			defines
 			{
 				"ENTT_API_IMPORT",
-				"DF_EDITOR"
+				"DF_EDITOR",
+				"IMGUI_API=__declspec(dllimport)"
 			}
 
 			filter "configurations:Debug"

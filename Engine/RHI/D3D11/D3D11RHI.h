@@ -287,6 +287,9 @@ namespace Core::RHI
 
 		Result<std::unique_ptr<ISwapChain>, std::string> createSwapChain(void* windowHandle, uint32_t width, uint32_t height) override;
 
+		void* getNativeDevice() const override { return m_device.Get(); }
+		void* getNativeContext() const override { return m_immediateContext ? m_immediateContext->getD3D11Context() : nullptr; }
+
 		ID3D11Device* getD3D11Device() const noexcept { return m_device.Get(); }
 		ID3D11Device1* getD3D11Device1() const noexcept { return m_device1.Get(); }
 

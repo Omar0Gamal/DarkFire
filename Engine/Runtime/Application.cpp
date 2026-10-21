@@ -3,6 +3,13 @@
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Engine/Core/Log/Log.h"
 
+#if defined(DF_EDITOR)
+#include <imgui.h>
+#include <imgui_impl_win32.h>
+#include <imgui_impl_dx11.h>
+#include <ImGuizmo.h>
+#endif
+
 namespace Runtime
 {
 	Application* Application::s_instance = nullptr;
@@ -16,6 +23,12 @@ namespace Runtime
 	Application::~Application()
 	{
 		onShutdown();
+#if defined(DF_EDITOR)
+		if (m_imguiInitialized)
+		{
+			shutdownImGui();
+		}
+#endif
 		m_layerStack.clear();
 		s_instance = nullptr;
 	}
@@ -85,6 +98,13 @@ namespace Runtime
 		m_physicsWorld = std::make_unique<Physics::PhysicsWorld>();
 		m_physicsWorld->init(m_config.gravity, m_config.fixedTimeStep);
 		m_physicsWorld->setCollisionMatrix(m_config.collisionMatrix);
+
+#if defined(DF_EDITOR)
+		if (m_config.enableImGui)
+		{
+			initImGui();
+		}
+#endif
 
 		onInit();
 		Core::Log::Get().info("Runtime", "Application initialized successfully.");
@@ -179,11 +199,25 @@ namespace Runtime
 				layer->onUpdate(frameTime);
 			}
 
+#if defined(DF_EDITOR)
+			if (m_imguiInitialized)
+			{
+				beginImGuiFrame();
+			}
+#endif
+
 			// ImGui Rendering (if any)
 			for (auto& layer : m_layerStack)
 			{
 				layer->onImGuiRender();
 			}
+
+#if defined(DF_EDITOR)
+			if (m_imguiInitialized)
+			{
+				endImGuiFrame();
+			}
+#endif
 
 			// Present to display
 			if (m_swapChain)
@@ -196,4 +230,90 @@ namespace Runtime
 
 		Core::Log::Get().info("Runtime", "Application loop terminated.");
 	}
+
+#if defined(DF_EDITOR)
+	void Application::initImGui()
+	{
+		if (!m_window || !m_device)
+		{
+			return;
+		}
+
+		IMGUI_CHECKVERSION();
+		ImGui::CreateContext();
+		ImGuiIO& io = ImGui::GetIO();
+		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+		io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+		ImGui_ImplWin32_Init(m_window->getNativeHandle());
+
+		void* nativeDev = m_device->getNativeDevice();
+		void* nativeCtx = m_device->getNativeContext();
+		if (nativeDev && nativeCtx)
+		{
+			ImGui_ImplDX11_Init(
+				reinterpret_cast<ID3D11Device*>(nativeDev),
+				reinterpret_cast<ID3D11DeviceContext*>(nativeCtx)
+			);
+			m_imguiInitialized = true;
+		}
+
+		ImGuiMemAllocFunc allocFunc = nullptr;
+		ImGuiMemFreeFunc freeFunc = nullptr;
+		void* userData = nullptr;
+		ImGui::GetAllocatorFunctions(&allocFunc, &freeFunc, &userData);
+
+		auto& edCtx = Core::EditorContext::Get();
+		edCtx.imGuiContext = ImGui::GetCurrentContext();
+		edCtx.allocFunc = allocFunc;
+		edCtx.freeFunc = freeFunc;
+		edCtx.userData = userData;
+
+		Core::Log::Get().info("Runtime", "ImGui & ImGuizmo initialized for Application.");
+	}
+
+	void Application::shutdownImGui()
+	{
+		if (m_imguiInitialized)
+		{
+			ImGui_ImplDX11_Shutdown();
+			ImGui_ImplWin32_Shutdown();
+			ImGui::DestroyContext();
+			m_imguiInitialized = false;
+			Core::Log::Get().info("Runtime", "ImGui shut down.");
+		}
+	}
+
+	void Application::beginImGuiFrame()
+	{
+		ImGui_ImplDX11_NewFrame();
+		ImGui_ImplWin32_NewFrame();
+		ImGui::NewFrame();
+		ImGuizmo::BeginFrame();
+	}
+
+	void Application::endImGuiFrame()
+	{
+		if (m_swapChain && m_device)
+		{
+			auto backBuffer = m_swapChain->getBackBufferTexture();
+			if (backBuffer)
+			{
+				std::shared_ptr<Core::RHI::IGpuTexture> rtvs[] = { backBuffer };
+				m_device->getImmediate()->setRenderTargets(rtvs, nullptr);
+				m_device->getImmediate()->clearRenderTarget(backBuffer, Core::Color(0.10f, 0.10f, 0.12f, 1.0f));
+			}
+		}
+
+		ImGui::Render();
+		ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+
+		ImGuiIO& io = ImGui::GetIO();
+		if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+		{
+			ImGui::UpdatePlatformWindows();
+			ImGui::RenderPlatformWindowsDefault();
+		}
+	}
+#endif
 }

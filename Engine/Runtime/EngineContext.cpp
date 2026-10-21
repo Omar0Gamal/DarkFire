@@ -18,4 +18,10 @@ namespace Core
 		};
 		return s_context;
 	}
+
+	EditorContext& EditorContext::Get()
+	{
+		static EditorContext s_editorContext;
+		return s_editorContext;
+	}
 }

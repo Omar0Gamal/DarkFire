@@ -106,6 +106,9 @@ namespace Core::RHI
 		virtual std::string_view getBackendName() const = 0;
 		virtual std::shared_ptr<IDeviceContext> getImmediate() = 0;
 
+		virtual void* getNativeDevice() const { return nullptr; }
+		virtual void* getNativeContext() const { return nullptr; }
+
 		virtual Result<std::shared_ptr<IGpuBuffer>, std::string> createBuffer(const GpuBufferDesc& desc, const void* initialData = nullptr) = 0;
 		virtual Result<std::shared_ptr<IGpuTexture>, std::string> createTexture(const GpuTextureDesc& desc, const void* initialData = nullptr) = 0;
 

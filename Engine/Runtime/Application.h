@@ -60,6 +60,14 @@ namespace Runtime
 		std::unique_ptr<Core::Renderer::SceneRenderer> m_sceneRenderer;
 		std::unique_ptr<Physics::IPhysicsWorld> m_physicsWorld;
 		LayerStack m_layerStack;
+
+#if defined(DF_EDITOR)
+		bool m_imguiInitialized = false;
+		void initImGui();
+		void shutdownImGui();
+		void beginImGuiFrame();
+		void endImGuiFrame();
+#endif
 	};
 }
 

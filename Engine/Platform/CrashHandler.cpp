@@ -54,7 +54,32 @@ namespace Platform
 		if (crashLog.is_open())
 		{
 			crashLog << "=== DarkFire Engine Crash Report ===\n";
-			crashLog << "Exception Code: 0x" << std::hex << pExceptionPointers->ExceptionRecord->ExceptionCode << std::dec << "\n\n";
+			crashLog << "Exception Code: 0x" << std::hex << pExceptionPointers->ExceptionRecord->ExceptionCode << "\n";
+			crashLog << "Exception Address: 0x" << pExceptionPointers->ExceptionRecord->ExceptionAddress << std::dec << "\n\n";
+
+			crashLog << "--- Callstack ---\n";
+			SymInitialize(GetCurrentProcess(), nullptr, TRUE);
+			void* backtrace[32];
+			unsigned short frames = CaptureStackBackTrace(0, 32, backtrace, nullptr);
+			char symbolBuffer[sizeof(SYMBOL_INFO) + 256];
+			SYMBOL_INFO* symbol = reinterpret_cast<SYMBOL_INFO*>(symbolBuffer);
+			symbol->MaxNameLen = 255;
+			symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+
+			for (unsigned int i = 0; i < frames; ++i)
+			{
+				DWORD64 displacement = 0;
+				if (SymFromAddr(GetCurrentProcess(), (DWORD64)backtrace[i], &displacement, symbol))
+				{
+					crashLog << "[" << i << "] " << symbol->Name << " + 0x" << std::hex << displacement << std::dec << "\n";
+				}
+				else
+				{
+					crashLog << "[" << i << "] 0x" << std::hex << (DWORD64)backtrace[i] << std::dec << "\n";
+				}
+			}
+			crashLog << "\n";
+
 			crashLog << "--- Last 100 Log Lines ---\n";
 
 			auto messages = Core::Log::Get().getRecentMessages(100);

@@ -58,6 +58,21 @@ namespace Core
 			eulerDegrees = degs;
 			rotation = Math::eulerToQuaternion(Math::toRadians(degs.x), Math::toRadians(degs.y), Math::toRadians(degs.z));
 		}
+
+		Vector3 getForward() const noexcept
+		{
+			return Vector3::Transform(Vector3(0.0f, 0.0f, 1.0f), rotation);
+		}
+
+		Vector3 getUp() const noexcept
+		{
+			return Vector3::Transform(Vector3(0.0f, 1.0f, 0.0f), rotation);
+		}
+
+		Vector3 getRight() const noexcept
+		{
+			return Vector3::Transform(Vector3(1.0f, 0.0f, 0.0f), rotation);
+		}
 	};
 
 	// ==========================================

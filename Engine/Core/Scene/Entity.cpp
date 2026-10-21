@@ -25,6 +25,16 @@ namespace Core
 		return getComponent<TransformComponent>();
 	}
 
+	Matrix Entity::getWorldMatrix() const
+	{
+		DF_ASSERT(isValid(), "Entity is invalid!");
+		if (hasComponent<WorldTransform>())
+		{
+			return getComponent<WorldTransform>().worldMatrix;
+		}
+		return getTransform().getLocalMatrix();
+	}
+
 	Entity Entity::getParent() const
 	{
 		DF_ASSERT(isValid(), "Entity is invalid!");

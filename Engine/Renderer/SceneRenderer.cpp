@@ -1,6 +1,7 @@
 #include "SceneRenderer.h"
 #include "Engine/Core/Log/Log.h"
 #include <algorithm>
+#include <array>
 #include <cstring>
 
 namespace Core::Renderer
@@ -147,8 +148,7 @@ namespace Core::Renderer
 		// 4. Update Lights Buffer
 		if (!scene.lights.empty() && m_bufLights)
 		{
-			std::vector<LightData> lightArray;
-			lightArray.reserve(passData.lightCount);
+			std::array<LightData, 64> lightArray{};
 			for (uint32_t i = 0; i < passData.lightCount; ++i)
 			{
 				const auto& l = scene.lights[i];
@@ -157,9 +157,9 @@ namespace Core::Renderer
 				ld.directionRange = Math::Vector4(l.direction.x, l.direction.y, l.direction.z, l.range);
 				ld.colorIntensity = Math::Vector4(l.color.x, l.color.y, l.color.z, l.intensity);
 				ld.spotAnglesPad = Math::Vector4(std::cos(l.innerConeAngle), std::cos(l.outerConeAngle), 0.0f, 0.0f);
-				lightArray.push_back(ld);
+				lightArray[i] = ld;
 			}
-			m_context->updateSubresource(m_bufLights, lightArray.data(), sizeof(LightData) * lightArray.size());
+			m_context->updateSubresource(m_bufLights, lightArray.data(), sizeof(LightData) * 64);
 		}
 
 		// 5. Execute Passes in Strict Order

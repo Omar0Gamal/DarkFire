@@ -152,3 +152,71 @@ TEST_CASE("Core::VirtualFileSystem - Mounting & Resolution")
 	CHECK(textRes.isOk());
 	CHECK_FALSE(textRes.value().empty());
 }
+
+TEST_CASE("Core::VirtualFileSystem - Pak Archive Creation, FNV-1a Hashing & Reading")
+{
+	std::filesystem::path tempPak = "bin/TestArchive.pak";
+
+	std::string file1Content = "DarkFire Engine Pak File 1 Content - Fast 64-bit FNV-1a lookup";
+	std::vector<uint8_t> file2Content = { 0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04 };
+
+	std::vector<std::pair<std::string, std::vector<uint8_t>>> testFiles = {
+		{ "/Shaders/TestVS.cso", std::vector<uint8_t>(file1Content.begin(), file1Content.end()) },
+		{ "/Assets/BinaryData.bin", file2Content }
+	};
+
+	bool created = Core::VirtualFileSystem::CreatePakArchive(tempPak, testFiles);
+	CHECK(created);
+	CHECK(std::filesystem::exists(tempPak));
+
+	Core::VirtualFileSystem vfs;
+	bool mounted = vfs.mountPak("/pak", tempPak);
+	CHECK(mounted);
+
+	SUBCASE("Pak Existence & Content Verification")
+	{
+		CHECK(vfs.exists("/pak/Shaders/TestVS.cso"));
+		CHECK(vfs.exists("/pak/Assets/BinaryData.bin"));
+		CHECK_FALSE(vfs.exists("/pak/NonExistent.cso"));
+
+		auto textRes = vfs.readTextFile("/pak/Shaders/TestVS.cso");
+		CHECK(textRes.isOk());
+		CHECK(textRes.value() == file1Content);
+
+		auto binRes = vfs.readBinaryFile("/pak/Assets/BinaryData.bin");
+		CHECK(binRes.isOk());
+		CHECK(binRes.value() == file2Content);
+	}
+
+	SUBCASE("Case-Insensitive FNV-1a Path Hash Lookup")
+	{
+		CHECK(vfs.exists("/PAK/shaders/testvs.cso"));
+		auto textRes = vfs.readTextFile("/PAK/shaders/testvs.cso");
+		CHECK(textRes.isOk());
+		CHECK(textRes.value() == file1Content);
+	}
+
+	SUBCASE("Unmount Pak")
+	{
+		vfs.unmountPak(tempPak);
+		CHECK_FALSE(vfs.exists("/pak/Shaders/TestVS.cso"));
+	}
+
+	std::filesystem::remove(tempPak);
+}
+
+TEST_CASE("Telemetry & Profiler Stats Verification")
+{
+	Core::FrameArena arena(1024 * 1024);
+	CHECK(arena.getCapacity() == 1024 * 1024);
+	CHECK(arena.getUsedBytes() == 0);
+
+	void* ptr = arena.allocate(512);
+	CHECK(ptr != nullptr);
+	CHECK(arena.getUsedBytes() >= 512);
+	CHECK(arena.getHighWaterMark() >= 512);
+
+	arena.reset();
+	CHECK(arena.getUsedBytes() == 0);
+	CHECK(arena.getHighWaterMark() >= 512);
+}

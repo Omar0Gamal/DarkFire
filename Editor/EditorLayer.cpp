@@ -545,6 +545,11 @@ namespace Editor
 			m_contentBrowserPanel.onImGuiRender();
 		}
 
+		if (m_showProfiler)
+		{
+			m_profilerPanel.onImGuiRender(ImGui::GetIO().DeltaTime);
+		}
+
 		if (m_showStats)
 		{
 			ImGui::Begin("Renderer Stats", &m_showStats);
@@ -706,6 +711,7 @@ namespace Editor
 				ImGui::MenuItem("Inspector", nullptr, &m_showInspector);
 				ImGui::MenuItem("Console", nullptr, &m_showConsole);
 				ImGui::MenuItem("Content Browser", nullptr, &m_showContentBrowser);
+				ImGui::MenuItem("Profiler", nullptr, &m_showProfiler);
 				ImGui::MenuItem("Stats", nullptr, &m_showStats);
 				ImGui::EndMenu();
 			}

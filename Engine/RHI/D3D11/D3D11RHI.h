@@ -5,7 +5,7 @@
 #include "Engine/RHI/Null/NullRHI.h" // For StateCache template
 
 #include <d3d11_1.h>
-#include <dxgi1_2.h>
+#include <dxgi1_4.h>
 #include <wrl/client.h>
 #include <vector>
 #include <string>
@@ -254,10 +254,14 @@ namespace Core::RHI
 		ID3D11DeviceContext* getD3D11Context() const noexcept { return m_context.Get(); }
 		ID3D11DeviceContext1* getD3D11Context1() const noexcept { return m_context1.Get(); }
 
+		ContextStats getStats() const override { return m_stats; }
+		void resetStats() override { m_stats = {}; }
+
 	private:
 		ComPtr<ID3D11DeviceContext> m_context;
 		ComPtr<ID3D11DeviceContext1> m_context1;
 		D3D11StateTracker m_tracker;
+		ContextStats m_stats{};
 	};
 
 	class DF_API D3D11RHIDevice : public IRHIDevice
@@ -286,6 +290,8 @@ namespace Core::RHI
 		std::shared_ptr<ISamplerState> getOrCreateSamplerState(const SamplerStateDesc& desc) override;
 
 		Result<std::unique_ptr<ISwapChain>, std::string> createSwapChain(void* windowHandle, uint32_t width, uint32_t height) override;
+
+		GpuMemoryStats queryMemoryStats() const override;
 
 		void* getNativeDevice() const override { return m_device.Get(); }
 		void* getNativeContext() const override { return m_immediateContext ? m_immediateContext->getD3D11Context() : nullptr; }

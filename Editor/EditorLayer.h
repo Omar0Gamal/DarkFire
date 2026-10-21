@@ -8,6 +8,7 @@
 #include "Editor/Panels/InspectorPanel.h"
 #include "Editor/Panels/ConsolePanel.h"
 #include "Editor/Panels/ContentBrowserPanel.h"
+#include "Editor/Panels/ProfilerPanel.h"
 #include "Editor/Commands/CommandHistory.h"
 #include "Editor/SelectionContext.h"
 #include <memory>
@@ -80,6 +81,7 @@ namespace Editor
 		InspectorPanel m_inspectorPanel;
 		ConsolePanel m_consolePanel;
 		ContentBrowserPanel m_contentBrowserPanel;
+		ProfilerPanel m_profilerPanel;
 
 		Core::Renderer::RenderScene m_renderScene;
 		std::shared_ptr<Core::RHI::IGpuTexture> m_viewportTexture;
@@ -106,6 +108,7 @@ namespace Editor
 		bool m_showInspector = true;
 		bool m_showConsole = true;
 		bool m_showContentBrowser = true;
+		bool m_showProfiler = true;
 		bool m_showStats = true;
 		bool m_showGameViewport = true;
 

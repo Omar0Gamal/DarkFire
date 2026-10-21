@@ -269,9 +269,11 @@ namespace Core::RHI
 			m_tracker.currentViewport.MinDepth == viewport.minDepth &&
 			m_tracker.currentViewport.MaxDepth == viewport.maxDepth)
 		{
+			m_stats.redundantBindsSkipped++;
 			return;
 		}
 
+		m_stats.stateChanges++;
 		D3D11_VIEWPORT vp{};
 		vp.TopLeftX = viewport.x;
 		vp.TopLeftY = viewport.y;
@@ -302,6 +304,7 @@ namespace Core::RHI
 			dsv = static_cast<D3D11Texture*>(dsvTexture.get())->getD3D11DSV();
 		}
 
+		m_stats.stateChanges++;
 		m_context->OMSetRenderTargets(count, rtvs, dsv);
 	}
 
@@ -339,6 +342,11 @@ namespace Core::RHI
 		{
 			m_context->IASetPrimitiveTopology(d3dTopology);
 			m_tracker.currentTopology = d3dTopology;
+			m_stats.stateChanges++;
+		}
+		else
+		{
+			m_stats.redundantBindsSkipped++;
 		}
 	}
 
@@ -349,6 +357,11 @@ namespace Core::RHI
 		{
 			m_context->IASetInputLayout(d3dLayout);
 			m_tracker.currentInputLayout = d3dLayout;
+			m_stats.stateChanges++;
+		}
+		else
+		{
+			m_stats.redundantBindsSkipped++;
 		}
 	}
 
@@ -364,6 +377,11 @@ namespace Core::RHI
 			m_tracker.currentVBs[slot] = d3dBuffer;
 			m_tracker.currentVBStrides[slot] = stride;
 			m_tracker.currentVBOffsets[slot] = offset;
+			m_stats.stateChanges++;
+		}
+		else
+		{
+			m_stats.redundantBindsSkipped++;
 		}
 	}
 
@@ -377,6 +395,11 @@ namespace Core::RHI
 			m_tracker.currentIB = d3dBuffer;
 			m_tracker.currentIBFormat = dxgiFormat;
 			m_tracker.currentIBOffset = offset;
+			m_stats.stateChanges++;
+		}
+		else
+		{
+			m_stats.redundantBindsSkipped++;
 		}
 	}
 
@@ -387,6 +410,11 @@ namespace Core::RHI
 		{
 			m_context->VSSetShader(d3dVS, nullptr, 0);
 			m_tracker.currentVS = d3dVS;
+			m_stats.stateChanges++;
+		}
+		else
+		{
+			m_stats.redundantBindsSkipped++;
 		}
 	}
 
@@ -397,6 +425,11 @@ namespace Core::RHI
 		{
 			m_context->PSSetShader(d3dPS, nullptr, 0);
 			m_tracker.currentPS = d3dPS;
+			m_stats.stateChanges++;
+		}
+		else
+		{
+			m_stats.redundantBindsSkipped++;
 		}
 	}
 
@@ -408,6 +441,11 @@ namespace Core::RHI
 		{
 			m_context->VSSetConstantBuffers(slot, 1, &d3dBuffer);
 			m_tracker.currentVSConstantBuffers[slot] = d3dBuffer;
+			m_stats.stateChanges++;
+		}
+		else
+		{
+			m_stats.redundantBindsSkipped++;
 		}
 	}
 
@@ -419,6 +457,11 @@ namespace Core::RHI
 		{
 			m_context->PSSetConstantBuffers(slot, 1, &d3dBuffer);
 			m_tracker.currentPSConstantBuffers[slot] = d3dBuffer;
+			m_stats.stateChanges++;
+		}
+		else
+		{
+			m_stats.redundantBindsSkipped++;
 		}
 	}
 
@@ -432,6 +475,7 @@ namespace Core::RHI
 			UINT count = numConstants16;
 			m_context1->VSSetConstantBuffers1(slot, 1, &d3dBuffer, &first, &count);
 			m_tracker.currentVSConstantBuffers[slot] = d3dBuffer;
+			m_stats.stateChanges++;
 		}
 		else
 		{
@@ -449,6 +493,7 @@ namespace Core::RHI
 			UINT count = numConstants16;
 			m_context1->PSSetConstantBuffers1(slot, 1, &d3dBuffer, &first, &count);
 			m_tracker.currentPSConstantBuffers[slot] = d3dBuffer;
+			m_stats.stateChanges++;
 		}
 		else
 		{
@@ -464,6 +509,11 @@ namespace Core::RHI
 		{
 			m_context->VSSetShaderResources(slot, 1, &srv);
 			m_tracker.currentVSSRVs[slot] = srv;
+			m_stats.stateChanges++;
+		}
+		else
+		{
+			m_stats.redundantBindsSkipped++;
 		}
 	}
 
@@ -475,6 +525,11 @@ namespace Core::RHI
 		{
 			m_context->PSSetShaderResources(slot, 1, &srv);
 			m_tracker.currentPSSRVs[slot] = srv;
+			m_stats.stateChanges++;
+		}
+		else
+		{
+			m_stats.redundantBindsSkipped++;
 		}
 	}
 
@@ -486,6 +541,11 @@ namespace Core::RHI
 		{
 			m_context->VSSetSamplers(slot, 1, &s);
 			m_tracker.currentVSSamplers[slot] = s;
+			m_stats.stateChanges++;
+		}
+		else
+		{
+			m_stats.redundantBindsSkipped++;
 		}
 	}
 
@@ -497,6 +557,11 @@ namespace Core::RHI
 		{
 			m_context->PSSetSamplers(slot, 1, &s);
 			m_tracker.currentPSSamplers[slot] = s;
+			m_stats.stateChanges++;
+		}
+		else
+		{
+			m_stats.redundantBindsSkipped++;
 		}
 	}
 
@@ -507,6 +572,11 @@ namespace Core::RHI
 		{
 			m_context->RSSetState(rs);
 			m_tracker.currentRS = rs;
+			m_stats.stateChanges++;
+		}
+		else
+		{
+			m_stats.redundantBindsSkipped++;
 		}
 	}
 
@@ -518,6 +588,11 @@ namespace Core::RHI
 			m_context->OMSetDepthStencilState(dss, stencilRef);
 			m_tracker.currentDSS = dss;
 			m_tracker.currentStencilRef = stencilRef;
+			m_stats.stateChanges++;
+		}
+		else
+		{
+			m_stats.redundantBindsSkipped++;
 		}
 	}
 
@@ -545,6 +620,11 @@ namespace Core::RHI
 			m_tracker.currentBlendFactor[1] = bf[1];
 			m_tracker.currentBlendFactor[2] = bf[2];
 			m_tracker.currentBlendFactor[3] = bf[3];
+			m_stats.stateChanges++;
+		}
+		else
+		{
+			m_stats.redundantBindsSkipped++;
 		}
 	}
 
@@ -1073,5 +1153,37 @@ namespace Core::RHI
 		auto backBuffer = std::make_shared<D3D11Texture>(tDesc, backBufferTex, nullptr, rtv, nullptr);
 		return Result<std::unique_ptr<ISwapChain>, std::string>::ok(
 			std::make_unique<D3D11SwapChain>(swapChain1, backBuffer, hwnd));
+	}
+
+	GpuMemoryStats D3D11RHIDevice::queryMemoryStats() const
+	{
+		GpuMemoryStats stats{};
+		if (!m_device)
+		{
+			return stats;
+		}
+
+		ComPtr<IDXGIDevice> dxgiDevice;
+		if (SUCCEEDED(m_device.As(&dxgiDevice)))
+		{
+			ComPtr<IDXGIAdapter> adapter;
+			if (SUCCEEDED(dxgiDevice->GetAdapter(adapter.GetAddressOf())))
+			{
+				ComPtr<IDXGIAdapter3> adapter3;
+				if (SUCCEEDED(adapter.As(&adapter3)))
+				{
+					DXGI_QUERY_VIDEO_MEMORY_INFO info{};
+					if (SUCCEEDED(adapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &info)))
+					{
+						stats.totalBudget = info.Budget;
+						stats.currentUsage = info.CurrentUsage;
+						stats.availableForReservation = info.AvailableForReservation;
+						stats.currentReservation = info.CurrentReservation;
+					}
+				}
+			}
+		}
+
+		return stats;
 	}
 }

@@ -56,6 +56,7 @@ namespace Core::Renderer
 		[[nodiscard]] uint32_t getDrawCallCount() const noexcept { return m_drawCallCount; }
 		[[nodiscard]] uint32_t getBatchCount() const noexcept { return m_batchCount; }
 		[[nodiscard]] uint32_t getInstanceCount() const noexcept { return m_instanceCount; }
+		[[nodiscard]] const RHI::UploadRing& getUploadRing() const noexcept { return m_uploadRing; }
 
 	private:
 		RHI::IRHIDevice& m_device;

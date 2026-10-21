@@ -1,0 +1,11 @@
+{
+  "name": "DefaultMaterial",
+  "baseColor": [0.8, 0.8, 0.8, 1.0],
+  "roughness": 0.5,
+  "metallic": 0.0,
+  "emissive": [0.0, 0.0, 0.0, 0.0],
+  "tiling": [1.0, 1.0],
+  "blendMode": 0,
+  "depthMode": 0,
+  "cullMode": 1
+}

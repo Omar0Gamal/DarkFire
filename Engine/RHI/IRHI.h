@@ -49,6 +49,20 @@ namespace Core::RHI
 	class DF_API IBlendState : public IGpuResource {};
 	class DF_API ISamplerState : public IGpuResource {};
 
+	struct GpuMemoryStats
+	{
+		uint64_t totalBudget = 0;
+		uint64_t currentUsage = 0;
+		uint64_t availableForReservation = 0;
+		uint64_t currentReservation = 0;
+	};
+
+	struct ContextStats
+	{
+		uint32_t stateChanges = 0;
+		uint32_t redundantBindsSkipped = 0;
+	};
+
 	class DF_API ISwapChain
 	{
 	public:
@@ -96,6 +110,9 @@ namespace Core::RHI
 		virtual Result<void*, std::string> map(const std::shared_ptr<IGpuBuffer>& buffer, bool discard) = 0;
 		virtual void unmap(const std::shared_ptr<IGpuBuffer>& buffer) = 0;
 		virtual void updateSubresource(const std::shared_ptr<IGpuBuffer>& buffer, const void* data, size_t size) = 0;
+
+		virtual ContextStats getStats() const { return {}; }
+		virtual void resetStats() {}
 	};
 
 	class DF_API IRHIDevice
@@ -108,6 +125,8 @@ namespace Core::RHI
 
 		virtual void* getNativeDevice() const { return nullptr; }
 		virtual void* getNativeContext() const { return nullptr; }
+
+		virtual GpuMemoryStats queryMemoryStats() const { return {}; }
 
 		virtual Result<std::shared_ptr<IGpuBuffer>, std::string> createBuffer(const GpuBufferDesc& desc, const void* initialData = nullptr) = 0;
 		virtual Result<std::shared_ptr<IGpuTexture>, std::string> createTexture(const GpuTextureDesc& desc, const void* initialData = nullptr) = 0;

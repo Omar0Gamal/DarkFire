@@ -15,7 +15,41 @@ int main(int argc, char** argv)
 	auto& ctx = Core::EngineContext::Get();
 	ctx.log.info("Player", "DarkFire Player Runtime booting up (v2.0)...");
 
+	std::filesystem::path exeDir = std::filesystem::absolute(std::filesystem::path(argv[0])).parent_path();
+
+	// Mount Engine.pak and Game.pak if present
+	if (std::filesystem::exists(exeDir / "Engine.pak"))
+	{
+		ctx.vfs.mountPak("/engine", exeDir / "Engine.pak");
+		ctx.log.info("Player", "Mounted Engine.pak from exe directory.");
+	}
+	else if (std::filesystem::exists("Engine.pak"))
+	{
+		ctx.vfs.mountPak("/engine", "Engine.pak");
+		ctx.log.info("Player", "Mounted Engine.pak from current directory.");
+	}
+
+	if (std::filesystem::exists(exeDir / "Game.pak"))
+	{
+		ctx.vfs.mountPak("", exeDir / "Game.pak");
+		ctx.log.info("Player", "Mounted Game.pak from exe directory.");
+	}
+	else if (std::filesystem::exists("Game.pak"))
+	{
+		ctx.vfs.mountPak("", "Game.pak");
+		ctx.log.info("Player", "Mounted Game.pak from current directory.");
+	}
+
 	std::string projectPath = "Templates/Playground3D/Project.dfproj";
+	if (std::filesystem::exists(exeDir / "Project.dfproj"))
+	{
+		projectPath = (exeDir / "Project.dfproj").string();
+	}
+	else if (std::filesystem::exists("Project.dfproj"))
+	{
+		projectPath = "Project.dfproj";
+	}
+
 	int maxFrames = -1;
 
 	for (int i = 1; i < argc; ++i)
@@ -69,7 +103,11 @@ int main(int argc, char** argv)
 	}
 
 	std::filesystem::path modulePath = modPathStr;
-	if (!std::filesystem::exists(modulePath))
+	if (std::filesystem::exists(exeDir / (config.name + ".dll")))
+	{
+		modulePath = exeDir / (config.name + ".dll");
+	}
+	else if (!std::filesystem::exists(modulePath))
 	{
 		// Try relative to project directory
 		modulePath = projectDir / modPathStr;
@@ -102,9 +140,10 @@ int main(int argc, char** argv)
 	// Create Scene Runtime Layer
 	auto sceneLayer = std::make_shared<Runtime::SceneRuntimeLayer>();
 	std::filesystem::path scenePath = projectDir / config.startScene;
-	if (std::filesystem::exists(scenePath))
+	std::string vscenePath = "/" + config.startScene;
+	if (std::filesystem::exists(scenePath) || ctx.vfs.exists(vscenePath) || ctx.vfs.exists("/Scenes/" + scenePath.filename().string()))
 	{
-		ctx.log.info("Player", "Loading start scene: {}", scenePath.string());
+		ctx.log.info("Player", "Loading start scene: {}", config.startScene);
 		sceneLayer->loadScene(scenePath);
 	}
 	else

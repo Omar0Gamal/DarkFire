@@ -62,11 +62,41 @@ namespace Runtime
 	{
 		auto newScene = std::make_shared<Core::Scene>();
 		Core::SceneSerializer serializer(newScene.get());
-		if (serializer.deserializeFromFile(scenePath))
+
+		// 1. Try loading from physical disk
+		if (std::filesystem::exists(scenePath))
 		{
-			setScene(std::move(newScene));
-			return true;
+			if (serializer.deserializeFromFile(scenePath))
+			{
+				setScene(std::move(newScene));
+				return true;
+			}
 		}
+
+		// 2. Try loading from VFS / Pak
+		auto& vfs = Core::EngineContext::Get().vfs;
+		std::string vpath = scenePath.string();
+		std::replace(vpath.begin(), vpath.end(), '\\', '/');
+		if (!vpath.empty() && vpath.front() != '/')
+		{
+			vpath = "/" + vpath;
+		}
+
+		auto textRes = vfs.readTextFile(vpath);
+		if (textRes.isErr())
+		{
+			textRes = vfs.readTextFile("/Scenes/" + scenePath.filename().string());
+		}
+
+		if (textRes.isOk())
+		{
+			if (serializer.deserializeFromString(textRes.value()))
+			{
+				setScene(std::move(newScene));
+				return true;
+			}
+		}
+
 		Core::Log::Get().error("Runtime", "Failed to deserialize scene from: {}", scenePath.string());
 		return false;
 	}

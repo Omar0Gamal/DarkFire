@@ -519,5 +519,61 @@ workspace "DarkFire"
 				runtime "Release"
 				optimize "On"
 				symbols "Off"
+
+		project "dfcook"
+			location "Tools/dfcook"
+			kind "ConsoleApp"
+			language "C++"
+			cppdialect "C++20"
+
+			targetdir ("bin/" .. OutputDir .. "/Tools/%{prj.name}")
+			objdir ("bin-int/" .. OutputDir .. "/%{prj.name}")
+
+			files
+			{
+				"Tools/dfcook/**.h",
+				"Tools/dfcook/**.cpp"
+			}
+
+			includedirs
+			{
+				"%{wks.location}",
+				"%{wks.location}/ThirdParty/DirectXTex/DirectXTex"
+			}
+
+			links
+			{
+				"d3dcompiler",
+				"dxguid",
+				"DirectXTex"
+			}
+
+			warnings "Extra"
+			buildoptions { "/WX", "/MP", "/utf-8", "/permissive-", "/Zc:preprocessor", "/Zc:__cplusplus", "/fp:precise", "/wd4100", "/wd4251" }
+
+			filter "configurations:Debug"
+				defines { "DEBUG", "_DEBUG", "DF_DEBUG" }
+				runtime "Debug"
+				symbols "On"
+
+			filter "configurations:Debug-ASan"
+				defines { "DEBUG", "_DEBUG", "DF_DEBUG", "DF_ASAN" }
+				runtime "Debug"
+				symbols "On"
+				buildoptions { "/fsanitize=address" }
+				links { "clang_rt.asan_dynamic-x86_64.lib", "clang_rt.asan_dynamic_runtime_thunk-x86_64.lib" }
+
+			filter "configurations:Release"
+				defines { "NDEBUG", "RELEASE", "DF_RELEASE" }
+				runtime "Release"
+				optimize "On"
+				symbols "On"
+
+			filter "configurations:Dist"
+				defines { "NDEBUG", "DIST", "DF_DIST" }
+				staticruntime "on"
+				runtime "Release"
+				optimize "On"
+				symbols "Off"
 	group ""
 

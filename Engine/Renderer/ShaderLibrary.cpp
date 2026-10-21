@@ -1,4 +1,5 @@
 #include "ShaderLibrary.h"
+#include "Engine/Runtime/EngineContext.h"
 #include "Engine/Core/Log/Log.h"
 
 #include <d3dcompiler.h>
@@ -147,6 +148,52 @@ namespace Core::Renderer
 			return Result<std::shared_ptr<RHI::IVertexShader>, std::string>::ok(it->second);
 		}
 
+		// Try loading precompiled bytecode blob (.cso) from disk or VFS
+		std::string baseStem = std::filesystem::path(shaderName).stem().string();
+		std::vector<uint8_t> precompiledBytecode;
+
+		std::filesystem::path csoPath = std::filesystem::path(m_shaderDir) / (baseStem + ".cso");
+		if (std::filesystem::exists(csoPath))
+		{
+			std::ifstream csoFile(csoPath, std::ios::binary | std::ios::ate);
+			if (csoFile.is_open())
+			{
+				auto sz = csoFile.tellg();
+				csoFile.seekg(0, std::ios::beg);
+				precompiledBytecode.resize(static_cast<size_t>(sz));
+				csoFile.read(reinterpret_cast<char*>(precompiledBytecode.data()), sz);
+			}
+		}
+
+		if (precompiledBytecode.empty())
+		{
+			auto& vfs = Core::EngineContext::Get().vfs;
+			auto vfsRes = vfs.readBinaryFile("/Shaders/" + baseStem + ".cso");
+			if (vfsRes.isOk())
+			{
+				precompiledBytecode = std::move(vfsRes.value());
+			}
+			else
+			{
+				auto vfsRes2 = vfs.readBinaryFile("/engine/Shaders/" + baseStem + ".cso");
+				if (vfsRes2.isOk())
+				{
+					precompiledBytecode = std::move(vfsRes2.value());
+				}
+			}
+		}
+
+		if (!precompiledBytecode.empty())
+		{
+			auto vsRes = m_device.createVertexShader(precompiledBytecode);
+			if (vsRes)
+			{
+				m_vertexShaders[key] = *vsRes;
+				m_bytecodeCache[key] = precompiledBytecode;
+				return vsRes;
+			}
+		}
+
 		const std::filesystem::path filePath = std::filesystem::path(m_shaderDir) / shaderName;
 		std::ifstream file(filePath);
 		if (!file.is_open())
@@ -191,6 +238,51 @@ namespace Core::Renderer
 		if (it != m_pixelShaders.end())
 		{
 			return Result<std::shared_ptr<RHI::IPixelShader>, std::string>::ok(it->second);
+		}
+
+		// Try loading precompiled bytecode blob (.cso) from disk or VFS
+		std::string baseStem = std::filesystem::path(shaderName).stem().string();
+		std::vector<uint8_t> precompiledBytecode;
+
+		std::filesystem::path csoPath = std::filesystem::path(m_shaderDir) / (baseStem + ".cso");
+		if (std::filesystem::exists(csoPath))
+		{
+			std::ifstream csoFile(csoPath, std::ios::binary | std::ios::ate);
+			if (csoFile.is_open())
+			{
+				auto sz = csoFile.tellg();
+				csoFile.seekg(0, std::ios::beg);
+				precompiledBytecode.resize(static_cast<size_t>(sz));
+				csoFile.read(reinterpret_cast<char*>(precompiledBytecode.data()), sz);
+			}
+		}
+
+		if (precompiledBytecode.empty())
+		{
+			auto& vfs = Core::EngineContext::Get().vfs;
+			auto vfsRes = vfs.readBinaryFile("/Shaders/" + baseStem + ".cso");
+			if (vfsRes.isOk())
+			{
+				precompiledBytecode = std::move(vfsRes.value());
+			}
+			else
+			{
+				auto vfsRes2 = vfs.readBinaryFile("/engine/Shaders/" + baseStem + ".cso");
+				if (vfsRes2.isOk())
+				{
+					precompiledBytecode = std::move(vfsRes2.value());
+				}
+			}
+		}
+
+		if (!precompiledBytecode.empty())
+		{
+			auto psRes = m_device.createPixelShader(precompiledBytecode);
+			if (psRes)
+			{
+				m_pixelShaders[key] = *psRes;
+				return psRes;
+			}
 		}
 
 		const std::filesystem::path filePath = std::filesystem::path(m_shaderDir) / shaderName;

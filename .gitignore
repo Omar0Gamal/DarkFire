@@ -13,6 +13,8 @@ bin/
 bin-int/
 Binaries/
 x64/
+Package/
+Cooked/
 
 # Crash dumps, logs & caches
 *.log

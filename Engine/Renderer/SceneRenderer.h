@@ -111,8 +111,23 @@ namespace Core::Renderer
 		std::shared_ptr<RHI::IInputLayout> m_inputLayout;
 		std::shared_ptr<RHI::IVertexShader> m_vsFullscreen;
 		std::shared_ptr<RHI::IPixelShader> m_psPostProcess;
+		std::shared_ptr<RHI::IPixelShader> m_psSky;
+		std::shared_ptr<RHI::IPixelShader> m_psSSAO;
+		std::shared_ptr<RHI::IPixelShader> m_psSSAOBlur;
+		std::shared_ptr<RHI::IPixelShader> m_psBloomPrefilter;
+		std::shared_ptr<RHI::IPixelShader> m_psBloomDownsample;
+		std::shared_ptr<RHI::IPixelShader> m_psBloomUpsample;
+		std::shared_ptr<RHI::IPixelShader> m_psTonemap;
+		std::shared_ptr<RHI::IPixelShader> m_psFXAA;
+
 		std::shared_ptr<RHI::IRasterizerState> m_rsSolid;
+		std::shared_ptr<RHI::IDepthStencilState> m_dssDepthPrepass;
 		std::shared_ptr<RHI::IDepthStencilState> m_dssOpaque;
+		std::shared_ptr<RHI::IDepthStencilState> m_dssSky;
+		std::shared_ptr<RHI::IDepthStencilState> m_dssTransparent;
+		std::shared_ptr<RHI::IBlendState> m_bsAlphaBlend;
+		std::shared_ptr<RHI::IBlendState> m_bsAdditive;
+
 		std::shared_ptr<RHI::ISamplerState> m_samplerLinearWrap;
 		std::shared_ptr<RHI::ISamplerState> m_samplerLinearClamp;
 		std::shared_ptr<RHI::ISamplerState> m_samplerPointClamp;
@@ -123,9 +138,24 @@ namespace Core::Renderer
 		std::shared_ptr<RHI::IGpuTexture> m_defaultMRTexture;
 		std::shared_ptr<RHI::IGpuTexture> m_blackTexture;
 
+		// Render Targets for Post-Processing & SSAO
+		std::shared_ptr<RHI::IGpuTexture> m_ssaoRawTexture;
+		std::shared_ptr<RHI::IGpuTexture> m_ssaoBlurredTexture;
+		std::shared_ptr<RHI::IGpuTexture> m_ldrIntermediateTexture;
+		std::array<std::shared_ptr<RHI::IGpuTexture>, 5> m_bloomDown;
+		std::array<std::shared_ptr<RHI::IGpuTexture>, 5> m_bloomUp;
+
 		// Dedicated CBs
 		std::shared_ptr<RHI::IGpuBuffer> m_cbMaterial;
 		std::shared_ptr<RHI::IGpuBuffer> m_cbPostProcess;
+		std::shared_ptr<RHI::IGpuBuffer> m_cbEnvironment;
+		std::shared_ptr<RHI::IGpuBuffer> m_cbSSAO;
+		std::shared_ptr<RHI::IGpuBuffer> m_cbSSAOBlur;
+		std::shared_ptr<RHI::IGpuBuffer> m_cbBloom;
+		std::shared_ptr<RHI::IGpuBuffer> m_cbFXAA;
+
+		// SSAO Hemisphere Kernel
+		std::array<Math::Vector4, 16> m_ssaoKernel;
 
 		// Staging texture for readEntityId
 		mutable void* m_stagingEntityId = nullptr;
@@ -140,11 +170,17 @@ namespace Core::Renderer
 		uint32_t m_frameIndex = 0;
 
 		void initializeResources();
+		void generateSSAOKernel();
 		void executePasses(const RenderScene& scene, const RenderView& view);
+		void passDepthPrepass(const RenderScene& scene);
+		void passSSAO(const RenderScene& scene, const RenderView& view);
 		void passOpaque(const RenderScene& scene);
 		void passSkybox(const RenderScene& scene);
 		void passTransparent(const RenderScene& scene);
-		void passPostProcess(const RenderView& view);
+		void passBloom(const RenderScene& scene);
+		void passTonemap(const RenderScene& scene, const RenderView& view, const std::shared_ptr<RHI::IGpuTexture>& destination);
+		void passFXAA(const std::shared_ptr<RHI::IGpuTexture>& source, const std::shared_ptr<RHI::IGpuTexture>& destination);
+		void passPostProcess(const RenderScene& scene, const RenderView& view);
 
 		GpuMesh createGpuMesh(const MeshData& meshData);
 	};

@@ -43,6 +43,9 @@ namespace Editor
 		bool getShowWireframe() const noexcept { return m_showWireframeMode; }
 		void setShowWireframe(bool wireframe) noexcept { m_showWireframeMode = wireframe; }
 
+		bool isFXAAEnabled() const noexcept { return m_enableFXAA; }
+		void setFXAAEnabled(bool enabled) noexcept { m_enableFXAA = enabled; }
+
 		void setOnOpenScene(std::function<void(const std::filesystem::path&)> cb) { m_onOpenScene = std::move(cb); }
 		void setOnNewSandboxScene(std::function<void()> cb) { m_onNewSandboxScene = std::move(cb); }
 		void setOnSceneModified(std::function<void()> cb) { m_onSceneModified = std::move(cb); }
@@ -75,6 +78,7 @@ namespace Editor
 		bool m_gizmoWasUsing = false;
 
 		// Overlays
+		bool m_enableFXAA = true;
 		bool m_showWireframeMode = false;
 		bool m_showGrid = true;
 		bool m_showPiP = true;

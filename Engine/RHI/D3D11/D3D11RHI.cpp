@@ -287,7 +287,7 @@ namespace Core::RHI
 		m_tracker.currentViewport = vp;
 	}
 
-	void D3D11DeviceContext::setRenderTargets(std::span<std::shared_ptr<IGpuTexture>> rtvTextures, std::shared_ptr<IGpuTexture> dsvTexture)
+	void D3D11DeviceContext::setRenderTargets(std::span<const std::shared_ptr<IGpuTexture>> rtvTextures, std::shared_ptr<IGpuTexture> dsvTexture)
 	{
 		ID3D11RenderTargetView* rtvs[8] = {};
 		const UINT count = static_cast<UINT>(std::min<size_t>(rtvTextures.size(), 8));

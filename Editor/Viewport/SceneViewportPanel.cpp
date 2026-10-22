@@ -104,15 +104,13 @@ namespace Editor
 		if (ImGui::Button(m_showWireframeMode ? "Wireframe" : "Shaded")) m_showWireframeMode = !m_showWireframeMode;
 
 		ImGui::SameLine();
-		auto rendererConfig = Runtime::Application::Get().getRenderer().getConfig();
-		if (ImGui::Button(rendererConfig.enableFXAA ? "FXAA" : "No AA"))
+		if (ImGui::Button(m_enableFXAA ? "FXAA" : "No AA"))
 		{
-			rendererConfig.enableFXAA = !rendererConfig.enableFXAA;
-			Runtime::Application::Get().getRenderer().setConfig(rendererConfig);
+			m_enableFXAA = !m_enableFXAA;
 		}
 		if (ImGui::IsItemHovered())
 		{
-			ImGui::SetTooltip("Toggle FXAA (Fast Approximate Anti-Aliasing)");
+			ImGui::SetTooltip("Toggle Viewport FXAA (Fast Approximate Anti-Aliasing)");
 		}
 
 		ImGui::SameLine();

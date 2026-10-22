@@ -102,7 +102,7 @@ namespace Core::RHI
 		m_backBuffer = std::make_shared<NullTexture>(desc);
 	}
 
-	void NullDeviceContext::setRenderTargets(std::span<std::shared_ptr<IGpuTexture>> rtvTextures, std::shared_ptr<IGpuTexture> dsvTexture)
+	void NullDeviceContext::setRenderTargets(std::span<const std::shared_ptr<IGpuTexture>> rtvTextures, std::shared_ptr<IGpuTexture> dsvTexture)
 	{
 		m_renderTargets.assign(rtvTextures.begin(), rtvTextures.end());
 		m_depthStencilTarget = dsvTexture;

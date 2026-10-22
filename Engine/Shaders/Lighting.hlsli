@@ -62,7 +62,8 @@ float3 evaluateDirectLighting(
 	float3 albedo,
 	float roughness,
 	float metallic,
-	float3 F0)
+	float3 F0,
+	float ao = 1.0f)
 {
 	float3 Lo = float3(0.0f, 0.0f, 0.0f);
 
@@ -125,8 +126,8 @@ float3 evaluateDirectLighting(
 		Lo += (kD * albedo * INV_PI + specular) * radiance * NdotL;
 	}
 
-	// Ambient lighting computed ONCE outside the per-light loop!
-	float3 ambient = g_Pass.ambientLightColor.rgb * g_Pass.ambientLightColor.a * albedo;
+	// Ambient lighting computed ONCE outside the per-light loop, modulated by AO!
+	float3 ambient = g_Pass.ambientLightColor.rgb * g_Pass.ambientLightColor.a * albedo * ao;
 	return ambient + Lo;
 }
 

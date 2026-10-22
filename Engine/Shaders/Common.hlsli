@@ -40,6 +40,7 @@ Texture2D g_TextureOcclusion          : register(t4);
 StructuredBuffer<LightData> g_Lights  : register(t8);
 Texture2D g_TextureDepth              : register(t9);
 Texture2D g_TextureBloom              : register(t10);
+Texture2D g_TextureSSAO               : register(t11);
 
 // Sampler Declarations
 SamplerState g_SamplerLinearWrap  : register(s0);

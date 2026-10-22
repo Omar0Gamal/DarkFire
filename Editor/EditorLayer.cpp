@@ -541,6 +541,8 @@ namespace Editor
 			view.height = m_sceneViewportPanel.getHeight();
 			view.targetTexture = m_viewportTexture;
 			view.isEditorView = true;
+			view.overrides.overrideFXAA = true;
+			view.overrides.enableFXAA = m_sceneViewportPanel.isFXAAEnabled();
 
 			Runtime::Application::Get().getRenderer().render(m_renderScene, view);
 		}

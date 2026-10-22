@@ -215,7 +215,7 @@ namespace Core::RHI
 		~NullDeviceContext() override = default;
 
 		void setViewport(const Viewport& viewport) override { m_viewport = viewport; }
-		void setRenderTargets(std::span<std::shared_ptr<IGpuTexture>> rtvTextures, std::shared_ptr<IGpuTexture> dsvTexture) override;
+		void setRenderTargets(std::span<const std::shared_ptr<IGpuTexture>> rtvTextures, std::shared_ptr<IGpuTexture> dsvTexture) override;
 		void clearRenderTarget(const std::shared_ptr<IGpuTexture>& texture, const Color& color) override;
 		void clearDepthStencil(const std::shared_ptr<IGpuTexture>& texture, float depth = 0.0f, uint8_t stencil = 0) override;
 

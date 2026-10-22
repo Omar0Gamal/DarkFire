@@ -79,7 +79,12 @@ namespace Core::RHI
 		virtual ~IDeviceContext() = default;
 
 		virtual void setViewport(const Viewport& viewport) = 0;
-		virtual void setRenderTargets(std::span<std::shared_ptr<IGpuTexture>> rtvTextures, std::shared_ptr<IGpuTexture> dsvTexture) = 0;
+		virtual void setRenderTargets(std::span<const std::shared_ptr<IGpuTexture>> rtvTextures, std::shared_ptr<IGpuTexture> dsvTexture) = 0;
+
+		void setRenderTargets(std::initializer_list<std::shared_ptr<IGpuTexture>> rtvs, std::shared_ptr<IGpuTexture> dsvTexture = nullptr)
+		{
+			setRenderTargets(std::span<const std::shared_ptr<IGpuTexture>>(std::data(rtvs), rtvs.size()), std::move(dsvTexture));
+		}
 		virtual void clearRenderTarget(const std::shared_ptr<IGpuTexture>& texture, const Color& color) = 0;
 		virtual void clearDepthStencil(const std::shared_ptr<IGpuTexture>& texture, float depth = 0.0f, uint8_t stencil = 0) = 0; // Reversed-Z clears depth to 0.0f
 

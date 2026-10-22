@@ -121,6 +121,11 @@ namespace Core::Renderer
 	{
 		bool overrideFXAA = false;
 		bool enableFXAA = true;
+		bool overrideSSAO = false;
+		bool enableSSAO = true;
+		bool overrideBloom = false;
+		bool enableBloom = true;
+		uint32_t debugView = 0; // 0 = Lit, 1 = SSAO, 2 = Bloom
 		bool overrideWireframe = false;
 		bool enableWireframe = false;
 	};

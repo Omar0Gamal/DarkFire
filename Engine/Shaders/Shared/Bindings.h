@@ -11,6 +11,7 @@
 #define DF_SLOT_CB_PER_OBJECT   2
 #define DF_SLOT_CB_PER_MATERIAL 3
 #define DF_SLOT_CB_PER_PASS     4
+#define DF_SLOT_CB_POST_PROCESS 5
 
 // Texture Slots
 #define DF_SLOT_TEX_ALBEDO      0
@@ -24,6 +25,8 @@
 #define DF_SLOT_BUF_LIGHTS      8
 #define DF_SLOT_TEX_DEPTH       9
 #define DF_SLOT_TEX_BLOOM       10
+#define DF_SLOT_TEX_SSAO        11
+#define DF_SLOT_TEX_SKY_LUT     12
 
 // Sampler Slots
 #define DF_SLOT_SMP_LINEAR_WRAP  0
@@ -106,6 +109,64 @@ struct LightData
 	float4 directionRange;  // xyz = direction, w = range
 	float4 colorIntensity; // rgb = color, a = intensity
 	float4 spotAnglesPad;  // x = inner angle cos, y = outer angle cos, zw = padding
+};
+
+// PostProcess Buffer (b5 or b0 in post passes)
+struct CBPostProcess
+{
+	float exposure;
+	uint tonemapper;       // 0=ACES, 1=AgX, 2=Reinhard, 3=Neutral, 4=None
+	float contrast;
+	float saturation;
+	float vignetteIntensity;
+	float vignetteSmoothness;
+	float bloomIntensity;
+	uint debugView;        // 0=Lit, 1=SSAO, 2=Bloom
+	float4 colorFilter;
+	float4 bloomTint;
+	float2 texelSize;
+	float gamma;
+	float pad0;
+};
+
+// SSAO Buffer
+struct CBSSAO
+{
+	float radius;
+	float bias;
+	float intensity;
+	float power;
+	uint sampleCount;
+	float pad0;
+	float2 invResolution;
+	float4 kernel[16];
+};
+
+// Bloom Buffer
+struct CBBloom
+{
+	float threshold;
+	float knee;
+	float scatter;
+	float intensity;
+	float4 tint;
+	float2 texelSize;
+	float mipLevel;
+	float pad;
+};
+
+// Environment Buffer
+struct CBEnvironment
+{
+	float4 skyZenith;
+	float4 skyHorizon;
+	float4 groundColor;
+	float4 ambientColor;
+	float4 sunDirection; // xyz = dir, w = drawSunDisk
+	float4 sunColor;     // rgb = color, a = sunDiskCos
+	float skyIntensity;
+	float ambientIntensity;
+	float2 pad;
 };
 
 #ifdef __cplusplus

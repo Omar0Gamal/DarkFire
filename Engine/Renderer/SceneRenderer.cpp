@@ -66,13 +66,50 @@ namespace Core::Renderer
 		auto matRes = m_device.createBuffer(matDesc);
 		if (matRes.isOk()) m_cbMaterial = *matRes;
 
-		// 5. PostProcess Constant Buffer (16 bytes aligned)
+		// 5. PostProcess & Frame Feature Constant Buffers
 		RHI::GpuBufferDesc ppDesc{};
-		ppDesc.size = 16;
+		ppDesc.size = sizeof(CBPostProcess);
 		ppDesc.usage = RHI::BufferUsage::Default;
 		ppDesc.bindFlags = RHI::BufferBindFlags::ConstantBuffer;
 		auto ppRes = m_device.createBuffer(ppDesc);
 		if (ppRes.isOk()) m_cbPostProcess = *ppRes;
+
+		RHI::GpuBufferDesc envDesc{};
+		envDesc.size = sizeof(CBEnvironment);
+		envDesc.usage = RHI::BufferUsage::Default;
+		envDesc.bindFlags = RHI::BufferBindFlags::ConstantBuffer;
+		auto envRes = m_device.createBuffer(envDesc);
+		if (envRes.isOk()) m_cbEnvironment = *envRes;
+
+		RHI::GpuBufferDesc ssaoDesc{};
+		ssaoDesc.size = sizeof(CBSSAO);
+		ssaoDesc.usage = RHI::BufferUsage::Default;
+		ssaoDesc.bindFlags = RHI::BufferBindFlags::ConstantBuffer;
+		auto ssaoRes = m_device.createBuffer(ssaoDesc);
+		if (ssaoRes.isOk()) m_cbSSAO = *ssaoRes;
+
+		RHI::GpuBufferDesc blurDesc{};
+		blurDesc.size = 16;
+		blurDesc.usage = RHI::BufferUsage::Default;
+		blurDesc.bindFlags = RHI::BufferBindFlags::ConstantBuffer;
+		auto blurRes = m_device.createBuffer(blurDesc);
+		if (blurRes.isOk()) m_cbSSAOBlur = *blurRes;
+
+		RHI::GpuBufferDesc bloomDesc{};
+		bloomDesc.size = sizeof(CBBloom);
+		bloomDesc.usage = RHI::BufferUsage::Default;
+		bloomDesc.bindFlags = RHI::BufferBindFlags::ConstantBuffer;
+		auto bloomRes = m_device.createBuffer(bloomDesc);
+		if (bloomRes.isOk()) m_cbBloom = *bloomRes;
+
+		RHI::GpuBufferDesc fxaaDesc{};
+		fxaaDesc.size = 16;
+		fxaaDesc.usage = RHI::BufferUsage::Default;
+		fxaaDesc.bindFlags = RHI::BufferBindFlags::ConstantBuffer;
+		auto fxaaRes = m_device.createBuffer(fxaaDesc);
+		if (fxaaRes.isOk()) m_cbFXAA = *fxaaRes;
+
+		generateSSAOKernel();
 
 		// 6. Lights Structured Buffer
 		RHI::GpuBufferDesc lightDesc{};
@@ -90,11 +127,54 @@ namespace Core::Renderer
 		rsDesc.frontCounterClockwise = false;
 		m_rsSolid = m_device.getOrCreateRasterizerState(rsDesc);
 
+		// Depth Prepass: test & write GreaterEqual (Reversed-Z)
+		RHI::DepthStencilStateDesc dsPrepassDesc{};
+		dsPrepassDesc.depthEnable = true;
+		dsPrepassDesc.depthWrite = true;
+		dsPrepassDesc.depthFunc = RHI::ComparisonFunc::GreaterEqual;
+		m_dssDepthPrepass = m_device.getOrCreateDepthStencilState(dsPrepassDesc);
+
+		// Opaque Pass
 		RHI::DepthStencilStateDesc dsDesc{};
 		dsDesc.depthEnable = true;
 		dsDesc.depthWrite = true;
 		dsDesc.depthFunc = RHI::ComparisonFunc::GreaterEqual; // Reversed-Z
 		m_dssOpaque = m_device.getOrCreateDepthStencilState(dsDesc);
+
+		// Skybox: depth == 0.0 (far plane in reversed-Z), no depth write
+		RHI::DepthStencilStateDesc dsSkyDesc{};
+		dsSkyDesc.depthEnable = true;
+		dsSkyDesc.depthWrite = false;
+		dsSkyDesc.depthFunc = RHI::ComparisonFunc::Equal;
+		m_dssSky = m_device.getOrCreateDepthStencilState(dsSkyDesc);
+
+		// Transparent: depth test GreaterEqual, no depth write
+		RHI::DepthStencilStateDesc dsTransDesc{};
+		dsTransDesc.depthEnable = true;
+		dsTransDesc.depthWrite = false;
+		dsTransDesc.depthFunc = RHI::ComparisonFunc::GreaterEqual;
+		m_dssTransparent = m_device.getOrCreateDepthStencilState(dsTransDesc);
+
+		// Blend States
+		RHI::BlendStateDesc bsAlpha{};
+		bsAlpha.blendEnable = true;
+		bsAlpha.srcBlend = RHI::BlendFactor::SrcAlpha;
+		bsAlpha.destBlend = RHI::BlendFactor::InvSrcAlpha;
+		bsAlpha.blendOp = RHI::BlendOp::Add;
+		bsAlpha.srcBlendAlpha = RHI::BlendFactor::One;
+		bsAlpha.destBlendAlpha = RHI::BlendFactor::Zero;
+		bsAlpha.blendOpAlpha = RHI::BlendOp::Add;
+		m_bsAlphaBlend = m_device.getOrCreateBlendState(bsAlpha);
+
+		RHI::BlendStateDesc bsAdd{};
+		bsAdd.blendEnable = true;
+		bsAdd.srcBlend = RHI::BlendFactor::One;
+		bsAdd.destBlend = RHI::BlendFactor::One;
+		bsAdd.blendOp = RHI::BlendOp::Add;
+		bsAdd.srcBlendAlpha = RHI::BlendFactor::One;
+		bsAdd.destBlendAlpha = RHI::BlendFactor::One;
+		bsAdd.blendOpAlpha = RHI::BlendOp::Add;
+		m_bsAdditive = m_device.getOrCreateBlendState(bsAdd);
 
 		RHI::SamplerStateDesc smpLinearWrap{};
 		smpLinearWrap.filter = RHI::FilterMode::Linear;
@@ -142,6 +222,30 @@ namespace Core::Renderer
 
 		auto psPpRes = m_shaderLibrary.getOrCreatePixelShader("PostProcessPS.hlsl");
 		if (psPpRes.isOk()) m_psPostProcess = *psPpRes;
+
+		auto psSkyRes = m_shaderLibrary.getOrCreatePixelShader("SkyPS.hlsl");
+		if (psSkyRes.isOk()) m_psSky = *psSkyRes;
+
+		auto psSSAORes = m_shaderLibrary.getOrCreatePixelShader("SSAOPS.hlsl");
+		if (psSSAORes.isOk()) m_psSSAO = *psSSAORes;
+
+		auto psSSAOBlurRes = m_shaderLibrary.getOrCreatePixelShader("SSAOBlurPS.hlsl");
+		if (psSSAOBlurRes.isOk()) m_psSSAOBlur = *psSSAOBlurRes;
+
+		auto psBloomPreRes = m_shaderLibrary.getOrCreatePixelShader("BloomPrefilterPS.hlsl");
+		if (psBloomPreRes.isOk()) m_psBloomPrefilter = *psBloomPreRes;
+
+		auto psBloomDownRes = m_shaderLibrary.getOrCreatePixelShader("BloomDownsamplePS.hlsl");
+		if (psBloomDownRes.isOk()) m_psBloomDownsample = *psBloomDownRes;
+
+		auto psBloomUpRes = m_shaderLibrary.getOrCreatePixelShader("BloomUpsamplePS.hlsl");
+		if (psBloomUpRes.isOk()) m_psBloomUpsample = *psBloomUpRes;
+
+		auto psTonemapRes = m_shaderLibrary.getOrCreatePixelShader("TonemapPS.hlsl");
+		if (psTonemapRes.isOk()) m_psTonemap = *psTonemapRes;
+
+		auto psFXAARes = m_shaderLibrary.getOrCreatePixelShader("FXAAPS.hlsl");
+		if (psFXAARes.isOk()) m_psFXAA = *psFXAARes;
 
 		// 9. Default 1x1 Textures
 		RHI::GpuTextureDesc tex1x1{};
@@ -455,6 +559,31 @@ namespace Core::Renderer
 		return mat;
 	}
 
+	void SceneRenderer::generateSSAOKernel()
+	{
+		for (uint32_t i = 0; i < 16; ++i)
+		{
+			float u = static_cast<float>(i + 1) / 16.0f;
+			float v = static_cast<float>((i * 7) % 16) / 16.0f;
+			float phi = v * 2.0f * 3.14159265f;
+			float cosTheta = 1.0f - u * 0.9f;
+			float sinTheta = std::sqrt(std::max(0.0f, 1.0f - cosTheta * cosTheta));
+
+			Math::Vector3 sample(
+				sinTheta * std::cos(phi),
+				sinTheta * std::sin(phi),
+				std::max(cosTheta, 0.1f)
+			);
+			sample.Normalize();
+
+			float scale = static_cast<float>(i) / 16.0f;
+			scale = 0.1f + (scale * scale) * (1.0f - 0.1f);
+			sample *= scale;
+
+			m_ssaoKernel[i] = Math::Vector4(sample.x, sample.y, sample.z, 0.0f);
+		}
+	}
+
 	void SceneRenderer::resize(uint32_t width, uint32_t height)
 	{
 		if (width == 0 || height == 0) return;
@@ -496,6 +625,48 @@ namespace Core::Renderer
 		ldrDesc.bindFlags = RHI::BufferBindFlags::RenderTarget | RHI::BufferBindFlags::ShaderResource;
 		auto ldrRes = m_device.createTexture(ldrDesc);
 		if (ldrRes.isOk()) m_finalLdrTexture = *ldrRes;
+
+		// 5. Intermediate LDR Target for Post-Processing & FXAA
+		RHI::GpuTextureDesc ldrIntermDesc = ldrDesc;
+		auto ldrIntermRes = m_device.createTexture(ldrIntermDesc);
+		if (ldrIntermRes.isOk()) m_ldrIntermediateTexture = *ldrIntermRes;
+
+		// 6. SSAO Half-Resolution Targets (R8_UNORM)
+		uint32_t halfW = std::max((width + 1) / 2, 1u);
+		uint32_t halfH = std::max((height + 1) / 2, 1u);
+
+		RHI::GpuTextureDesc ssaoDesc{};
+		ssaoDesc.width = halfW;
+		ssaoDesc.height = halfH;
+		ssaoDesc.format = RHI::PixelFormat::R8_UNORM;
+		ssaoDesc.bindFlags = RHI::BufferBindFlags::RenderTarget | RHI::BufferBindFlags::ShaderResource;
+
+		auto ssaoRawRes = m_device.createTexture(ssaoDesc);
+		if (ssaoRawRes.isOk()) m_ssaoRawTexture = *ssaoRawRes;
+
+		auto ssaoBlurRes = m_device.createTexture(ssaoDesc);
+		if (ssaoBlurRes.isOk()) m_ssaoBlurredTexture = *ssaoBlurRes;
+
+		// 7. Bloom Pyramid Targets (5 levels down and up, R16G16B16A16_FLOAT)
+		uint32_t bw = halfW;
+		uint32_t bh = halfH;
+		for (uint32_t i = 0; i < 5; ++i)
+		{
+			RHI::GpuTextureDesc bloomDesc{};
+			bloomDesc.width = std::max(bw, 1u);
+			bloomDesc.height = std::max(bh, 1u);
+			bloomDesc.format = RHI::PixelFormat::R16G16B16A16_FLOAT;
+			bloomDesc.bindFlags = RHI::BufferBindFlags::RenderTarget | RHI::BufferBindFlags::ShaderResource;
+
+			auto downRes = m_device.createTexture(bloomDesc);
+			if (downRes.isOk()) m_bloomDown[i] = *downRes;
+
+			auto upRes = m_device.createTexture(bloomDesc);
+			if (upRes.isOk()) m_bloomUp[i] = *upRes;
+
+			bw = std::max(bw / 2, 1u);
+			bh = std::max(bh / 2, 1u);
+		}
 	}
 
 	void SceneRenderer::render(const RenderScene& scene, const RenderView& view)
@@ -587,17 +758,165 @@ namespace Core::Renderer
 		vp.maxDepth = 1.0f;
 		m_context->setViewport(vp);
 
-		// Pass 1: Forward Opaque & Alpha-Test (HDR + Reversed-Z + Entity ID)
+		// Pass 1: Depth Prepass (Reversed-Z, fast depth-only)
+		passDepthPrepass(scene);
+
+		// Pass 2: Screen-Space Ambient Occlusion (half-res)
+		passSSAO(scene, view);
+
+		// Pass 3: Forward Opaque PBR Shading (HDR + Reversed-Z + Entity ID)
 		passOpaque(scene);
 
-		// Pass 2: Skybox
+		// Pass 4: Procedural Skybox Dome (at depth == 0.0)
 		passSkybox(scene);
 
-		// Pass 3: Transparent
+		// Pass 5: Transparent Meshes (back-to-front sorting + alpha/additive blending)
 		passTransparent(scene);
 
-		// Pass 4: Post-Process & Tonemap (Outputs to targetTexture, backbuffer, or m_finalLdrTexture)
-		passPostProcess(view);
+		// Pass 6: Bloom (13-tap prefilter + 5-level down/upsample pyramid)
+		passBloom(scene);
+
+		// Pass 7: Post-Process & Tonemapping (ACES/sRGB + single-pass FXAA)
+		passPostProcess(scene, view);
+	}
+
+	void SceneRenderer::passDepthPrepass(const RenderScene& scene)
+	{
+		if (!m_depthTexture) return;
+
+		// Reversed-Z: clear depth to 0.0f
+		m_context->clearDepthStencil(m_depthTexture, 0.0f, 0);
+
+		// Bind depth-only render target
+		m_context->setRenderTargets({}, m_depthTexture);
+
+		m_context->setPrimitiveTopology(RHI::PrimitiveTopology::TriangleList);
+		if (m_inputLayout) m_context->setInputLayout(m_inputLayout);
+		if (m_vsStandard) m_context->setVertexShader(m_vsStandard);
+		m_context->setPixelShader(nullptr); // Hardware fast depth-only
+		if (m_rsSolid) m_context->setRasterizerState(m_rsSolid);
+		if (m_dssDepthPrepass) m_context->setDepthStencilState(m_dssDepthPrepass, 0);
+		m_context->setBlendState(nullptr);
+
+		for (const auto& mesh : scene.meshes)
+		{
+			if (mesh.layer != RenderLayer::Opaque) continue;
+
+			const auto gpuMesh = getOrCreateMesh(mesh.meshPath);
+			if (!gpuMesh.vertexBuffer || !gpuMesh.indexBuffer || gpuMesh.indexCount == 0) continue;
+
+			m_context->setVertexBuffer(0, gpuMesh.vertexBuffer, sizeof(VertexMesh), 0);
+			m_context->setIndexBuffer(gpuMesh.indexBuffer, RHI::PixelFormat::R32_UINT, 0);
+
+			CBPerObject obj{};
+			obj.worldMatrix = mesh.world;
+			obj.invWorldMatrix = mesh.world.Invert();
+			obj.entityId = mesh.entityId;
+
+			auto alloc = m_uploadRing.allocate(sizeof(CBPerObject), &obj);
+			if (alloc.isValid())
+			{
+				m_context->setConstantBufferSubrangeVS(DF_SLOT_CB_PER_OBJECT, alloc.buffer, alloc.firstConstant16, alloc.numConstants16);
+			}
+
+			m_context->drawIndexed(gpuMesh.indexCount, 0, 0);
+			m_drawCallCount++;
+		}
+
+		// Unbind DSV so depth can be read as SRV in SSAO
+		m_context->setRenderTargets({}, nullptr);
+	}
+
+	void SceneRenderer::passSSAO(const RenderScene& scene, const RenderView& view)
+	{
+		bool ssaoEnabled = scene.environment.enableSSAO;
+		if (view.overrides.overrideSSAO)
+		{
+			ssaoEnabled = view.overrides.enableSSAO;
+		}
+		if (!ssaoEnabled || !m_psSSAO || !m_psSSAOBlur || !m_depthTexture || !m_ssaoRawTexture || !m_ssaoBlurredTexture)
+		{
+			return;
+		}
+
+		uint32_t halfW = m_ssaoRawTexture->getDesc().width;
+		uint32_t halfH = m_ssaoRawTexture->getDesc().height;
+
+		RHI::Viewport halfVp{};
+		halfVp.x = 0.0f;
+		halfVp.y = 0.0f;
+		halfVp.width = static_cast<float>(halfW);
+		halfVp.height = static_cast<float>(halfH);
+		halfVp.minDepth = 0.0f;
+		halfVp.maxDepth = 1.0f;
+		m_context->setViewport(halfVp);
+
+		// Step A: Generate raw SSAO
+		m_context->setRenderTargets({ m_ssaoRawTexture }, nullptr);
+
+		m_context->setPrimitiveTopology(RHI::PrimitiveTopology::TriangleList);
+		m_context->setInputLayout(nullptr);
+		m_context->setVertexShader(m_vsFullscreen);
+		m_context->setPixelShader(m_psSSAO);
+		if (m_rsSolid) m_context->setRasterizerState(m_rsSolid);
+		m_context->setDepthStencilState(nullptr, 0);
+		m_context->setBlendState(nullptr);
+
+		m_context->setShaderResourcePS(DF_SLOT_TEX_DEPTH, m_depthTexture);
+		if (m_samplerPointClamp) m_context->setSamplerPS(DF_SLOT_SMP_POINT_CLAMP, m_samplerPointClamp);
+
+		CBSSAO cbSSAO{};
+		cbSSAO.radius = scene.environment.ssaoRadius > 0.001f ? scene.environment.ssaoRadius : 0.5f;
+		cbSSAO.bias = scene.environment.ssaoBias > 0.0001f ? scene.environment.ssaoBias : 0.025f;
+		cbSSAO.intensity = scene.environment.ssaoIntensity > 0.001f ? scene.environment.ssaoIntensity : 1.2f;
+		cbSSAO.power = 1.5f;
+		cbSSAO.sampleCount = 16;
+		cbSSAO.invResolution = Math::Vector2(1.0f / halfW, 1.0f / halfH);
+		for (size_t i = 0; i < 16; ++i) cbSSAO.kernel[i] = m_ssaoKernel[i];
+
+		if (m_cbSSAO)
+		{
+			m_context->updateSubresource(m_cbSSAO, &cbSSAO, sizeof(cbSSAO));
+			m_context->setConstantBufferPS(DF_SLOT_CB_POST_PROCESS, m_cbSSAO);
+		}
+
+		m_context->draw(3, 0);
+		m_drawCallCount++;
+		m_context->setShaderResourcePS(DF_SLOT_TEX_DEPTH, nullptr);
+
+		// Step B: Bilateral Blur
+		m_context->setRenderTargets({ m_ssaoBlurredTexture }, nullptr);
+		m_context->setPixelShader(m_psSSAOBlur);
+		m_context->setShaderResourcePS(0, m_ssaoRawTexture);
+		m_context->setShaderResourcePS(DF_SLOT_TEX_DEPTH, m_depthTexture);
+		if (m_samplerLinearClamp) m_context->setSamplerPS(DF_SLOT_SMP_LINEAR_CLAMP, m_samplerLinearClamp);
+
+		struct { Math::Vector2 texelSize; Math::Vector2 pad; } cbBlur{
+			Math::Vector2(1.0f / halfW, 1.0f / halfH),
+			Math::Vector2(0.0f, 0.0f)
+		};
+		if (m_cbSSAOBlur)
+		{
+			m_context->updateSubresource(m_cbSSAOBlur, &cbBlur, sizeof(cbBlur));
+			m_context->setConstantBufferPS(DF_SLOT_CB_POST_PROCESS, m_cbSSAOBlur);
+		}
+
+		m_context->draw(3, 0);
+		m_drawCallCount++;
+
+		m_context->setShaderResourcePS(0, nullptr);
+		m_context->setShaderResourcePS(DF_SLOT_TEX_DEPTH, nullptr);
+		m_context->setRenderTargets({}, nullptr);
+
+		// Restore full viewport
+		RHI::Viewport fullVp{};
+		fullVp.x = 0.0f;
+		fullVp.y = 0.0f;
+		fullVp.width = static_cast<float>(m_width);
+		fullVp.height = static_cast<float>(m_height);
+		fullVp.minDepth = 0.0f;
+		fullVp.maxDepth = 1.0f;
+		m_context->setViewport(fullVp);
 	}
 
 	void SceneRenderer::passOpaque(const RenderScene& scene)
@@ -614,9 +933,6 @@ namespace Core::Renderer
 		);
 		m_context->clearRenderTarget(m_hdrTexture, envClearColor);
 		m_context->clearRenderTarget(m_entityIdTexture, Color(0.0f, 0.0f, 0.0f, 0.0f));
-
-		// Reversed-Z: depth cleared to 0.0f!
-		m_context->clearDepthStencil(m_depthTexture, 0.0f, 0);
 
 		// Collect and sort Opaque and AlphaTest meshes
 		m_cachedDrawItems.clear();
@@ -667,6 +983,14 @@ namespace Core::Renderer
 		if (m_bufLights)
 		{
 			m_context->setShaderResourceBufferPS(DF_SLOT_BUF_LIGHTS, m_bufLights);
+		}
+
+		// Bind SSAO Texture (slot 11)
+		bool ssaoActive = scene.environment.enableSSAO && m_ssaoBlurredTexture;
+		auto ssaoTex = ssaoActive ? m_ssaoBlurredTexture : m_whiteTexture;
+		if (ssaoTex)
+		{
+			m_context->setShaderResourcePS(DF_SLOT_TEX_SSAO, ssaoTex);
 		}
 
 		// Bind Default Textures
@@ -766,19 +1090,375 @@ namespace Core::Renderer
 				m_drawCallCount++;
 			}
 		}
+
+		// Unbind SSAO texture from PS
+		m_context->setShaderResourcePS(DF_SLOT_TEX_SSAO, nullptr);
 	}
 
 	void SceneRenderer::passSkybox(const RenderScene& scene)
 	{
-		(void)scene;
+		if (!m_vsFullscreen || !m_psSky || !m_hdrTexture || !m_depthTexture) return;
+
+		std::vector<std::shared_ptr<RHI::IGpuTexture>> rtvs = { m_hdrTexture, m_entityIdTexture };
+		m_context->setRenderTargets(rtvs, m_depthTexture);
+
+		m_context->setPrimitiveTopology(RHI::PrimitiveTopology::TriangleList);
+		m_context->setInputLayout(nullptr);
+		m_context->setVertexShader(m_vsFullscreen);
+		m_context->setPixelShader(m_psSky);
+		if (m_rsSolid) m_context->setRasterizerState(m_rsSolid);
+		if (m_dssSky) m_context->setDepthStencilState(m_dssSky, 0);
+		m_context->setBlendState(nullptr);
+
+		CBEnvironment envData{};
+		envData.skyZenith = scene.environment.skyColor;
+		envData.skyHorizon = scene.environment.horizonColor;
+		envData.groundColor = scene.environment.groundColor;
+		envData.ambientColor = scene.environment.ambientColor;
+		envData.skyIntensity = 1.0f;
+		envData.ambientIntensity = scene.environment.ambientIntensity;
+
+		// Find first directional light for sun disk
+		bool foundDir = false;
+		for (const auto& l : scene.lights)
+		{
+			if (l.type == 0) // Directional
+			{
+				envData.sunDirection = Math::Vector4(-l.direction.x, -l.direction.y, -l.direction.z, 1.0f);
+				envData.sunColor = Math::Vector4(l.color.x, l.color.y, l.color.z, 0.9995f);
+				foundDir = true;
+				break;
+			}
+		}
+		if (!foundDir)
+		{
+			envData.sunDirection = Math::Vector4(0.0f, 1.0f, 0.0f, 0.0f);
+			envData.sunColor = Math::Vector4(1.0f, 1.0f, 1.0f, 0.9995f);
+		}
+
+		if (m_cbEnvironment)
+		{
+			m_context->updateSubresource(m_cbEnvironment, &envData, sizeof(envData));
+			m_context->setConstantBufferPS(DF_SLOT_CB_POST_PROCESS, m_cbEnvironment);
+		}
+
+		m_context->draw(3, 0);
+		m_drawCallCount++;
 	}
 
 	void SceneRenderer::passTransparent(const RenderScene& scene)
 	{
-		(void)scene;
+		std::vector<RenderMeshInstance> transparentMeshes;
+		for (const auto& mesh : scene.meshes)
+		{
+			const auto mat = mesh.material ? mesh.material : getOrCreateMaterial(mesh.materialPath);
+			bool isTransparent = (mesh.layer == RenderLayer::Transparent) ||
+				(mat && mat->getBlendMode() != BlendMode::Opaque);
+			if (isTransparent)
+			{
+				transparentMeshes.push_back(mesh);
+			}
+		}
+
+		if (transparentMeshes.empty()) return;
+
+		// Sort back-to-front (farthest first)
+		std::sort(transparentMeshes.begin(), transparentMeshes.end(), [](const RenderMeshInstance& a, const RenderMeshInstance& b) {
+			return a.distanceToCamera > b.distanceToCamera;
+		});
+
+		std::vector<std::shared_ptr<RHI::IGpuTexture>> rtvs = { m_hdrTexture, m_entityIdTexture };
+		m_context->setRenderTargets(rtvs, m_depthTexture);
+
+		m_context->setPrimitiveTopology(RHI::PrimitiveTopology::TriangleList);
+		if (m_inputLayout) m_context->setInputLayout(m_inputLayout);
+		if (m_vsStandard) m_context->setVertexShader(m_vsStandard);
+		if (m_psStandard) m_context->setPixelShader(m_psStandard);
+		if (m_rsSolid) m_context->setRasterizerState(m_rsSolid);
+		if (m_dssTransparent) m_context->setDepthStencilState(m_dssTransparent, 0);
+
+		for (const auto& mesh : transparentMeshes)
+		{
+			const auto gpuMesh = getOrCreateMesh(mesh.meshPath);
+			if (!gpuMesh.vertexBuffer || !gpuMesh.indexBuffer || gpuMesh.indexCount == 0) continue;
+
+			const auto mat = mesh.material ? mesh.material : getOrCreateMaterial(mesh.materialPath);
+			if (mat)
+			{
+				if (mat->getBlendMode() == BlendMode::Additive)
+				{
+					m_context->setBlendState(m_bsAdditive);
+				}
+				else
+				{
+					m_context->setBlendState(m_bsAlphaBlend);
+				}
+
+				if (m_cbMaterial)
+				{
+					m_context->updateSubresource(m_cbMaterial, &mat->getBufferData(), sizeof(CBPerMaterial));
+					m_context->setConstantBufferPS(DF_SLOT_CB_PER_MATERIAL, m_cbMaterial);
+				}
+
+				auto albedoTex = mat->getAlbedoTexture() ? mat->getAlbedoTexture() : m_whiteTexture;
+				auto normalTex = mat->getNormalTexture() ? mat->getNormalTexture() : m_flatNormalTexture;
+				auto mrTex = mat->getMetallicRoughnessTexture() ? mat->getMetallicRoughnessTexture() : m_defaultMRTexture;
+				auto emissiveTex = mat->getEmissiveTexture() ? mat->getEmissiveTexture() : m_blackTexture;
+
+				if (albedoTex) m_context->setShaderResourcePS(DF_SLOT_TEX_ALBEDO, albedoTex);
+				if (normalTex) m_context->setShaderResourcePS(DF_SLOT_TEX_NORMAL, normalTex);
+				if (mrTex) m_context->setShaderResourcePS(DF_SLOT_TEX_METALLIC_ROUGHNESS, mrTex);
+				if (emissiveTex) m_context->setShaderResourcePS(DF_SLOT_TEX_EMISSIVE, emissiveTex);
+			}
+			else
+			{
+				m_context->setBlendState(m_bsAlphaBlend);
+			}
+
+			m_context->setVertexBuffer(0, gpuMesh.vertexBuffer, sizeof(VertexMesh), 0);
+			m_context->setIndexBuffer(gpuMesh.indexBuffer, RHI::PixelFormat::R32_UINT, 0);
+
+			CBPerObject obj{};
+			obj.worldMatrix = mesh.world;
+			obj.invWorldMatrix = mesh.world.Invert();
+			obj.entityId = mesh.entityId;
+
+			auto alloc = m_uploadRing.allocate(sizeof(CBPerObject), &obj);
+			if (alloc.isValid())
+			{
+				m_context->setConstantBufferSubrangeVS(DF_SLOT_CB_PER_OBJECT, alloc.buffer, alloc.firstConstant16, alloc.numConstants16);
+			}
+
+			m_context->drawIndexed(gpuMesh.indexCount, 0, 0);
+			m_drawCallCount++;
+		}
+
+		m_context->setBlendState(nullptr);
+		m_context->setRenderTargets({}, nullptr);
 	}
 
-	void SceneRenderer::passPostProcess(const RenderView& view)
+	void SceneRenderer::passBloom(const RenderScene& scene)
+	{
+		if (!scene.environment.enableBloom || !m_psBloomPrefilter || !m_psBloomDownsample || !m_psBloomUpsample || !m_bloomDown[0])
+		{
+			return;
+		}
+
+		m_context->setRenderTargets({}, nullptr);
+
+		m_context->setPrimitiveTopology(RHI::PrimitiveTopology::TriangleList);
+		m_context->setInputLayout(nullptr);
+		m_context->setVertexShader(m_vsFullscreen);
+		if (m_rsSolid) m_context->setRasterizerState(m_rsSolid);
+		m_context->setDepthStencilState(nullptr, 0);
+		m_context->setBlendState(nullptr);
+		if (m_samplerLinearClamp) m_context->setSamplerPS(DF_SLOT_SMP_LINEAR_CLAMP, m_samplerLinearClamp);
+
+		CBBloom cbBloom{};
+		cbBloom.threshold = scene.environment.bloomThreshold > 0.001f ? scene.environment.bloomThreshold : 1.0f;
+		cbBloom.knee = 0.5f;
+		cbBloom.scatter = 0.7f;
+		cbBloom.intensity = scene.environment.bloomIntensity > 0.0001f ? scene.environment.bloomIntensity : 0.04f;
+		cbBloom.tint = Math::Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+
+		// Step A: Prefilter & Downsample Mip 0 from HDR Texture
+		{
+			uint32_t w = m_bloomDown[0]->getDesc().width;
+			uint32_t h = m_bloomDown[0]->getDesc().height;
+			RHI::Viewport vp{ 0.0f, 0.0f, static_cast<float>(w), static_cast<float>(h), 0.0f, 1.0f };
+			m_context->setViewport(vp);
+
+			m_context->setRenderTargets({ m_bloomDown[0] }, nullptr);
+			m_context->setPixelShader(m_psBloomPrefilter);
+			m_context->setShaderResourcePS(0, m_hdrTexture);
+
+			cbBloom.texelSize = Math::Vector2(1.0f / w, 1.0f / h);
+			cbBloom.mipLevel = 0.0f;
+			if (m_cbBloom)
+			{
+				m_context->updateSubresource(m_cbBloom, &cbBloom, sizeof(cbBloom));
+				m_context->setConstantBufferPS(DF_SLOT_CB_POST_PROCESS, m_cbBloom);
+			}
+
+			m_context->draw(3, 0);
+			m_drawCallCount++;
+			m_context->setShaderResourcePS(0, nullptr);
+		}
+
+		// Step B: Downsample Pyramid Mips 1..4
+		for (uint32_t i = 1; i < 5; ++i)
+		{
+			uint32_t w = m_bloomDown[i]->getDesc().width;
+			uint32_t h = m_bloomDown[i]->getDesc().height;
+			RHI::Viewport vp{ 0.0f, 0.0f, static_cast<float>(w), static_cast<float>(h), 0.0f, 1.0f };
+			m_context->setViewport(vp);
+
+			m_context->setRenderTargets({ m_bloomDown[i] }, nullptr);
+			m_context->setPixelShader(m_psBloomDownsample);
+			m_context->setShaderResourcePS(0, m_bloomDown[i - 1]);
+
+			cbBloom.texelSize = Math::Vector2(1.0f / w, 1.0f / h);
+			cbBloom.mipLevel = static_cast<float>(i);
+			if (m_cbBloom)
+			{
+				m_context->updateSubresource(m_cbBloom, &cbBloom, sizeof(cbBloom));
+				m_context->setConstantBufferPS(DF_SLOT_CB_POST_PROCESS, m_cbBloom);
+			}
+
+			m_context->draw(3, 0);
+			m_drawCallCount++;
+			m_context->setShaderResourcePS(0, nullptr);
+		}
+
+		// Step C: Upsample Pyramid Mips 3..0
+		for (int32_t i = 3; i >= 0; --i)
+		{
+			uint32_t w = m_bloomUp[i]->getDesc().width;
+			uint32_t h = m_bloomUp[i]->getDesc().height;
+			RHI::Viewport vp{ 0.0f, 0.0f, static_cast<float>(w), static_cast<float>(h), 0.0f, 1.0f };
+			m_context->setViewport(vp);
+
+			m_context->setRenderTargets({ m_bloomUp[i] }, nullptr);
+			m_context->setPixelShader(m_psBloomUpsample);
+
+			auto lowerMip = (i == 3) ? m_bloomDown[4] : m_bloomUp[i + 1];
+			auto currentMip = m_bloomDown[i];
+			m_context->setShaderResourcePS(0, lowerMip);
+			m_context->setShaderResourcePS(1, currentMip);
+
+			cbBloom.texelSize = Math::Vector2(1.0f / w, 1.0f / h);
+			cbBloom.mipLevel = static_cast<float>(i);
+			if (m_cbBloom)
+			{
+				m_context->updateSubresource(m_cbBloom, &cbBloom, sizeof(cbBloom));
+				m_context->setConstantBufferPS(DF_SLOT_CB_POST_PROCESS, m_cbBloom);
+			}
+
+			m_context->draw(3, 0);
+			m_drawCallCount++;
+			m_context->setShaderResourcePS(0, nullptr);
+			m_context->setShaderResourcePS(1, nullptr);
+		}
+
+		m_context->setRenderTargets({}, nullptr);
+
+		// Restore full viewport
+		RHI::Viewport fullVp{ 0.0f, 0.0f, static_cast<float>(m_width), static_cast<float>(m_height), 0.0f, 1.0f };
+		m_context->setViewport(fullVp);
+	}
+
+	void SceneRenderer::passTonemap(const RenderScene& scene, const RenderView& view, const std::shared_ptr<RHI::IGpuTexture>& destination)
+	{
+		if (!destination) return;
+
+		std::vector<std::shared_ptr<RHI::IGpuTexture>> rtvs = { destination };
+		m_context->setRenderTargets(rtvs, nullptr);
+
+		RHI::Viewport vp{ 0.0f, 0.0f, static_cast<float>(view.width), static_cast<float>(view.height), 0.0f, 1.0f };
+		m_context->setViewport(vp);
+
+		auto psToUse = m_psTonemap ? m_psTonemap : m_psPostProcess;
+		if (m_vsFullscreen && psToUse)
+		{
+			m_context->setPrimitiveTopology(RHI::PrimitiveTopology::TriangleList);
+			m_context->setInputLayout(nullptr);
+			m_context->setVertexShader(m_vsFullscreen);
+			m_context->setPixelShader(psToUse);
+			if (m_rsSolid) m_context->setRasterizerState(m_rsSolid);
+			m_context->setDepthStencilState(nullptr, 0);
+			m_context->setBlendState(nullptr);
+
+			// Bind HDR Texture as SRV on slot 0
+			m_context->setShaderResourcePS(0, m_hdrTexture);
+
+			// Bind Bloom Texture on slot 10
+			auto bloomTex = (scene.environment.enableBloom && m_bloomUp[0]) ? m_bloomUp[0] : m_blackTexture;
+			if (bloomTex) m_context->setShaderResourcePS(DF_SLOT_TEX_BLOOM, bloomTex);
+
+			// Bind SSAO Texture on slot 11
+			auto ssaoTex = (scene.environment.enableSSAO && m_ssaoBlurredTexture) ? m_ssaoBlurredTexture : m_whiteTexture;
+			if (ssaoTex) m_context->setShaderResourcePS(DF_SLOT_TEX_SSAO, ssaoTex);
+
+			if (m_samplerLinearClamp) m_context->setSamplerPS(DF_SLOT_SMP_LINEAR_CLAMP, m_samplerLinearClamp);
+			if (m_samplerPointClamp) m_context->setSamplerPS(DF_SLOT_SMP_POINT_CLAMP, m_samplerPointClamp);
+
+			CBPostProcess cbPP{};
+			cbPP.exposure = scene.environment.exposure > 0.001f ? scene.environment.exposure : 1.0f;
+			cbPP.tonemapper = static_cast<uint32_t>(scene.environment.tonemapper);
+			cbPP.contrast = 1.0f;
+			cbPP.saturation = 1.0f;
+			cbPP.vignetteIntensity = 0.0f;
+			cbPP.vignetteSmoothness = 0.4f;
+			cbPP.bloomIntensity = scene.environment.enableBloom ? scene.environment.bloomIntensity : 0.0f;
+			cbPP.debugView = 0; // 0 = Lit
+			cbPP.colorFilter = Math::Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+			cbPP.bloomTint = Math::Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+			cbPP.texelSize = Math::Vector2(
+				1.0f / (view.width > 0 ? static_cast<float>(view.width) : 1.0f),
+				1.0f / (view.height > 0 ? static_cast<float>(view.height) : 1.0f)
+			);
+			cbPP.gamma = scene.environment.gamma > 0.1f ? scene.environment.gamma : 2.2f;
+
+			if (m_cbPostProcess)
+			{
+				m_context->updateSubresource(m_cbPostProcess, &cbPP, sizeof(cbPP));
+				m_context->setConstantBufferPS(0, m_cbPostProcess);
+			}
+
+			m_context->draw(3, 0);
+			m_drawCallCount++;
+
+			m_context->setShaderResourcePS(0, nullptr);
+			m_context->setShaderResourcePS(DF_SLOT_TEX_BLOOM, nullptr);
+			m_context->setShaderResourcePS(DF_SLOT_TEX_SSAO, nullptr);
+		}
+		else
+		{
+			m_context->clearRenderTarget(destination, Color(0.05f, 0.05f, 0.08f, 1.0f));
+		}
+
+		m_context->setRenderTargets({}, nullptr);
+	}
+
+	void SceneRenderer::passFXAA(const std::shared_ptr<RHI::IGpuTexture>& source, const std::shared_ptr<RHI::IGpuTexture>& destination)
+	{
+		if (!source || !destination || !m_vsFullscreen || !m_psFXAA) return;
+
+		std::vector<std::shared_ptr<RHI::IGpuTexture>> rtvs = { destination };
+		m_context->setRenderTargets(rtvs, nullptr);
+
+		RHI::Viewport vp{ 0.0f, 0.0f, static_cast<float>(m_width), static_cast<float>(m_height), 0.0f, 1.0f };
+		m_context->setViewport(vp);
+
+		m_context->setPrimitiveTopology(RHI::PrimitiveTopology::TriangleList);
+		m_context->setInputLayout(nullptr);
+		m_context->setVertexShader(m_vsFullscreen);
+		m_context->setPixelShader(m_psFXAA);
+		if (m_rsSolid) m_context->setRasterizerState(m_rsSolid);
+		m_context->setDepthStencilState(nullptr, 0);
+		m_context->setBlendState(nullptr);
+
+		m_context->setShaderResourcePS(0, source);
+		if (m_samplerLinearClamp) m_context->setSamplerPS(DF_SLOT_SMP_LINEAR_CLAMP, m_samplerLinearClamp);
+
+		struct { Math::Vector2 texelSize; Math::Vector2 pad; } cbFXAA{
+			Math::Vector2(1.0f / m_width, 1.0f / m_height),
+			Math::Vector2(0.0f, 0.0f)
+		};
+		if (m_cbFXAA)
+		{
+			m_context->updateSubresource(m_cbFXAA, &cbFXAA, sizeof(cbFXAA));
+			m_context->setConstantBufferPS(0, m_cbFXAA);
+		}
+
+		m_context->draw(3, 0);
+		m_drawCallCount++;
+
+		m_context->setShaderResourcePS(0, nullptr);
+		m_context->setRenderTargets({}, nullptr);
+	}
+
+	void SceneRenderer::passPostProcess(const RenderScene& scene, const RenderView& view)
 	{
 		std::shared_ptr<RHI::IGpuTexture> finalTarget = m_finalLdrTexture;
 		if (view.targetTexture)
@@ -792,65 +1472,24 @@ namespace Core::Renderer
 
 		if (!finalTarget) return;
 
-		std::vector<std::shared_ptr<RHI::IGpuTexture>> rtvs = { finalTarget };
-		m_context->setRenderTargets(rtvs, nullptr);
 		m_context->clearRenderTarget(finalTarget, Color(0.05f, 0.05f, 0.08f, 1.0f));
 
-		RHI::Viewport vp{};
-		vp.x = 0.0f;
-		vp.y = 0.0f;
-		vp.width = static_cast<float>(view.width);
-		vp.height = static_cast<float>(view.height);
-		vp.minDepth = 0.0f;
-		vp.maxDepth = 1.0f;
-		m_context->setViewport(vp);
-
-		if (m_vsFullscreen && m_psPostProcess)
+		bool fxaaEnabled = scene.environment.enableFXAA;
+		if (view.overrides.overrideFXAA)
 		{
-			m_context->setPrimitiveTopology(RHI::PrimitiveTopology::TriangleList);
-			m_context->setInputLayout(nullptr);
-			m_context->setVertexShader(m_vsFullscreen);
-			m_context->setPixelShader(m_psPostProcess);
-			if (m_rsSolid) m_context->setRasterizerState(m_rsSolid);
-			m_context->setDepthStencilState(nullptr, 0);
-			m_context->setBlendState(nullptr);
-
-			// Bind HDR Texture as SRV on slot 0
-			m_context->setShaderResourcePS(0, m_hdrTexture);
-			if (m_samplerLinearClamp) m_context->setSamplerPS(DF_SLOT_SMP_LINEAR_CLAMP, m_samplerLinearClamp);
-			if (m_samplerPointClamp) m_context->setSamplerPS(DF_SLOT_SMP_POINT_CLAMP, m_samplerPointClamp);
-
-			// PostProcess CB (exposure, enableFXAA, texelSize)
-			struct CBPostProcess
-			{
-				float exposure;
-				float enableFXAA;
-				Math::Vector2 texelSize;
-			} cbPP{
-				m_config.exposure > 0.001f ? m_config.exposure : 1.0f,
-				m_config.enableFXAA ? 1.0f : 0.0f,
-				Math::Vector2(
-					1.0f / (view.width > 0 ? static_cast<float>(view.width) : 1.0f),
-					1.0f / (view.height > 0 ? static_cast<float>(view.height) : 1.0f)
-				)
-			};
-
-			if (m_cbPostProcess)
-			{
-				m_context->updateSubresource(m_cbPostProcess, &cbPP, sizeof(cbPP));
-				m_context->setConstantBufferPS(0, m_cbPostProcess);
-			}
-
-			m_context->draw(3, 0);
-			m_drawCallCount++;
-
-			// CRITICAL: Unbind HDR texture so next frame can bind it as RTV!
-			m_context->setShaderResourcePS(0, nullptr);
+			fxaaEnabled = view.overrides.enableFXAA;
 		}
-		else
+		if (!m_psFXAA || !m_ldrIntermediateTexture)
 		{
-			// Fallback clear if shaders missing
-			m_context->clearRenderTarget(finalTarget, Color(0.05f, 0.05f, 0.08f, 1.0f));
+			fxaaEnabled = false;
+		}
+
+		auto tonemapDest = fxaaEnabled ? m_ldrIntermediateTexture : finalTarget;
+		passTonemap(scene, view, tonemapDest);
+
+		if (fxaaEnabled)
+		{
+			passFXAA(m_ldrIntermediateTexture, finalTarget);
 		}
 	}
 

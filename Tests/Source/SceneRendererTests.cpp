@@ -344,4 +344,37 @@ TEST_SUITE("Milestone P4: Frame Pipeline, Color Space & SceneRenderer")
 		Core::Systems::ParticleSystem::Reset(scene);
 		CHECK(state.activeCount == 0);
 	}
+
+	TEST_CASE("SSAO Projection & Unprojection Math")
+	{
+		float fovY = Math::toRadians(60.0f);
+		float aspect = 16.0f / 9.0f;
+		float nearZ = 0.1f;
+		float farZ = 1000.0f;
+
+		Matrix proj = Math::perspectiveFovLH_ReversedZ(fovY, aspect, nearZ, farZ);
+		Matrix invProj = proj.Invert();
+
+		// Test view-space point at (1.0, 2.0, 5.0)
+		Vector4 viewPos(1.0f, 2.0f, 5.0f, 1.0f);
+		Vector4 clip = Vector4::Transform(viewPos, proj);
+
+		// Perspective divide to get NDC
+		Vector3 ndc(clip.x / clip.w, clip.y / clip.w, clip.z / clip.w);
+		CHECK(ndc.z >= 0.0f);
+		CHECK(ndc.z <= 1.0f);
+
+		// UV from NDC
+		Vector2 uv(ndc.x * 0.5f + 0.5f, -ndc.y * 0.5f + 0.5f);
+
+		// Reconstruct viewPos from (uv, depth = ndc.z) as in SSAOPS.hlsl:
+		Vector2 reNdc = uv * Vector2(2.0f, -2.0f) + Vector2(-1.0f, 1.0f);
+		Vector4 reClip(reNdc.x, reNdc.y, ndc.z, 1.0f);
+		Vector4 viewH = Vector4::Transform(reClip, invProj);
+		Vector3 reViewPos(viewH.x / viewH.w, viewH.y / viewH.w, viewH.z / viewH.w);
+
+		CHECK(reViewPos.x == doctest::Approx(1.0f).epsilon(0.001f));
+		CHECK(reViewPos.y == doctest::Approx(2.0f).epsilon(0.001f));
+		CHECK(reViewPos.z == doctest::Approx(5.0f).epsilon(0.001f));
+	}
 }

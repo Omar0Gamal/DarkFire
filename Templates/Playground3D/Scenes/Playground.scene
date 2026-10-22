@@ -8,10 +8,10 @@
       "parent": 0,
       "components": {
         "TransformComponent": {
-          "position": [0.0, 3.0, -8.0],
-          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "position": [0.0, 4.5, -9.0],
+          "rotation": [0.1564345, 0.0, 0.0, 0.9876883],
           "scale": [1.0, 1.0, 1.0],
-          "eulerDegrees": [0.0, 0.0, 0.0]
+          "eulerDegrees": [18.0, 0.0, 0.0]
         },
         "CameraComponent": {
           "fov": 60.0,
@@ -31,15 +31,15 @@
       "parent": 0,
       "components": {
         "TransformComponent": {
-          "position": [0.0, 10.0, 0.0],
-          "rotation": [0.3826834, 0.0, 0.0, 0.9238795],
+          "position": [5.0, 15.0, -5.0],
+          "rotation": [0.4030582, -0.2725320, 0.1270838, 0.8643611],
           "scale": [1.0, 1.0, 1.0],
-          "eulerDegrees": [45.0, 0.0, 0.0]
+          "eulerDegrees": [50.0, -35.0, 0.0]
         },
         "LightComponent": {
           "type": 0,
-          "color": [1.0, 0.95, 0.8, 1.0],
-          "intensity": 1.2,
+          "color": [1.0, 0.95, 0.85, 1.0],
+          "intensity": 1.25,
           "range": 100.0,
           "spotInnerAngle": 30.0,
           "spotOuterAngle": 45.0
@@ -60,7 +60,7 @@
         },
         "MeshRendererComponent": {
           "meshPath": "/engine/Content/cube.obj",
-          "materialPath": "/engine/Content/Default.mat",
+          "materialPath": "/engine/Content/Ground.mat",
           "castShadows": false,
           "receiveShadows": true
         },
@@ -88,7 +88,7 @@
         },
         "MeshRendererComponent": {
           "meshPath": "/engine/Content/cube.obj",
-          "materialPath": "/engine/Content/Default.mat",
+          "materialPath": "/engine/Content/Player.mat",
           "castShadows": true,
           "receiveShadows": true
         },
@@ -123,14 +123,14 @@
       "parent": 0,
       "components": {
         "TransformComponent": {
-          "position": [3.0, 1.0, 0.0],
+          "position": [3.0, 0.5, 0.0],
           "rotation": [0.0, 0.0, 0.0, 1.0],
           "scale": [1.0, 1.0, 1.0],
           "eulerDegrees": [0.0, 0.0, 0.0]
         },
         "MeshRendererComponent": {
           "meshPath": "/engine/Content/cube.obj",
-          "materialPath": "/engine/Content/Default.mat",
+          "materialPath": "/engine/Content/Obstacle.mat",
           "castShadows": true,
           "receiveShadows": true
         },
@@ -190,7 +190,7 @@
         },
         "MeshRendererComponent": {
           "meshPath": "/engine/Content/sphere.obj",
-          "materialPath": "/engine/Content/Default.mat",
+          "materialPath": "/engine/Content/Bouncer.mat",
           "castShadows": true,
           "receiveShadows": true
         },

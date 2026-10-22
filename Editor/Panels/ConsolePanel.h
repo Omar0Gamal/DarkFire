@@ -11,7 +11,7 @@ namespace Editor
 	public:
 		ConsolePanel();
 
-		void onImGuiRender();
+		void onImGuiRender(bool* p_open = nullptr);
 
 	private:
 		bool m_showTrace = true;
@@ -20,6 +20,7 @@ namespace Editor
 		bool m_showError = true;
 		bool m_showFatal = true;
 		bool m_autoScroll = true;
+		int m_selectedIndex = -1;
 
 		char m_filterBuffer[128]{};
 	};

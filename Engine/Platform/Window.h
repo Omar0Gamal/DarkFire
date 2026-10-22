@@ -50,6 +50,8 @@ namespace Platform
 			return (m_height > 0) ? static_cast<float>(m_width) / static_cast<float>(m_height) : 1.0f;
 		}
 
+		[[nodiscard]] float getDpiScale() const noexcept { return m_dpiScale; }
+
 		bool shouldClose() const noexcept { return m_shouldClose; }
 		void setShouldClose(bool close) noexcept { m_shouldClose = close; }
 
@@ -74,6 +76,7 @@ namespace Platform
 		HINSTANCE m_hinstance = nullptr;
 		uint32_t m_width = 0;
 		uint32_t m_height = 0;
+		float m_dpiScale = 1.0f;
 		bool m_shouldClose = false;
 		bool m_isMinimized = false;
 		bool m_isFocused = false;

@@ -2,11 +2,119 @@
 #include "Engine/Core/Scene/Scene.h"
 #include "Engine/Core/Scene/Components.h"
 #include "Engine/Core/Scripting/ScriptableEntity.h"
+#include "Engine/Core/Math/Math.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace Physics
 {
+	using Core::Matrix;
+	using Core::Quaternion;
+
+	namespace
+	{
+		struct OBB
+		{
+			Vector3 center;
+			Vector3 axes[3];   // Local X, Y, Z unit vectors in world space
+			Vector3 extents;   // Half-sizes along axes
+		};
+
+		inline OBB MakeOBB(const Core::TransformComponent& trans, const Core::ColliderComponent& col)
+		{
+			OBB obb{};
+			obb.center = trans.position;
+			obb.extents = col.size * 0.5f;
+			obb.axes[0] = trans.getRight();
+			obb.axes[1] = trans.getUp();
+			obb.axes[2] = trans.getForward();
+			return obb;
+		}
+
+		inline bool TestOBBOBB(const OBB& a, const OBB& b, Vector3& outNormal, float& outPenetration)
+		{
+			Vector3 D = b.center - a.center;
+
+			float minOverlap = (std::numeric_limits<float>::max)();
+			Vector3 bestAxis(0.0f, 1.0f, 0.0f);
+
+			// Helper to test a single candidate axis L
+			auto testAxis = [&](Vector3 L, float bias = 1.0f) -> bool
+			{
+				float lenSq = L.LengthSquared();
+				if (lenSq < 0.0001f) return true; // Degenerate cross product (parallel edges)
+
+				L /= std::sqrt(lenSq);
+
+				float rA = a.extents.x * std::abs(a.axes[0].Dot(L))
+				         + a.extents.y * std::abs(a.axes[1].Dot(L))
+				         + a.extents.z * std::abs(a.axes[2].Dot(L));
+
+				float rB = b.extents.x * std::abs(b.axes[0].Dot(L))
+				         + b.extents.y * std::abs(b.axes[1].Dot(L))
+				         + b.extents.z * std::abs(b.axes[2].Dot(L));
+
+				float s = std::abs(D.Dot(L));
+				float overlap = (rA + rB) - s;
+
+				if (overlap <= 0.0f)
+				{
+					return false; // Separating axis found!
+				}
+
+				if (overlap * bias < minOverlap)
+				{
+					minOverlap = overlap * bias;
+					bestAxis = L;
+				}
+				return true;
+			};
+
+			// 1. Box A face normals (3) - priority
+			if (!testAxis(a.axes[0], 1.0f)) return false;
+			if (!testAxis(a.axes[1], 1.0f)) return false;
+			if (!testAxis(a.axes[2], 1.0f)) return false;
+
+			// 2. Box B face normals (3) - priority
+			if (!testAxis(b.axes[0], 1.0f)) return false;
+			if (!testAxis(b.axes[1], 1.0f)) return false;
+			if (!testAxis(b.axes[2], 1.0f)) return false;
+
+			// 3. Edge cross products (3 x 3 = 9) - slight bias to prevent jittering on flat faces
+			for (int i = 0; i < 3; ++i)
+			{
+				for (int j = 0; j < 3; ++j)
+				{
+					Vector3 axis = a.axes[i].Cross(b.axes[j]);
+					if (!testAxis(axis, 1.05f)) return false;
+				}
+			}
+
+			// Ensure normal points from A to B
+			if (D.Dot(bestAxis) < 0.0f)
+			{
+				bestAxis = -bestAxis;
+			}
+			else if (std::abs(D.Dot(bestAxis)) < 0.00001f)
+			{
+				Vector3 diff = b.center - a.center;
+				if (diff.LengthSquared() > 0.0001f)
+				{
+					diff.Normalize();
+					if (diff.Dot(bestAxis) < 0.0f)
+					{
+						bestAxis = -bestAxis;
+					}
+				}
+			}
+
+			outNormal = bestAxis;
+			outPenetration = minOverlap;
+			return true;
+		}
+	}
+
 	PhysicsWorld::PhysicsWorld()
 	{
 		m_collisionMatrix.fill(0xFFFF);
@@ -55,7 +163,7 @@ namespace Physics
 			}
 		}
 
-		// 2. Collision detection & resolution
+		// 2. Collision detection & resolution (Multi-iteration constraint solver)
 		std::vector<entt::entity> colliderEntities;
 		auto colView = reg.view<Core::ColliderComponent, Core::TransformComponent>();
 		for (auto entity : colView)
@@ -66,27 +174,31 @@ namespace Physics
 		std::set<std::pair<entt::entity, entt::entity>> currentCollisions;
 		std::set<std::pair<entt::entity, entt::entity>> currentTriggers;
 
+		constexpr int kSolverIterations = 4;
 		size_t numColliders = colliderEntities.size();
-		for (size_t i = 0; i < numColliders; ++i)
+
+		for (int iter = 0; iter < kSolverIterations; ++iter)
 		{
-			auto entA = colliderEntities[i];
-			const auto& colA = reg.get<Core::ColliderComponent>(entA);
-			auto& transA = reg.get<Core::TransformComponent>(entA);
-
-			for (size_t j = i + 1; j < numColliders; ++j)
+			for (size_t i = 0; i < numColliders; ++i)
 			{
-				auto entB = colliderEntities[j];
-				const auto& colB = reg.get<Core::ColliderComponent>(entB);
-				auto& transB = reg.get<Core::TransformComponent>(entB);
+				auto entA = colliderEntities[i];
+				const auto& colA = reg.get<Core::ColliderComponent>(entA);
+				auto& transA = reg.get<Core::TransformComponent>(entA);
 
-				if (!canCollide(colA.layer, colB.layer))
+				for (size_t j = i + 1; j < numColliders; ++j)
 				{
-					continue;
-				}
+					auto entB = colliderEntities[j];
+					const auto& colB = reg.get<Core::ColliderComponent>(entB);
+					auto& transB = reg.get<Core::TransformComponent>(entB);
 
-				Vector3 normal(0.0f, 1.0f, 0.0f);
-				float penetration = 0.0f;
-				bool isColliding = false;
+					if (!canCollide(colA.layer, colB.layer))
+					{
+						continue;
+					}
+
+					Vector3 normal(0.0f, 1.0f, 0.0f);
+					float penetration = 0.0f;
+					bool isColliding = false;
 
 				// Collision shapes
 				if (colA.shape == Core::ColliderShape::Sphere && colB.shape == Core::ColliderShape::Sphere)
@@ -104,69 +216,115 @@ namespace Physics
 				}
 				else if (colA.shape == Core::ColliderShape::Box && colB.shape == Core::ColliderShape::Box)
 				{
-					Vector3 delta = transB.position - transA.position;
-					Vector3 halfA = colA.size * 0.5f;
-					Vector3 halfB = colB.size * 0.5f;
-
-					float overlapX = (halfA.x + halfB.x) - std::abs(delta.x);
-					float overlapY = (halfA.y + halfB.y) - std::abs(delta.y);
-					float overlapZ = (halfA.z + halfB.z) - std::abs(delta.z);
-
-					if (overlapX > 0.0f && overlapY > 0.0f && overlapZ > 0.0f)
+					// Full 3D Oriented Bounding Box (OBB) collision via Separating Axis Theorem (SAT)
+					OBB obbA = MakeOBB(transA, colA);
+					OBB obbB = MakeOBB(transB, colB);
+					if (TestOBBOBB(obbA, obbB, normal, penetration))
 					{
 						isColliding = true;
-						if (overlapX <= overlapY && overlapX <= overlapZ)
-						{
-							penetration = overlapX;
-							normal = Vector3(delta.x >= 0.0f ? 1.0f : -1.0f, 0.0f, 0.0f);
-						}
-						else if (overlapY <= overlapX && overlapY <= overlapZ)
-						{
-							penetration = overlapY;
-							normal = Vector3(0.0f, delta.y >= 0.0f ? 1.0f : -1.0f, 0.0f);
-						}
-						else
-						{
-							penetration = overlapZ;
-							normal = Vector3(0.0f, 0.0f, delta.z >= 0.0f ? 1.0f : -1.0f);
-						}
 					}
 				}
 				else if (colA.shape == Core::ColliderShape::Box && colB.shape == Core::ColliderShape::Sphere)
 				{
+					// Rotated Box A vs Sphere B: evaluate in Box A's local space
 					Vector3 halfA = colA.size * 0.5f;
-					Vector3 relPos = transB.position - transA.position;
-					Vector3 clamped = Vector3(
-						std::clamp(relPos.x, -halfA.x, halfA.x),
-						std::clamp(relPos.y, -halfA.y, halfA.y),
-						std::clamp(relPos.z, -halfA.z, halfA.z)
+					Quaternion invRotA;
+					transA.rotation.Inverse(invRotA);
+					Vector3 localSpherePos = Vector3::Transform(transB.position - transA.position, invRotA);
+
+					Vector3 localClamped = Vector3(
+						std::clamp(localSpherePos.x, -halfA.x, halfA.x),
+						std::clamp(localSpherePos.y, -halfA.y, halfA.y),
+						std::clamp(localSpherePos.z, -halfA.z, halfA.z)
 					);
-					Vector3 delta = relPos - clamped;
-					float distSq = delta.LengthSquared();
-					if (distSq < colB.radius * colB.radius)
+					Vector3 localDelta = localSpherePos - localClamped;
+					float distSq = localDelta.LengthSquared();
+
+					if (distSq > 0.000001f)
 					{
-						float dist = std::sqrt(distSq);
-						normal = (dist > 0.0001f) ? (delta / dist) : Vector3(0.0f, 1.0f, 0.0f);
-						penetration = colB.radius - dist;
+						if (distSq < colB.radius * colB.radius)
+						{
+							float dist = std::sqrt(distSq);
+							Vector3 localNorm = localDelta / dist;
+							normal = Vector3::Transform(localNorm, transA.rotation);
+							penetration = colB.radius - dist;
+							isColliding = true;
+						}
+					}
+					else
+					{
+						// Sphere center is inside Box A: resolve along closest exit face in local space
+						float distPosX = halfA.x - localSpherePos.x;
+						float distNegX = localSpherePos.x - (-halfA.x);
+						float distPosY = halfA.y - localSpherePos.y;
+						float distNegY = localSpherePos.y - (-halfA.y);
+						float distPosZ = halfA.z - localSpherePos.z;
+						float distNegZ = localSpherePos.z - (-halfA.z);
+
+						float minDist = distPosY;
+						Vector3 localNorm = Vector3(0.0f, 1.0f, 0.0f);
+
+						if (distPosX < minDist) { minDist = distPosX; localNorm = Vector3(1.0f, 0.0f, 0.0f); }
+						if (distNegX < minDist) { minDist = distNegX; localNorm = Vector3(-1.0f, 0.0f, 0.0f); }
+						if (distPosY < minDist) { minDist = distPosY; localNorm = Vector3(0.0f, 1.0f, 0.0f); }
+						if (distNegY < minDist) { minDist = distNegY; localNorm = Vector3(0.0f, -1.0f, 0.0f); }
+						if (distPosZ < minDist) { minDist = distPosZ; localNorm = Vector3(0.0f, 0.0f, 1.0f); }
+						if (distNegZ < minDist) { minDist = distNegZ; localNorm = Vector3(0.0f, 0.0f, -1.0f); }
+
+						normal = Vector3::Transform(localNorm, transA.rotation);
+						penetration = colB.radius + minDist;
 						isColliding = true;
 					}
 				}
 				else if (colA.shape == Core::ColliderShape::Sphere && colB.shape == Core::ColliderShape::Box)
 				{
+					// Sphere A vs Rotated Box B: evaluate in Box B's local space
 					Vector3 halfB = colB.size * 0.5f;
-					Vector3 relPos = transA.position - transB.position;
-					Vector3 clamped = Vector3(
-						std::clamp(relPos.x, -halfB.x, halfB.x),
-						std::clamp(relPos.y, -halfB.y, halfB.y),
-						std::clamp(relPos.z, -halfB.z, halfB.z)
+					Quaternion invRotB;
+					transB.rotation.Inverse(invRotB);
+					Vector3 localSpherePos = Vector3::Transform(transA.position - transB.position, invRotB);
+
+					Vector3 localClamped = Vector3(
+						std::clamp(localSpherePos.x, -halfB.x, halfB.x),
+						std::clamp(localSpherePos.y, -halfB.y, halfB.y),
+						std::clamp(localSpherePos.z, -halfB.z, halfB.z)
 					);
-					Vector3 delta = relPos - clamped;
-					float distSq = delta.LengthSquared();
-					if (distSq < colA.radius * colA.radius)
+					Vector3 localDelta = localSpherePos - localClamped;
+					float distSq = localDelta.LengthSquared();
+
+					if (distSq > 0.000001f)
 					{
-						float dist = std::sqrt(distSq);
-						normal = (dist > 0.0001f) ? (-delta / dist) : Vector3(0.0f, -1.0f, 0.0f);
-						penetration = colA.radius - dist;
+						if (distSq < colA.radius * colA.radius)
+						{
+							float dist = std::sqrt(distSq);
+							Vector3 localNorm = -localDelta / dist;
+							normal = Vector3::Transform(localNorm, transB.rotation);
+							penetration = colA.radius - dist;
+							isColliding = true;
+						}
+					}
+					else
+					{
+						// Sphere center is inside Box B: resolve along closest exit face in local space
+						float distPosX = halfB.x - localSpherePos.x;
+						float distNegX = localSpherePos.x - (-halfB.x);
+						float distPosY = halfB.y - localSpherePos.y;
+						float distNegY = localSpherePos.y - (-halfB.y);
+						float distPosZ = halfB.z - localSpherePos.z;
+						float distNegZ = localSpherePos.z - (-halfB.z);
+
+						float minDist = distPosY;
+						Vector3 exitNormal = Vector3(0.0f, 1.0f, 0.0f);
+
+						if (distPosX < minDist) { minDist = distPosX; exitNormal = Vector3(1.0f, 0.0f, 0.0f); }
+						if (distNegX < minDist) { minDist = distNegX; exitNormal = Vector3(-1.0f, 0.0f, 0.0f); }
+						if (distPosY < minDist) { minDist = distPosY; exitNormal = Vector3(0.0f, 1.0f, 0.0f); }
+						if (distNegY < minDist) { minDist = distNegY; exitNormal = Vector3(0.0f, -1.0f, 0.0f); }
+						if (distPosZ < minDist) { minDist = distPosZ; exitNormal = Vector3(0.0f, 0.0f, 1.0f); }
+						if (distNegZ < minDist) { minDist = distNegZ; exitNormal = Vector3(0.0f, 0.0f, -1.0f); }
+
+						normal = -Vector3::Transform(exitNormal, transB.rotation);
+						penetration = colA.radius + minDist;
 						isColliding = true;
 					}
 				}
@@ -177,11 +335,17 @@ namespace Physics
 
 					if (colA.isTrigger || colB.isTrigger)
 					{
-						currentTriggers.insert(pairKey);
+						if (iter == 0)
+						{
+							currentTriggers.insert(pairKey);
+						}
 					}
 					else
 					{
-						currentCollisions.insert(pairKey);
+						if (iter == 0)
+						{
+							currentCollisions.insert(pairKey);
+						}
 
 						// Physical response
 						auto* rbA = reg.try_get<Core::RigidbodyComponent>(entA);
@@ -223,12 +387,36 @@ namespace Physics
 								{
 									stateB->linearVelocity += impulse * invMassB;
 								}
+
+								// Friction impulse (Coulomb friction model)
+								Vector3 tangentVel = relVel - normal * normVel;
+								float tangentSpeed = tangentVel.Length();
+								if (tangentSpeed > 0.0001f)
+								{
+									Vector3 tangent = tangentVel / tangentSpeed;
+									float fA = rbA ? rbA->friction : 0.5f;
+									float fB = rbB ? rbB->friction : 0.5f;
+									float friction = std::sqrt(fA * fB);
+									float maxFrictionImpulse = friction * impulseMag;
+									float dynamicFrictionImpulse = std::min(maxFrictionImpulse, tangentSpeed / totalInvMass);
+									Vector3 fImpulse = tangent * dynamicFrictionImpulse;
+
+									if (invMassA > 0.0f && stateA)
+									{
+										stateA->linearVelocity += fImpulse * invMassA;
+									}
+									if (invMassB > 0.0f && stateB)
+									{
+										stateB->linearVelocity -= fImpulse * invMassB;
+									}
+								}
 							}
 						}
 					}
 				}
 			}
 		}
+	}
 
 		// 3. Dispatch trigger and collision events
 		dispatchEvents(scene, currentCollisions, currentTriggers);

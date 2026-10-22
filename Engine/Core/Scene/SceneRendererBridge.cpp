@@ -4,7 +4,7 @@
 
 namespace Core
 {
-	void ExtractRenderScene(const Scene& scene, Renderer::RenderScene& outRenderScene)
+	void ExtractRenderScene(const Scene& scene, Renderer::RenderScene& outRenderScene, float targetAspect)
 	{
 		outRenderScene.clear();
 
@@ -25,7 +25,7 @@ namespace Core
 				outRenderScene.camera.nearZ = cam.nearZ;
 				outRenderScene.camera.farZ = cam.farZ;
 				outRenderScene.camera.fov = Math::toRadians(cam.fov);
-				outRenderScene.camera.aspect = 16.0f / 9.0f;
+				outRenderScene.camera.aspect = targetAspect > 0.001f ? targetAspect : (16.0f / 9.0f);
 				outRenderScene.camera.isOrthographic = cam.isOrthographic;
 
 				// View Matrix is inverse of camera world transform
@@ -49,12 +49,13 @@ namespace Core
 		for (auto entity : meshView)
 		{
 			const auto& meshComp = meshView.get<MeshRendererComponent>(entity);
-			(void)meshComp;
 			const auto& worldTransform = meshView.get<WorldTransform>(entity);
 
 			Renderer::RenderMeshInstance meshInst{};
 			meshInst.world = worldTransform.worldMatrix;
 			meshInst.entityId = static_cast<uint32_t>(entity);
+			meshInst.meshPath = meshComp.meshPath;
+			meshInst.materialPath = meshComp.materialPath;
 			meshInst.layer = Renderer::RenderLayer::Opaque;
 			meshInst.indexCount = 36; // Default unit primitive count if unassigned
 			meshInst.startIndex = 0;
@@ -84,6 +85,19 @@ namespace Core
 			light.type = static_cast<uint32_t>(lightComp.type);
 
 			outRenderScene.lights.push_back(light);
+		}
+
+		// Editor fallback light if scene has no light sources
+		if (outRenderScene.lights.empty())
+		{
+			Renderer::RenderLight defSun{};
+			defSun.position = Vector3(0.0f, 20.0f, 0.0f);
+			defSun.direction = Vector3(0.577f, -0.577f, 0.577f);
+			defSun.color = Vector3(1.0f, 0.98f, 0.92f);
+			defSun.intensity = 1.0f;
+			defSun.range = 1000.0f;
+			defSun.type = 0; // Directional
+			outRenderScene.lights.push_back(defSun);
 		}
 	}
 }

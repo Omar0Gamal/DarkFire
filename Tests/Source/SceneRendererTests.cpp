@@ -8,6 +8,8 @@
 #include "Engine/Renderer/SceneRenderer.h"
 
 #include <ostream>
+#include <fstream>
+#include <filesystem>
 #ifdef _MSC_VER
 #pragma warning(disable: 5285)
 #endif
@@ -178,5 +180,56 @@ TEST_SUITE("Milestone P4: Frame Pipeline, Color Space & SceneRenderer")
 		// Both paths must execute identically
 		CHECK(playerDrawCalls == editorDrawCalls);
 		CHECK(playerBatches == editorBatches);
+	}
+
+	TEST_CASE("P4.4: Dynamic Camera Aspect Ratio & Material Properties Parsing")
+	{
+		Scene scene;
+		auto camEntity = scene.createEntity("DynamicCam");
+		auto& camComp = camEntity.addComponent<CameraComponent>();
+		camComp.isPrimary = true;
+		camComp.fov = 45.0f;
+		scene.updateTransforms();
+
+		// Extract with ultrawide 21:9 aspect (~2.333)
+		RenderScene renderScene;
+		ExtractRenderScene(scene, renderScene, 21.0f / 9.0f);
+		CHECK(renderScene.camera.aspect == doctest::Approx(21.0f / 9.0f));
+
+		// Test Material JSON parsing with render states
+		NullRHIDevice device;
+		SceneRenderer renderer(device);
+
+		std::filesystem::create_directories("Temp_MatTest");
+		std::string matPath = "Temp_MatTest/CustomMaterial.mat";
+		{
+			std::ofstream f(matPath);
+			f << "{\n"
+			  << "  \"name\": \"TestMat\",\n"
+			  << "  \"baseColor\": [0.2, 0.4, 0.6, 1.0],\n"
+			  << "  \"roughness\": 0.25,\n"
+			  << "  \"metallic\": 0.75,\n"
+			  << "  \"emissive\": [0.1, 0.2, 0.3, 0.0],\n"
+			  << "  \"tiling\": [2.0, 3.0],\n"
+			  << "  \"blendMode\": 0,\n"
+			  << "  \"depthMode\": 0,\n"
+			  << "  \"cullMode\": 2\n"
+			  << "}\n";
+		}
+
+		auto mat = renderer.getOrCreateMaterial(matPath);
+		REQUIRE(mat != nullptr);
+		CHECK(mat->getName() == "TestMat");
+		CHECK(mat->getBaseColor().x == doctest::Approx(0.2f));
+		CHECK(mat->getBaseColor().y == doctest::Approx(0.4f));
+		CHECK(mat->getBaseColor().z == doctest::Approx(0.6f));
+		CHECK(mat->getRoughness() == doctest::Approx(0.25f));
+		CHECK(mat->getMetallic() == doctest::Approx(0.75f));
+		CHECK(mat->getTilingOffset().x == doctest::Approx(2.0f));
+		CHECK(mat->getTilingOffset().y == doctest::Approx(3.0f));
+		CHECK(mat->getBlendMode() == BlendMode::Opaque);
+		CHECK(mat->getCullMode() == RHI::CullMode::Back);
+
+		std::filesystem::remove_all("Temp_MatTest");
 	}
 }

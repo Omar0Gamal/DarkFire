@@ -185,23 +185,20 @@ namespace Core
 
 	void Scene::updateTransformRecursive(entt::entity e, const Matrix& parentWorld, bool parentDirty)
 	{
+		(void)parentDirty;
 		auto& tc = m_registry.get<TransformComponent>(e);
 		auto& wt = m_registry.get<WorldTransform>(e);
 
-		bool dirty = wt.isDirty || parentDirty;
-		if (dirty)
-		{
-			Matrix local = tc.getLocalMatrix();
-			wt.worldMatrix = local * parentWorld;
-			wt.isDirty = false;
-		}
+		Matrix local = tc.getLocalMatrix();
+		wt.worldMatrix = local * parentWorld;
+		wt.isDirty = false;
 
 		const auto& h = m_registry.get<HierarchyComponent>(e);
 		for (auto child : h.children)
 		{
 			if (m_registry.valid(child))
 			{
-				updateTransformRecursive(child, wt.worldMatrix, dirty);
+				updateTransformRecursive(child, wt.worldMatrix, false);
 			}
 		}
 	}

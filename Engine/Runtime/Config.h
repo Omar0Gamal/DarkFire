@@ -34,6 +34,7 @@ namespace Runtime
 		ProjectConfig();
 
 		static Core::Result<ProjectConfig, std::string> Load(const std::filesystem::path& path);
+		static Core::Result<ProjectConfig, std::string> LoadFromString(const std::string& jsonContent);
 		Core::Result<void, std::string> Save(const std::filesystem::path& path) const;
 	};
 }

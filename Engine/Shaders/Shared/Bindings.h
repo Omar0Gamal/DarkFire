@@ -1,6 +1,10 @@
 #ifndef DARKFIRE_SHADER_BINDINGS_H
 #define DARKFIRE_SHADER_BINDINGS_H
 
+#ifndef __cplusplus
+#pragma pack_matrix(row_major)
+#endif
+
 // Constant Buffer Slots
 #define DF_SLOT_CB_PER_FRAME    0
 #define DF_SLOT_CB_PER_VIEW     1

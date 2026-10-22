@@ -12,7 +12,7 @@ namespace Editor
 		ProfilerPanel();
 		~ProfilerPanel() = default;
 
-		void onImGuiRender(float deltaTime);
+		void onImGuiRender(float deltaTime, bool* p_open = nullptr);
 
 	private:
 		void drawPerformanceGraphs();

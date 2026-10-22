@@ -1,0 +1,11 @@
+{
+  "name": "GroundMaterial",
+  "baseColor": [0.20, 0.22, 0.26, 1.0],
+  "roughness": 0.8,
+  "metallic": 0.05,
+  "emissive": [0.0, 0.0, 0.0, 0.0],
+  "tiling": [1.0, 1.0],
+  "blendMode": 0,
+  "depthMode": 0,
+  "cullMode": 1
+}

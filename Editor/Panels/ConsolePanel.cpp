@@ -1,4 +1,5 @@
 #include "Editor/Panels/ConsolePanel.h"
+#include "Editor/UI/DockLayout.h"
 #include <imgui.h>
 #include <algorithm>
 
@@ -6,9 +7,9 @@ namespace Editor
 {
 	ConsolePanel::ConsolePanel() = default;
 
-	void ConsolePanel::onImGuiRender()
+	void ConsolePanel::onImGuiRender(bool* p_open)
 	{
-		ImGui::Begin("Console");
+		ImGui::Begin(UI::PanelNames::Console, p_open);
 
 		// Filter Buttons
 		ImGui::Checkbox("Trace", &m_showTrace);
@@ -27,7 +28,19 @@ namespace Editor
 		ImGui::Checkbox("Auto-Scroll", &m_autoScroll);
 
 		ImGui::SameLine();
-		ImGui::SetNextItemWidth(200.0f);
+		if (ImGui::Button("Copy All"))
+		{
+			auto msgs = Core::Log::Get().getRecentMessages(1000);
+			std::string allText;
+			for (const auto& m : msgs)
+			{
+				allText += "[" + m.timestamp + "] [" + m.category + "] " + m.text + "\n";
+			}
+			ImGui::SetClipboardText(allText.c_str());
+		}
+
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(160.0f);
 		ImGui::InputTextWithHint("##LogFilter", "Filter...", m_filterBuffer, sizeof(m_filterBuffer));
 
 		ImGui::Separator();
@@ -37,8 +50,10 @@ namespace Editor
 
 		auto messages = Core::Log::Get().getRecentMessages(1000);
 
-		for (const auto& msg : messages)
+		for (size_t i = 0; i < messages.size(); ++i)
 		{
+			const auto& msg = messages[i];
+
 			// Severity visibility
 			if (msg.level == Core::LogLevel::Trace && !m_showTrace) continue;
 			if (msg.level == Core::LogLevel::Info && !m_showInfo) continue;
@@ -64,38 +79,46 @@ namespace Editor
 
 			// Color based on level
 			ImVec4 color{ 1.0f, 1.0f, 1.0f, 1.0f };
-			const char* levelStr = "INFO";
 			switch (msg.level)
 			{
-			case Core::LogLevel::Trace:
-				color = ImVec4{ 0.6f, 0.6f, 0.6f, 1.0f };
-				levelStr = "TRACE";
-				break;
-			case Core::LogLevel::Info:
-				color = ImVec4{ 0.9f, 0.9f, 0.9f, 1.0f };
-				levelStr = "INFO";
-				break;
-			case Core::LogLevel::Warn:
-				color = ImVec4{ 1.0f, 0.85f, 0.2f, 1.0f };
-				levelStr = "WARN";
-				break;
-			case Core::LogLevel::Error:
-				color = ImVec4{ 0.95f, 0.25f, 0.25f, 1.0f };
-				levelStr = "ERROR";
-				break;
-			case Core::LogLevel::Fatal:
-				color = ImVec4{ 1.0f, 0.1f, 0.5f, 1.0f };
-				levelStr = "FATAL";
-				break;
-			default:
-				break;
+			case Core::LogLevel::Trace: color = ImVec4{ 0.6f, 0.6f, 0.6f, 1.0f }; break;
+			case Core::LogLevel::Info:  color = ImVec4{ 0.9f, 0.9f, 0.9f, 1.0f }; break;
+			case Core::LogLevel::Warn:  color = ImVec4{ 1.0f, 0.85f, 0.2f, 1.0f }; break;
+			case Core::LogLevel::Error: color = ImVec4{ 0.95f, 0.25f, 0.25f, 1.0f }; break;
+			case Core::LogLevel::Fatal: color = ImVec4{ 1.0f, 0.1f, 0.5f, 1.0f }; break;
+			default: break;
 			}
 
-			ImGui::TextDisabled("[%s] [%s]", msg.timestamp.c_str(), msg.category.c_str());
-			ImGui::SameLine();
+			ImGui::PushID(static_cast<int>(i));
+			std::string rowLabel = "[" + msg.timestamp + "] [" + msg.category + "] " + msg.text;
+			bool selected = (m_selectedIndex == static_cast<int>(i));
+
 			ImGui::PushStyleColor(ImGuiCol_Text, color);
-			ImGui::TextUnformatted(msg.text.c_str());
+			if (ImGui::Selectable(rowLabel.c_str(), selected))
+			{
+				m_selectedIndex = static_cast<int>(i);
+			}
 			ImGui::PopStyleColor();
+
+			if (ImGui::BeginPopupContextItem())
+			{
+				if (ImGui::MenuItem("Copy Message"))
+				{
+					ImGui::SetClipboardText(msg.text.c_str());
+				}
+				if (ImGui::MenuItem("Copy Full Log Line"))
+				{
+					ImGui::SetClipboardText(rowLabel.c_str());
+				}
+				ImGui::EndPopup();
+			}
+
+			if (selected && ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C))
+			{
+				ImGui::SetClipboardText(msg.text.c_str());
+			}
+
+			ImGui::PopID();
 		}
 
 		if (m_autoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())

@@ -1,6 +1,8 @@
 #include "Editor/Panels/HierarchyPanel.h"
 #include "Editor/Clipboard.h"
 #include "Editor/Commands/EntityCommands.h"
+#include "Editor/EditorIcons.h"
+#include "Editor/UI/DockLayout.h"
 #include "Engine/Core/Scene/Components.h"
 #include <imgui.h>
 #include <cstring>
@@ -31,9 +33,9 @@ namespace Editor
 		}
 	}
 
-	void HierarchyPanel::onImGuiRender()
+	void HierarchyPanel::onImGuiRender(bool* p_open)
 	{
-		ImGui::Begin("Hierarchy");
+		ImGui::Begin(UI::PanelNames::Scene, p_open);
 
 		if (!m_scene)
 		{
@@ -47,9 +49,24 @@ namespace Editor
 			m_selection->removeInvalidEntities();
 		}
 
+		// Godot 4 Top Action Bar
+		if (ImGui::Button("+ Add Node"))
+		{
+			m_showAddNodeModal = true;
+			m_addNodeFilter[0] = '\0';
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Instantiate"))
+		{
+			// Pick scene
+		}
+
 		// Search Filter
-		ImGui::InputTextWithHint("##Search", "Search entities...", m_searchFilter, sizeof(m_searchFilter));
+		ImGui::SetNextItemWidth(-1);
+		ImGui::InputTextWithHint("##Search", "Filter nodes...", m_searchFilter, sizeof(m_searchFilter));
 		ImGui::Separator();
+
+		drawAddNodeModal();
 
 		// Context menu on empty space
 		if (ImGui::BeginPopupContextWindow("HierarchyContextMenu", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
@@ -71,7 +88,7 @@ namespace Editor
 		}
 
 		// Click on empty space clears selection
-		if (ImGui::IsMouseDown(0) && ImGui::IsWindowHovered())
+		if (ImGui::IsMouseClicked(0) && ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered())
 		{
 			if (m_selection && !ImGui::GetIO().KeyCtrl)
 			{
@@ -284,7 +301,7 @@ namespace Editor
 				auto ent = m_scene->createEntity("Cube");
 				ent.getComponent<Core::TransformComponent>().position = Core::Vector3(0.0f, 0.5f, 0.0f);
 				auto& mesh = ent.addComponent<Core::MeshRendererComponent>();
-				mesh.meshPath = "/engine/Content/cube.obj";
+				mesh.meshPath = "builtin:cube";
 				mesh.materialPath = "/engine/Content/Default.mat";
 				auto& col = ent.addComponent<Core::ColliderComponent>();
 				col.shape = Core::ColliderShape::Box;
@@ -297,7 +314,7 @@ namespace Editor
 				auto ent = m_scene->createEntity("Sphere");
 				ent.getComponent<Core::TransformComponent>().position = Core::Vector3(0.0f, 0.5f, 0.0f);
 				auto& mesh = ent.addComponent<Core::MeshRendererComponent>();
-				mesh.meshPath = "/engine/Content/sphere.obj";
+				mesh.meshPath = "builtin:sphere";
 				mesh.materialPath = "/engine/Content/Default.mat";
 				auto& col = ent.addComponent<Core::ColliderComponent>();
 				col.shape = Core::ColliderShape::Sphere;
@@ -311,7 +328,7 @@ namespace Editor
 				ent.getComponent<Core::TransformComponent>().position = Core::Vector3(0.0f, 0.0f, 0.0f);
 				ent.getComponent<Core::TransformComponent>().scale = Core::Vector3(10.0f, 1.0f, 10.0f);
 				auto& mesh = ent.addComponent<Core::MeshRendererComponent>();
-				mesh.meshPath = "/engine/Content/cube.obj";
+				mesh.meshPath = "builtin:plane";
 				mesh.materialPath = "/engine/Content/Default.mat";
 				auto& col = ent.addComponent<Core::ColliderComponent>();
 				col.shape = Core::ColliderShape::Box;
@@ -319,6 +336,192 @@ namespace Editor
 				registerNewEntity(ent);
 			}
 			ImGui::EndMenu();
+		}
+	}
+
+	void HierarchyPanel::drawAddNodeModal()
+	{
+		if (m_showAddNodeModal)
+		{
+			ImGui::OpenPopup("Create New Node");
+		}
+
+		if (ImGui::BeginPopupModal("Create New Node", &m_showAddNodeModal, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::Text("Select a node type to create:");
+			ImGui::SetNextItemWidth(350.0f);
+			ImGui::InputTextWithHint("##FilterNodes", "Search node types...", m_addNodeFilter, sizeof(m_addNodeFilter));
+			ImGui::Separator();
+
+			struct NodeOption
+			{
+				const char* name;
+				const char* category;
+				const char* desc;
+			};
+
+			static const NodeOption kOptions[] = {
+				{ "Node3D", "3D", "Empty 3D spatial node with transform" },
+				{ "MeshInstance3D (Cube)", "3D", "Cube mesh renderer with material" },
+				{ "MeshInstance3D (Sphere)", "3D", "Sphere mesh renderer with material" },
+				{ "MeshInstance3D (Plane)", "3D", "Ground plane mesh renderer" },
+				{ "Camera3D", "3D", "Perspective 3D camera" },
+				{ "DirectionalLight3D", "Lighting", "Sun/Directional light" },
+				{ "PointLight3D", "Lighting", "Omni-directional point light" },
+				{ "SpotLight3D", "Lighting", "Cone spot light" },
+				{ "RigidBody3D", "Physics", "Physics rigid body with gravity & restitution" },
+				{ "BoxCollider3D", "Physics", "Box collision shape" },
+				{ "SphereCollider3D", "Physics", "Sphere collision shape" },
+				{ "ScriptableNode3D", "Scripting", "Node with game script component" }
+			};
+
+			ImGui::BeginChild("NodeListChild", ImVec2(350.0f, 220.0f), true);
+			std::string filterStr = m_addNodeFilter;
+			std::transform(filterStr.begin(), filterStr.end(), filterStr.begin(), ::tolower);
+
+			bool createTriggered = false;
+			for (int i = 0; i < static_cast<int>(std::size(kOptions)); ++i)
+			{
+				std::string optName = kOptions[i].name;
+				std::string optLower = optName;
+				std::transform(optLower.begin(), optLower.end(), optLower.begin(), ::tolower);
+
+				if (!filterStr.empty() && optLower.find(filterStr) == std::string::npos)
+				{
+					continue;
+				}
+
+				bool isSel = (m_selectedNodeType == i);
+				if (ImGui::Selectable(kOptions[i].name, isSel))
+				{
+					m_selectedNodeType = i;
+				}
+				if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
+				{
+					m_selectedNodeType = i;
+					createTriggered = true;
+				}
+			}
+			ImGui::EndChild();
+
+			ImGui::TextDisabled("%s", kOptions[m_selectedNodeType].desc);
+			ImGui::Separator();
+
+			if (ImGui::Button("Create", ImVec2(120, 0)) || createTriggered)
+			{
+				auto parentEnt = getSelectedEntity();
+				Core::Entity newEnt;
+
+				switch (m_selectedNodeType)
+				{
+				case 0: // Node3D
+					newEnt = m_scene->createEntity("Node3D");
+					break;
+				case 1: // Cube
+					newEnt = m_scene->createEntity("Cube");
+					{
+						auto& m = newEnt.addComponent<Core::MeshRendererComponent>();
+						m.meshPath = "cube.obj";
+						auto& c = newEnt.addComponent<Core::ColliderComponent>();
+						c.shape = Core::ColliderShape::Box;
+					}
+					break;
+				case 2: // Sphere
+					newEnt = m_scene->createEntity("Sphere");
+					{
+						auto& m = newEnt.addComponent<Core::MeshRendererComponent>();
+						m.meshPath = "sphere.obj";
+						auto& c = newEnt.addComponent<Core::ColliderComponent>();
+						c.shape = Core::ColliderShape::Sphere;
+					}
+					break;
+				case 3: // Plane
+					newEnt = m_scene->createEntity("Plane");
+					{
+						auto& m = newEnt.addComponent<Core::MeshRendererComponent>();
+						m.meshPath = "plane.obj";
+						newEnt.getComponent<Core::TransformComponent>().scale = Core::Vector3(10.0f, 1.0f, 10.0f);
+					}
+					break;
+				case 4: // Camera3D
+					newEnt = m_scene->createEntity("Camera3D");
+					newEnt.addComponent<Core::CameraComponent>();
+					break;
+				case 5: // DirectionalLight3D
+					newEnt = m_scene->createEntity("DirectionalLight3D");
+					{
+						auto& l = newEnt.addComponent<Core::LightComponent>();
+						l.type = Core::LightType::Directional;
+					}
+					break;
+				case 6: // PointLight3D
+					newEnt = m_scene->createEntity("PointLight3D");
+					{
+						auto& l = newEnt.addComponent<Core::LightComponent>();
+						l.type = Core::LightType::Point;
+					}
+					break;
+				case 7: // SpotLight3D
+					newEnt = m_scene->createEntity("SpotLight3D");
+					{
+						auto& l = newEnt.addComponent<Core::LightComponent>();
+						l.type = Core::LightType::Spot;
+					}
+					break;
+				case 8: // RigidBody3D
+					newEnt = m_scene->createEntity("RigidBody3D");
+					newEnt.addComponent<Core::RigidbodyComponent>();
+					break;
+				case 9: // BoxCollider3D
+					newEnt = m_scene->createEntity("BoxCollider3D");
+					{
+						auto& c = newEnt.addComponent<Core::ColliderComponent>();
+						c.shape = Core::ColliderShape::Box;
+					}
+					break;
+				case 10: // SphereCollider3D
+					newEnt = m_scene->createEntity("SphereCollider3D");
+					{
+						auto& c = newEnt.addComponent<Core::ColliderComponent>();
+						c.shape = Core::ColliderShape::Sphere;
+					}
+					break;
+				case 11: // ScriptableNode3D
+					newEnt = m_scene->createEntity("ScriptNode");
+					newEnt.addComponent<Core::ScriptsComponent>();
+					break;
+				default:
+					newEnt = m_scene->createEntity("Node3D");
+					break;
+				}
+
+				if (parentEnt.isValid())
+				{
+					newEnt.setParent(parentEnt);
+				}
+
+				if (m_history)
+				{
+					m_history->execute(std::make_unique<CreateEntityCommand>(m_scene.get(), newEnt));
+				}
+
+				if (m_selection)
+				{
+					m_selection->select(newEnt, false);
+				}
+
+				m_showAddNodeModal = false;
+				ImGui::CloseCurrentPopup();
+			}
+
+			ImGui::SameLine();
+			if (ImGui::Button("Cancel", ImVec2(120, 0)))
+			{
+				m_showAddNodeModal = false;
+				ImGui::CloseCurrentPopup();
+			}
+
+			ImGui::EndPopup();
 		}
 	}
 }

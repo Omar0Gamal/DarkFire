@@ -1,0 +1,11 @@
+{
+  "name": "BouncerMaterial",
+  "baseColor": [1.0, 0.78, 0.15, 1.0],
+  "roughness": 0.2,
+  "metallic": 0.75,
+  "emissive": [0.0, 0.0, 0.0, 0.0],
+  "tiling": [1.0, 1.0],
+  "blendMode": 0,
+  "depthMode": 0,
+  "cullMode": 1
+}

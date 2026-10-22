@@ -533,6 +533,22 @@ namespace Core::RHI
 		}
 	}
 
+	void D3D11DeviceContext::setShaderResourceBufferPS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer)
+	{
+		if (slot >= D3D11StateTracker::MAX_SLOTS) return;
+		ID3D11ShaderResourceView* srv = buffer ? static_cast<D3D11Buffer*>(buffer.get())->getD3D11SRV() : nullptr;
+		if (m_tracker.currentPSSRVs[slot] != srv)
+		{
+			m_context->PSSetShaderResources(slot, 1, &srv);
+			m_tracker.currentPSSRVs[slot] = srv;
+			m_stats.stateChanges++;
+		}
+		else
+		{
+			m_stats.redundantBindsSkipped++;
+		}
+	}
+
 	void D3D11DeviceContext::setSamplerVS(uint32_t slot, const std::shared_ptr<ISamplerState>& sampler)
 	{
 		if (slot >= D3D11StateTracker::MAX_SLOTS) return;
@@ -647,7 +663,12 @@ namespace Core::RHI
 		auto* d3dBuf = static_cast<D3D11Buffer*>(buffer.get())->getD3D11Buffer();
 		D3D11_MAPPED_SUBRESOURCE mapped{};
 		const D3D11_MAP mapType = discard ? D3D11_MAP_WRITE_DISCARD : D3D11_MAP_WRITE_NO_OVERWRITE;
-		const HRESULT hr = m_context->Map(d3dBuf, 0, mapType, 0, &mapped);
+		HRESULT hr = m_context->Map(d3dBuf, 0, mapType, 0, &mapped);
+		if (FAILED(hr) && !discard)
+		{
+			// Fallback to WRITE_DISCARD if NO_OVERWRITE is rejected (e.g. constant buffers)
+			hr = m_context->Map(d3dBuf, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+		}
 		if (FAILED(hr))
 		{
 			return Result<void*, std::string>::error("D3D11 Map failed with HRESULT " + std::to_string(hr));
@@ -670,7 +691,8 @@ namespace Core::RHI
 		{
 			auto* d3dBuf = static_cast<D3D11Buffer*>(buffer.get())->getD3D11Buffer();
 			const auto& desc = buffer->getDesc();
-			if (size > 0 && size < desc.size)
+			const bool isCB = (desc.bindFlags & BufferBindFlags::ConstantBuffer);
+			if (!isCB && size > 0 && size < desc.size)
 			{
 				D3D11_BOX box{};
 				box.left = 0;
@@ -856,6 +878,7 @@ namespace Core::RHI
 		if (desc.structureByteStride > 0)
 		{
 			bDesc.MiscFlags |= D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+			bDesc.BindFlags |= D3D11_BIND_SHADER_RESOURCE;
 		}
 
 		D3D11_SUBRESOURCE_DATA subData{};
@@ -868,7 +891,22 @@ namespace Core::RHI
 			return Result<std::shared_ptr<IGpuBuffer>, std::string>::error("CreateBuffer failed with HRESULT " + std::to_string(hr));
 		}
 
-		return Result<std::shared_ptr<IGpuBuffer>, std::string>::ok(std::make_shared<D3D11Buffer>(desc, buffer));
+		ComPtr<ID3D11ShaderResourceView> srv;
+		if ((bDesc.BindFlags & D3D11_BIND_SHADER_RESOURCE) && desc.structureByteStride > 0)
+		{
+			D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+			srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+			srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
+			srvDesc.Buffer.FirstElement = 0;
+			srvDesc.Buffer.NumElements = static_cast<UINT>(desc.size / desc.structureByteStride);
+			const HRESULT srvHr = m_device->CreateShaderResourceView(buffer.Get(), &srvDesc, srv.GetAddressOf());
+			if (FAILED(srvHr))
+			{
+				DF_LOG_ERROR("RHI", "Failed to create SRV for structured buffer: HRESULT 0x{:08X}", srvHr);
+			}
+		}
+
+		return Result<std::shared_ptr<IGpuBuffer>, std::string>::ok(std::make_shared<D3D11Buffer>(desc, buffer, srv));
 	}
 
 	Result<std::shared_ptr<IGpuTexture>, std::string> D3D11RHIDevice::createTexture(const GpuTextureDesc& desc, const void* initialData)
@@ -887,7 +925,18 @@ namespace Core::RHI
 		tDesc.SampleDesc.Quality = 0;
 		tDesc.Usage = ToDxgiUsage(desc.usage);
 		tDesc.BindFlags = ToDxgiBindFlags(desc.bindFlags);
-		tDesc.CPUAccessFlags = (desc.usage == BufferUsage::Dynamic) ? D3D11_CPU_ACCESS_WRITE : 0;
+		if (desc.usage == BufferUsage::Dynamic)
+		{
+			tDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+		}
+		else if (desc.usage == BufferUsage::Staging)
+		{
+			tDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ | D3D11_CPU_ACCESS_WRITE;
+		}
+		else
+		{
+			tDesc.CPUAccessFlags = 0;
+		}
 
 		const bool isDepth = (desc.bindFlags & BufferBindFlags::DepthStencil);
 		if (isDepth)

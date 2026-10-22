@@ -1,6 +1,8 @@
 #ifndef DARKFIRE_COMMON_HLSLI
 #define DARKFIRE_COMMON_HLSLI
 
+#pragma pack_matrix(row_major)
+
 #include "Shared/Bindings.h"
 
 // Constant Buffer Declarations

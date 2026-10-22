@@ -32,6 +32,9 @@ namespace Platform
 
 	bool Window::init(const WindowDesc& desc)
 	{
+		// Enable PerMonitorV2 DPI awareness
+		SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
 		m_width = desc.width;
 		m_height = desc.height;
 
@@ -81,13 +84,16 @@ namespace Platform
 
 		SetWindowLongPtrW(m_hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
 
+		const UINT dpi = GetDpiForWindow(m_hwnd);
+		m_dpiScale = (dpi > 0) ? static_cast<float>(dpi) / 96.0f : 1.0f;
+
 		ShowWindow(m_hwnd, SW_SHOW);
 		UpdateWindow(m_hwnd);
 
 		m_isFocused = true;
 		Input::init();
 
-		Core::Log::Get().info("Platform", "Window '{}' created ({}, {})", desc.title, m_width, m_height);
+		Core::Log::Get().info("Platform", "Window '{}' created ({}, {}) [DPI scale: {:.2f}]", desc.title, m_width, m_height, m_dpiScale);
 		return true;
 	}
 
@@ -152,6 +158,17 @@ namespace Platform
 
 		switch (msg)
 		{
+		case WM_DPICHANGED:
+		{
+			m_dpiScale = static_cast<float>(LOWORD(wParam)) / 96.0f;
+			auto* prcNewWindow = reinterpret_cast<RECT*>(lParam);
+			SetWindowPos(hwnd, nullptr,
+				prcNewWindow->left, prcNewWindow->top,
+				prcNewWindow->right - prcNewWindow->left,
+				prcNewWindow->bottom - prcNewWindow->top,
+				SWP_NOZORDER | SWP_NOACTIVATE);
+			return 0;
+		}
 		case WM_CLOSE:
 		{
 			m_shouldClose = true;

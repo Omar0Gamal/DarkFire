@@ -16,8 +16,8 @@ namespace Editor
 		, m_aspectRatio(aspectRatio)
 		, m_nearZ(nearZ)
 		, m_farZ(farZ)
-		, m_distance(10.0f)
-		, m_pitch(0.3f)
+		, m_distance(12.0f)
+		, m_pitch(-0.50f)
 		, m_yaw(0.0f)
 	{
 		m_position = calculatePosition();
@@ -42,6 +42,15 @@ namespace Editor
 	{
 		m_focalPoint = target;
 		m_distance = std::max(radius * 2.0f, 2.0f);
+		m_position = calculatePosition();
+		updateCameraVectors();
+		updateMatrices();
+	}
+
+	void EditorCamera::setAngles(float pitch, float yaw)
+	{
+		m_pitch = std::clamp(pitch, -Core::Math::HALF_PI + 0.01f, Core::Math::HALF_PI - 0.01f);
+		m_yaw = yaw;
 		m_position = calculatePosition();
 		updateCameraVectors();
 		updateMatrices();
@@ -73,12 +82,13 @@ namespace Editor
 			{
 				m_isFlyMode = true;
 
-				// Mouse look
+				// Mouse look (standard inverted delta so mouse UP looks UP)
 				float lookSpeed = 0.003f;
 				m_yaw += mouseDelta.x * lookSpeed;
-				m_pitch += mouseDelta.y * lookSpeed;
+				m_pitch -= mouseDelta.y * lookSpeed;
 				m_pitch = std::clamp(m_pitch, -Core::Math::HALF_PI + 0.01f, Core::Math::HALF_PI - 0.01f);
 				updateCameraVectors();
+				m_focalPoint = m_position + m_forward * m_distance;
 
 				// Movement
 				float speed = m_flySpeed * (shiftHeld ? 3.0f : 1.0f);
@@ -140,7 +150,7 @@ namespace Editor
 	void EditorCamera::mousePan(const Vector2& delta)
 	{
 		float panSpeed = 0.002f * m_distance;
-		Vector3 panOffset = -m_right * (delta.x * panSpeed) + m_up * (delta.y * panSpeed);
+		Vector3 panOffset = -m_right * (delta.x * panSpeed) - m_up * (delta.y * panSpeed);
 		m_focalPoint += panOffset;
 		m_position += panOffset;
 	}
@@ -155,11 +165,12 @@ namespace Editor
 
 	void EditorCamera::mouseZoom(float delta)
 	{
-		float zoomSpeed = 0.1f * m_distance;
+		float zoomSpeed = 0.15f * m_distance;
 		m_distance -= delta * zoomSpeed;
-		if (m_distance < 0.5f)
+		if (m_distance < 0.2f)
 		{
-			m_distance = 0.5f;
+			m_focalPoint += m_forward * (delta * 0.5f);
+			m_distance = 0.2f;
 		}
 	}
 
@@ -171,7 +182,7 @@ namespace Editor
 		float sinYaw = std::sin(m_yaw);
 
 		// Left-handed: +Z forward, +Y up, +X right
-		Vector3 dir(cosPitch * sinYaw, sinPitch, -cosPitch * cosYaw);
+		Vector3 dir(cosPitch * sinYaw, sinPitch, cosPitch * cosYaw);
 		return m_focalPoint - dir * m_distance;
 	}
 

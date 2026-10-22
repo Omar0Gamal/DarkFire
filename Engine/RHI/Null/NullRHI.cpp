@@ -179,6 +179,12 @@ namespace Core::RHI
 		(void)texture;
 	}
 
+	void NullDeviceContext::setShaderResourceBufferPS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer)
+	{
+		(void)slot;
+		(void)buffer;
+	}
+
 	void NullDeviceContext::setSamplerVS(uint32_t slot, const std::shared_ptr<ISamplerState>& sampler)
 	{
 		(void)slot;

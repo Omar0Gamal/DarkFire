@@ -15,6 +15,8 @@ namespace Core::Renderer
 	{
 		Math::Matrix world{};
 		uint32_t entityId = 0;
+		std::string meshPath;
+		std::string materialPath;
 		std::shared_ptr<Material> material;
 		std::shared_ptr<RHI::IGpuBuffer> vertexBuffer;
 		std::shared_ptr<RHI::IGpuBuffer> indexBuffer;
@@ -57,7 +59,7 @@ namespace Core::Renderer
 
 	struct DF_API RenderEnvironment
 	{
-		Math::Vector4 ambientColor = Math::Vector4(0.03f, 0.03f, 0.03f, 1.0f);
+		Math::Vector4 ambientColor = Math::Vector4(0.35f, 0.38f, 0.44f, 1.0f);
 		float ambientIntensity = 1.0f;
 		std::shared_ptr<RHI::IGpuTexture> skyboxTexture;
 	};

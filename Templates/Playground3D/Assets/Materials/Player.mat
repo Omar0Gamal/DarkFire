@@ -1,0 +1,11 @@
+{
+  "name": "PlayerMaterial",
+  "baseColor": [0.95, 0.42, 0.08, 1.0],
+  "roughness": 0.35,
+  "metallic": 0.1,
+  "emissive": [0.0, 0.0, 0.0, 0.0],
+  "tiling": [1.0, 1.0],
+  "blendMode": 0,
+  "depthMode": 0,
+  "cullMode": 1
+}

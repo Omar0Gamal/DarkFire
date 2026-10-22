@@ -17,7 +17,8 @@ namespace Editor
 		ContentBrowserPanel();
 		explicit ContentBrowserPanel(std::filesystem::path rootDirectory);
 
-		void onImGuiRender();
+		void setRootDirectory(const std::filesystem::path& root);
+		void onImGuiRender(bool* p_open = nullptr);
 		void setOpenSceneCallback(OpenSceneCallback callback) { m_openSceneCallback = std::move(callback); }
 		const std::filesystem::path& getCurrentDirectory() const noexcept { return m_currentDirectory; }
 

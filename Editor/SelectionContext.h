@@ -76,6 +76,7 @@ namespace Editor
 		const std::vector<Core::Entity>& getEntities() const noexcept { return m_selectedEntities; }
 		size_t getCount() const noexcept { return m_selectedEntities.size(); }
 		bool isEmpty() const noexcept { return m_selectedEntities.empty(); }
+		bool hasSelection() const noexcept { return !m_selectedEntities.empty(); }
 
 		void removeInvalidEntities()
 		{

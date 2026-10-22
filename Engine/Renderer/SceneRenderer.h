@@ -8,13 +8,22 @@
 #include "Engine/Renderer/ShaderLibrary.h"
 #include "Engine/Renderer/Material.h"
 #include "Engine/Renderer/DrawItem.h"
+#include "Engine/Renderer/MeshPrimitives.h"
 #include "Engine/Shaders/Shared/Bindings.h"
+#include <unordered_map>
 
 #include <memory>
 #include <vector>
 
 namespace Core::Renderer
 {
+	struct GpuMesh
+	{
+		std::shared_ptr<RHI::IGpuBuffer> vertexBuffer;
+		std::shared_ptr<RHI::IGpuBuffer> indexBuffer;
+		uint32_t indexCount = 0;
+	};
+
 	struct DF_API SceneRendererConfig
 	{
 		bool enableBloom = true;
@@ -29,7 +38,7 @@ namespace Core::Renderer
 	{
 	public:
 		explicit SceneRenderer(RHI::IRHIDevice& device);
-		~SceneRenderer() = default;
+		~SceneRenderer();
 
 		void setConfig(const SceneRendererConfig& config) { m_config = config; }
 		[[nodiscard]] const SceneRendererConfig& getConfig() const noexcept { return m_config; }
@@ -51,6 +60,11 @@ namespace Core::Renderer
 		[[nodiscard]] std::shared_ptr<RHI::IGpuTexture> getDepthTexture() const noexcept { return m_depthTexture; }
 		[[nodiscard]] std::shared_ptr<RHI::IGpuTexture> getEntityIdTexture() const noexcept { return m_entityIdTexture; }
 		[[nodiscard]] std::shared_ptr<RHI::IGpuTexture> getFinalLDRTexture() const noexcept { return m_finalLdrTexture; }
+
+		// Mesh, Material & Texture Resources
+		GpuMesh getOrCreateMesh(const std::string& meshPath);
+		std::shared_ptr<Material> getOrCreateMaterial(const std::string& materialPath);
+		std::shared_ptr<RHI::IGpuTexture> getOrCreateTexture(const std::string& texturePath);
 
 		// Stats
 		[[nodiscard]] uint32_t getDrawCallCount() const noexcept { return m_drawCallCount; }
@@ -83,6 +97,38 @@ namespace Core::Renderer
 		// Persistent Draw Item and Instance caches (zero per-frame allocations)
 		std::vector<DrawItem> m_cachedDrawItems;
 		std::vector<InstanceData> m_cachedInstances;
+		std::vector<std::string> m_cachedMeshPaths;
+		std::vector<std::string> m_cachedMaterialPaths;
+
+		// Mesh, Material & Texture Caches
+		std::unordered_map<std::string, GpuMesh> m_meshCache;
+		std::unordered_map<std::string, std::shared_ptr<Material>> m_materialCache;
+		std::unordered_map<std::string, std::shared_ptr<RHI::IGpuTexture>> m_textureCache;
+
+		// Pipeline States & Shaders
+		std::shared_ptr<RHI::IVertexShader> m_vsStandard;
+		std::shared_ptr<RHI::IPixelShader> m_psStandard;
+		std::shared_ptr<RHI::IInputLayout> m_inputLayout;
+		std::shared_ptr<RHI::IVertexShader> m_vsFullscreen;
+		std::shared_ptr<RHI::IPixelShader> m_psPostProcess;
+		std::shared_ptr<RHI::IRasterizerState> m_rsSolid;
+		std::shared_ptr<RHI::IDepthStencilState> m_dssOpaque;
+		std::shared_ptr<RHI::ISamplerState> m_samplerLinearWrap;
+		std::shared_ptr<RHI::ISamplerState> m_samplerLinearClamp;
+		std::shared_ptr<RHI::ISamplerState> m_samplerPointClamp;
+
+		// Default Textures
+		std::shared_ptr<RHI::IGpuTexture> m_whiteTexture;
+		std::shared_ptr<RHI::IGpuTexture> m_flatNormalTexture;
+		std::shared_ptr<RHI::IGpuTexture> m_defaultMRTexture;
+		std::shared_ptr<RHI::IGpuTexture> m_blackTexture;
+
+		// Dedicated CBs
+		std::shared_ptr<RHI::IGpuBuffer> m_cbMaterial;
+		std::shared_ptr<RHI::IGpuBuffer> m_cbPostProcess;
+
+		// Staging texture for readEntityId
+		mutable void* m_stagingEntityId = nullptr;
 
 		// Performance Stats
 		uint32_t m_drawCallCount = 0;
@@ -95,5 +141,7 @@ namespace Core::Renderer
 		void passSkybox(const RenderScene& scene);
 		void passTransparent(const RenderScene& scene);
 		void passPostProcess(const RenderView& view);
+
+		GpuMesh createGpuMesh(const MeshData& meshData);
 	};
 }

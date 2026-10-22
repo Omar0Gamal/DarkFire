@@ -204,6 +204,8 @@ workspace "DarkFire"
 				runtime "Release"
 				optimize "On"
 				symbols "On"
+				kind "WindowedApp"
+				entrypoint "mainCRTStartup"
 
 			filter "configurations:Dist"
 				defines { "NDEBUG", "DIST", "DF_DIST" }
@@ -211,6 +213,8 @@ workspace "DarkFire"
 				runtime "Release"
 				optimize "On"
 				symbols "Off"
+				kind "WindowedApp"
+				entrypoint "mainCRTStartup"
 	group ""
 
 	-- Standalone Editor
@@ -282,6 +286,7 @@ workspace "DarkFire"
 			kind "ConsoleApp"
 			language "C++"
 			cppdialect "C++20"
+			removeconfigurations { "Dist" }
 
 			targetdir ("bin/" .. OutputDir .. "/%{prj.name}")
 			objdir ("bin-int/" .. OutputDir .. "/%{prj.name}")
@@ -297,7 +302,9 @@ workspace "DarkFire"
 				"%{wks.location}",
 				"%{wks.location}/ThirdParty/doctest",
 				"%{wks.location}/ThirdParty/entt/src",
-				"%{wks.location}/ThirdParty/json/include"
+				"%{wks.location}/ThirdParty/json/include",
+				"%{wks.location}/ThirdParty/imgui",
+				"%{wks.location}/ThirdParty/imgui/backends"
 			}
 
 			links
@@ -311,7 +318,8 @@ workspace "DarkFire"
 			defines
 			{
 				"ENTT_API_IMPORT",
-				"DF_TESTS"
+				"DF_TESTS",
+				"IMGUI_API=__declspec(dllimport)"
 			}
 
 			filter "configurations:Debug"

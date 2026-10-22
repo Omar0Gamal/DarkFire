@@ -44,6 +44,8 @@ namespace Editor
 
 		size_t getUndoCount() const noexcept { return m_undoStack.size(); }
 		size_t getRedoCount() const noexcept { return m_redoStack.size(); }
+		const std::deque<std::unique_ptr<ICommand>>& getUndoStack() const noexcept { return m_undoStack; }
+		const std::deque<std::unique_ptr<ICommand>>& getRedoStack() const noexcept { return m_redoStack; }
 
 	private:
 		void enforceMemoryLimit();

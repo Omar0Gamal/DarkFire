@@ -203,11 +203,9 @@ namespace Runtime
 		// 3. Update transforms
 		m_scene->updateTransforms();
 
-		// 4. Render Snapshot & Extraction
-		Core::ExtractRenderScene(*m_scene, m_renderScene);
-
-		// 5. Update camera aspect for active window
+		// 4. Render Snapshot & Extraction with window aspect
 		float aspect = Application::Get().getWindow().getAspectRatio();
+		Core::ExtractRenderScene(*m_scene, m_renderScene, aspect);
 		m_renderScene.camera.aspect = aspect;
 		m_renderScene.camera.projMatrix = (m_renderScene.camera.isOrthographic)
 			? Core::Math::orthographicLH_ReversedZ(10.0f, 10.0f / aspect, m_renderScene.camera.nearZ, m_renderScene.camera.farZ)

@@ -60,7 +60,9 @@ namespace Core
 		{
 			prefix += '/';
 		}
-		m_mounts[prefix] = std::filesystem::absolute(physicalPath);
+		std::error_code ec;
+		std::filesystem::path abs = std::filesystem::absolute(physicalPath.empty() ? "." : physicalPath, ec);
+		m_mounts[prefix] = abs;
 	}
 
 	void VirtualFileSystem::unmount(std::string_view virtualPrefix)
@@ -102,7 +104,8 @@ namespace Core
 		}
 
 		PakArchive archive;
-		archive.pakFilePath = std::filesystem::absolute(pakPath);
+		std::error_code ec;
+		archive.pakFilePath = std::filesystem::absolute(pakPath, ec);
 		archive.mountPrefix = NormalizeVirtualPath(virtualPrefix);
 		if (!archive.mountPrefix.empty() && archive.mountPrefix.back() != '/')
 		{

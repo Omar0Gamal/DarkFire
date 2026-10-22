@@ -1,4 +1,5 @@
 #include "Editor/Panels/ProfilerPanel.h"
+#include "Editor/UI/DockLayout.h"
 #include "Engine/Runtime/Application.h"
 #include "Engine/Runtime/EngineContext.h"
 #include "Engine/Core/Log/Log.h"
@@ -52,7 +53,7 @@ namespace Editor
 		}
 	}
 
-	void ProfilerPanel::onImGuiRender(float deltaTime)
+	void ProfilerPanel::onImGuiRender(float deltaTime, bool* p_open)
 	{
 		float frameTimeMs = deltaTime * 1000.0f;
 		float fps = (deltaTime > 0.0001f) ? (1.0f / deltaTime) : 0.0f;
@@ -65,7 +66,7 @@ namespace Editor
 		m_avgFrameTime = sum / static_cast<float>(k_historySize);
 		m_currentFps = fps;
 
-		ImGui::Begin("Profiler");
+		ImGui::Begin(UI::PanelNames::Profiler, p_open);
 
 		drawPerformanceGraphs();
 		ImGui::Separator();

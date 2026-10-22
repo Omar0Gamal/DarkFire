@@ -40,13 +40,22 @@ namespace Playground
 			if (moveDir.LengthSquared() > 0.0f)
 			{
 				moveDir.Normalize();
+			}
+
+			auto* state = getEntity().tryGetComponent<Core::RigidbodyRuntimeState>();
+			if (state)
+			{
+				state->linearVelocity.x = moveDir.x * m_speed;
+				state->linearVelocity.z = moveDir.z * m_speed;
+			}
+			else
+			{
 				auto& trans = getEntity().getTransform();
 				trans.position += moveDir * (m_speed * deltaTime);
 			}
 
 			if (Platform::Input::isKeyJustPressed(Platform::KeyCode::Space))
 			{
-				auto* state = getEntity().tryGetComponent<Core::RigidbodyRuntimeState>();
 				if (state)
 				{
 					state->linearVelocity.y = m_jumpForce;

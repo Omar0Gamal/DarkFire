@@ -15,6 +15,7 @@
 #include "Editor/Commands/EntityCommands.cpp"
 #include "Editor/SelectionContext.h"
 #include "Editor/Clipboard.cpp"
+#include "Editor/UI/DockLayout.cpp"
 #include "Engine/Core/Assets/AssetGuid.h"
 #include "Engine/Core/Assets/AssetTypes.h"
 #include "Engine/Core/Assets/AssetManager.h"
@@ -908,5 +909,55 @@ TEST_SUITE("Editor")
 
 		// Clean up
 		std::filesystem::remove(prefabPath);
+	}
+
+	TEST_CASE("DockLayout - Workspace IDs & Layout Resolution")
+	{
+		ImGuiContext* imCtx = ImGui::CreateContext();
+		REQUIRE(imCtx != nullptr);
+
+		// 1. Stable panel IDs
+		CHECK(std::string(Editor::UI::PanelNames::Scene).find("###DF_Scene") != std::string::npos);
+		CHECK(std::string(Editor::UI::PanelNames::FileSystem).find("###DF_FileSystem") != std::string::npos);
+		CHECK(std::string(Editor::UI::PanelNames::Viewport3D).find("###DF_Viewport3D") != std::string::npos);
+		CHECK(std::string(Editor::UI::PanelNames::GameViewport).find("###DF_GameView") != std::string::npos);
+		CHECK(std::string(Editor::UI::PanelNames::Inspector).find("###DF_Inspector") != std::string::npos);
+		CHECK(std::string(Editor::UI::PanelNames::Console).find("###DF_Console") != std::string::npos);
+		CHECK(std::string(Editor::UI::PanelNames::Profiler).find("###DF_Profiler") != std::string::npos);
+
+		// 2. Workspace IDs
+		auto& layout = Editor::UI::DockLayout::Get();
+		ImGuiID id3D = layout.getDockspaceId(Editor::UI::Workspace::Viewport3D);
+		ImGuiID idGame = layout.getDockspaceId(Editor::UI::Workspace::Game);
+		ImGuiID idScript = layout.getDockspaceId(Editor::UI::Workspace::Script);
+		ImGuiID idProfiler = layout.getDockspaceId(Editor::UI::Workspace::Profiler);
+
+		CHECK(id3D != 0);
+		CHECK(idGame != 0);
+		CHECK(idScript != 0);
+		CHECK(idProfiler != 0);
+		CHECK(id3D != idGame);
+		CHECK(id3D != idScript);
+		CHECK(id3D != idProfiler);
+		CHECK(idGame != idScript);
+
+		// 3. Layout ini path resolution
+		std::filesystem::path tempProjectDir = "Temp_ProjectTestLayout";
+		std::filesystem::create_directories(tempProjectDir);
+
+		layout.setProjectDirectory(tempProjectDir);
+		std::string iniPath = layout.getIniPath();
+		CHECK(iniPath.find(".darkfire") != std::string::npos);
+		CHECK(iniPath.find("editor_layout.ini") != std::string::npos);
+		CHECK(std::filesystem::exists(tempProjectDir / ".darkfire"));
+
+		// Reset to global AppData fallback
+		layout.setProjectDirectory("");
+		std::string globalIniPath = layout.getIniPath();
+		CHECK(globalIniPath.find("editor_layout.ini") != std::string::npos);
+
+		// Clean up
+		std::filesystem::remove_all(tempProjectDir);
+		ImGui::DestroyContext(imCtx);
 	}
 }

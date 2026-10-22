@@ -19,10 +19,15 @@ namespace Runtime
 			return Core::Result<ProjectConfig, std::string>::Err("Failed to open project file: " + path.string());
 		}
 
+		std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+		return LoadFromString(content);
+	}
+
+	Core::Result<ProjectConfig, std::string> ProjectConfig::LoadFromString(const std::string& jsonContent)
+	{
 		try
 		{
-			nlohmann::json j;
-			file >> j;
+			nlohmann::json j = nlohmann::json::parse(jsonContent);
 
 			ProjectConfig config;
 

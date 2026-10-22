@@ -20,6 +20,7 @@ namespace Editor
 
 		void setViewportSize(uint32_t width, uint32_t height);
 		void focusOn(const Vector3& target, float radius = 5.0f);
+		void setAngles(float pitch, float yaw);
 
 		const Matrix& getViewMatrix() const noexcept { return m_viewMatrix; }
 		const Matrix& getProjectionMatrix() const noexcept { return m_projectionMatrix; }
@@ -58,14 +59,14 @@ namespace Editor
 		Matrix m_viewProjMatrix = Matrix{};
 		Matrix m_invViewProjMatrix = Matrix{};
 
-		Vector3 m_position = Vector3(0.0f, 3.0f, -8.0f);
-		Vector3 m_focalPoint = Vector3(0.0f, 0.0f, 0.0f);
+		Vector3 m_position = Vector3(0.0f, 6.0f, -10.0f);
+		Vector3 m_focalPoint = Vector3(0.0f, 1.0f, 0.0f);
 		Vector3 m_forward = Vector3(0.0f, 0.0f, 1.0f);
 		Vector3 m_up = Vector3(0.0f, 1.0f, 0.0f);
 		Vector3 m_right = Vector3(1.0f, 0.0f, 0.0f);
 
-		float m_distance = 10.0f;
-		float m_pitch = 0.3f;
+		float m_distance = 12.0f;
+		float m_pitch = -0.50f;
 		float m_yaw = 0.0f;
 
 		uint32_t m_viewportWidth = 1280;

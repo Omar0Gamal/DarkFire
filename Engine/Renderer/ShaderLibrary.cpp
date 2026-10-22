@@ -81,7 +81,7 @@ namespace Core::Renderer
 		}
 		defines.push_back({ nullptr, nullptr });
 
-		UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
+		UINT flags = D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_PACK_MATRIX_ROW_MAJOR;
 #if defined(DF_DEBUG)
 		flags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #else
@@ -153,6 +153,11 @@ namespace Core::Renderer
 		std::vector<uint8_t> precompiledBytecode;
 
 		std::filesystem::path csoPath = std::filesystem::path(m_shaderDir) / (baseStem + ".cso");
+		if (!std::filesystem::exists(csoPath))
+		{
+			if (std::filesystem::exists("Engine/Shaders/" + baseStem + ".cso")) csoPath = "Engine/Shaders/" + baseStem + ".cso";
+			else if (std::filesystem::exists("../../../Engine/Shaders/" + baseStem + ".cso")) csoPath = "../../../Engine/Shaders/" + baseStem + ".cso";
+		}
 		if (std::filesystem::exists(csoPath))
 		{
 			std::ifstream csoFile(csoPath, std::ios::binary | std::ios::ate);
@@ -194,7 +199,12 @@ namespace Core::Renderer
 			}
 		}
 
-		const std::filesystem::path filePath = std::filesystem::path(m_shaderDir) / shaderName;
+		std::filesystem::path filePath = std::filesystem::path(m_shaderDir) / shaderName;
+		if (!std::filesystem::exists(filePath))
+		{
+			if (std::filesystem::exists("Engine/Shaders/" + shaderName)) filePath = "Engine/Shaders/" + shaderName;
+			else if (std::filesystem::exists("../../../Engine/Shaders/" + shaderName)) filePath = "../../../Engine/Shaders/" + shaderName;
+		}
 		std::ifstream file(filePath);
 		if (!file.is_open())
 		{
@@ -207,7 +217,7 @@ namespace Core::Renderer
 		ss << file.rdbuf();
 		const std::string source = ss.str();
 
-		auto compileRes = compileSource(source, shaderName, entryPoint, "vs_5_0", keywords);
+		auto compileRes = compileSource(source, filePath.string(), entryPoint, "vs_5_0", keywords);
 		if (!compileRes)
 		{
 			m_lastError = compileRes.error();
@@ -245,6 +255,11 @@ namespace Core::Renderer
 		std::vector<uint8_t> precompiledBytecode;
 
 		std::filesystem::path csoPath = std::filesystem::path(m_shaderDir) / (baseStem + ".cso");
+		if (!std::filesystem::exists(csoPath))
+		{
+			if (std::filesystem::exists("Engine/Shaders/" + baseStem + ".cso")) csoPath = "Engine/Shaders/" + baseStem + ".cso";
+			else if (std::filesystem::exists("../../../Engine/Shaders/" + baseStem + ".cso")) csoPath = "../../../Engine/Shaders/" + baseStem + ".cso";
+		}
 		if (std::filesystem::exists(csoPath))
 		{
 			std::ifstream csoFile(csoPath, std::ios::binary | std::ios::ate);
@@ -285,7 +300,12 @@ namespace Core::Renderer
 			}
 		}
 
-		const std::filesystem::path filePath = std::filesystem::path(m_shaderDir) / shaderName;
+		std::filesystem::path filePath = std::filesystem::path(m_shaderDir) / shaderName;
+		if (!std::filesystem::exists(filePath))
+		{
+			if (std::filesystem::exists("Engine/Shaders/" + shaderName)) filePath = "Engine/Shaders/" + shaderName;
+			else if (std::filesystem::exists("../../../Engine/Shaders/" + shaderName)) filePath = "../../../Engine/Shaders/" + shaderName;
+		}
 		std::ifstream file(filePath);
 		if (!file.is_open())
 		{
@@ -298,7 +318,7 @@ namespace Core::Renderer
 		ss << file.rdbuf();
 		const std::string source = ss.str();
 
-		auto compileRes = compileSource(source, shaderName, entryPoint, "ps_5_0", keywords);
+		auto compileRes = compileSource(source, filePath.string(), entryPoint, "ps_5_0", keywords);
 		if (!compileRes)
 		{
 			m_lastError = compileRes.error();

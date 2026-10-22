@@ -20,6 +20,7 @@ namespace Core::RHI
 	{
 	public:
 		virtual const GpuBufferDesc& getDesc() const = 0;
+		virtual void* getShaderResourceView() const { return nullptr; }
 	};
 
 	class DF_API IGpuTexture : public IGpuResource
@@ -97,6 +98,7 @@ namespace Core::RHI
 
 		virtual void setShaderResourceVS(uint32_t slot, const std::shared_ptr<IGpuTexture>& texture) = 0;
 		virtual void setShaderResourcePS(uint32_t slot, const std::shared_ptr<IGpuTexture>& texture) = 0;
+		virtual void setShaderResourceBufferPS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer) = 0;
 		virtual void setSamplerVS(uint32_t slot, const std::shared_ptr<ISamplerState>& sampler) = 0;
 		virtual void setSamplerPS(uint32_t slot, const std::shared_ptr<ISamplerState>& sampler) = 0;
 

@@ -29,3 +29,7 @@ Cache/
 
 # Whitelist Vendor Binaries
 !Vendor/Binaries/**
+
+# User Projects
+Projects/*
+!Projects/.gitkeep

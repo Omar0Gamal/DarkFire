@@ -19,7 +19,7 @@ namespace Editor
 		void setContext(std::shared_ptr<Core::Scene> scene, SelectionContext* selection, CommandHistory* history);
 		void setScene(std::shared_ptr<Core::Scene> scene);
 
-		void onImGuiRender();
+		void onImGuiRender(bool* p_open = nullptr);
 
 		Core::Entity getSelectedEntity() const noexcept
 		{
@@ -38,10 +38,15 @@ namespace Editor
 		void drawEntityNode(Core::Entity entity);
 		void drawContextMenu(Core::Entity entity);
 		void drawPanelContextMenu();
+		void drawAddNodeModal();
 
 		std::shared_ptr<Core::Scene> m_scene;
 		SelectionContext* m_selection = nullptr;
 		CommandHistory* m_history = nullptr;
 		char m_searchFilter[128]{};
+
+		bool m_showAddNodeModal = false;
+		char m_addNodeFilter[64]{};
+		int m_selectedNodeType = 0;
 	};
 }

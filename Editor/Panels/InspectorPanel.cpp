@@ -1,5 +1,6 @@
 #include "Editor/Panels/InspectorPanel.h"
 #include "Editor/Commands/EntityCommands.h"
+#include "Editor/UI/DockLayout.h"
 #include "Engine/Core/Scene/Components.h"
 #include "Engine/Core/Scripting/ScriptRegistry.h"
 #include <imgui.h>
@@ -13,7 +14,9 @@ namespace Editor
 		float resetValue = 0.0f,
 		float columnWidth = 100.0f,
 		bool* outActivated = nullptr,
-		bool* outDeactivated = nullptr
+		bool* outDeactivated = nullptr,
+		bool isScale = false,
+		bool uniformScale = false
 	)
 	{
 		bool modified = false;
@@ -22,6 +25,17 @@ namespace Editor
 		ImGui::Columns(2);
 		ImGui::SetColumnWidth(0, columnWidth);
 		ImGui::Text("%s", label);
+		ImGui::SameLine();
+		if (ImGui::SmallButton("↺"))
+		{
+			values = Core::Vector3(resetValue, resetValue, resetValue);
+			modified = true;
+			if (outDeactivated) *outDeactivated = true;
+		}
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::SetTooltip("Reset property to default");
+		}
 		ImGui::NextColumn();
 
 		float totalWidth = ImGui::CalcItemWidth();
@@ -33,6 +47,9 @@ namespace Editor
 		float lineHeight = ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2.0f;
 		ImVec2 buttonSize = { lineHeight + 3.0f, lineHeight };
 
+		Core::Vector3 oldValues = values;
+
+		// X
 		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{ 0.8f, 0.1f, 0.15f, 1.0f });
 		if (ImGui::Button("X", buttonSize))
 		{
@@ -43,11 +60,21 @@ namespace Editor
 		ImGui::PopStyleColor();
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(itemWidth);
-		if (ImGui::DragFloat("##X", &values.x, 0.1f, 0.0f, 0.0f, "%.2f")) modified = true;
+		if (ImGui::DragFloat("##X", &values.x, 0.1f, 0.0f, 0.0f, "%.2f"))
+		{
+			modified = true;
+			if (isScale && uniformScale && oldValues.x != 0.0f)
+			{
+				float ratio = values.x / oldValues.x;
+				values.y *= ratio;
+				values.z *= ratio;
+			}
+		}
 		if (ImGui::IsItemActivated() && outActivated) *outActivated = true;
 		if (ImGui::IsItemDeactivatedAfterEdit() && outDeactivated) *outDeactivated = true;
 		ImGui::SameLine();
 
+		// Y
 		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{ 0.2f, 0.7f, 0.2f, 1.0f });
 		if (ImGui::Button("Y", buttonSize))
 		{
@@ -58,11 +85,21 @@ namespace Editor
 		ImGui::PopStyleColor();
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(itemWidth);
-		if (ImGui::DragFloat("##Y", &values.y, 0.1f, 0.0f, 0.0f, "%.2f")) modified = true;
+		if (ImGui::DragFloat("##Y", &values.y, 0.1f, 0.0f, 0.0f, "%.2f"))
+		{
+			modified = true;
+			if (isScale && uniformScale && oldValues.y != 0.0f)
+			{
+				float ratio = values.y / oldValues.y;
+				values.x *= ratio;
+				values.z *= ratio;
+			}
+		}
 		if (ImGui::IsItemActivated() && outActivated) *outActivated = true;
 		if (ImGui::IsItemDeactivatedAfterEdit() && outDeactivated) *outDeactivated = true;
 		ImGui::SameLine();
 
+		// Z
 		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{ 0.1f, 0.25f, 0.8f, 1.0f });
 		if (ImGui::Button("Z", buttonSize))
 		{
@@ -73,7 +110,16 @@ namespace Editor
 		ImGui::PopStyleColor();
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(itemWidth);
-		if (ImGui::DragFloat("##Z", &values.z, 0.1f, 0.0f, 0.0f, "%.2f")) modified = true;
+		if (ImGui::DragFloat("##Z", &values.z, 0.1f, 0.0f, 0.0f, "%.2f"))
+		{
+			modified = true;
+			if (isScale && uniformScale && oldValues.z != 0.0f)
+			{
+				float ratio = values.z / oldValues.z;
+				values.x *= ratio;
+				values.y *= ratio;
+			}
+		}
 		if (ImGui::IsItemActivated() && outActivated) *outActivated = true;
 		if (ImGui::IsItemDeactivatedAfterEdit() && outDeactivated) *outDeactivated = true;
 
@@ -84,9 +130,88 @@ namespace Editor
 		return modified;
 	}
 
-	void InspectorPanel::onImGuiRender(Core::Entity selectedEntity)
+	void InspectorPanel::onImGuiRender(Core::Entity selectedEntity, bool* p_open)
 	{
-		ImGui::Begin("Inspector");
+		ImGui::Begin(UI::PanelNames::Inspector, p_open);
+
+		// Godot 4 Top Tab Bar
+		if (ImGui::BeginTabBar("InspectorTabBar"))
+		{
+			if (ImGui::BeginTabItem("Inspector"))
+			{
+				m_selectedTab = 0;
+				ImGui::EndTabItem();
+			}
+			if (ImGui::BeginTabItem("Environment"))
+			{
+				m_selectedTab = 1;
+				ImGui::EndTabItem();
+			}
+			if (ImGui::BeginTabItem("History"))
+			{
+				m_selectedTab = 2;
+				ImGui::EndTabItem();
+			}
+			ImGui::EndTabBar();
+		}
+		ImGui::Separator();
+
+		if (m_selectedTab == 1)
+		{
+			ImGui::TextColored(ImVec4{ 0.35f, 0.7f, 1.0f, 1.0f }, "World Environment");
+			ImGui::Spacing();
+			static float skyColor[3] = { 0.12f, 0.13f, 0.16f };
+			ImGui::ColorEdit3("Clear / Sky Color", skyColor);
+			static float ambientColor[3] = { 0.2f, 0.22f, 0.28f };
+			ImGui::ColorEdit3("Ambient Color", ambientColor);
+			static float ambientIntensity = 0.5f;
+			ImGui::SliderFloat("Ambient Energy", &ambientIntensity, 0.0f, 2.0f);
+			static const char* tonemappers[] = { "ACES Filmic (Godot 4)", "Reinhard", "Linear" };
+			static int currentTonemapper = 0;
+			ImGui::Combo("Tonemapper", &currentTonemapper, tonemappers, 3);
+			ImGui::End();
+			return;
+		}
+
+		if (m_selectedTab == 2)
+		{
+			ImGui::TextColored(ImVec4{ 0.35f, 0.7f, 1.0f, 1.0f }, "Command History");
+			ImGui::Spacing();
+			if (!m_history)
+			{
+				ImGui::TextDisabled("No history attached.");
+			}
+			else
+			{
+				ImGui::Text("Undo Count: %zu | Redo Count: %zu", m_history->getUndoCount(), m_history->getRedoCount());
+				ImGui::Text("Memory: %.2f KB", m_history->getMemoryUsage() / 1024.0f);
+				ImGui::Separator();
+
+				if (ImGui::Button("Undo", ImVec2{ 80.0f, 0.0f }) && m_history->canUndo())
+				{
+					m_history->undo();
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("Redo", ImVec2{ 80.0f, 0.0f }) && m_history->canRedo())
+				{
+					m_history->redo();
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("Clear"))
+				{
+					m_history->clear();
+				}
+
+				ImGui::Spacing();
+				ImGui::TextDisabled("Recent Commands:");
+				for (const auto& cmd : m_history->getUndoStack())
+				{
+					ImGui::BulletText("%s", std::string(cmd->getName()).c_str());
+				}
+			}
+			ImGui::End();
+			return;
+		}
 
 		if (!selectedEntity.isValid())
 		{
@@ -146,7 +271,8 @@ namespace Editor
 					tc.setEulerDegrees(euler);
 				}
 
-				DrawVec3Control("Scale", tc.scale, 1.0f, 100.0f, &activated, &deactivated);
+				DrawVec3Control("Scale", tc.scale, 1.0f, 100.0f, &activated, &deactivated, true, m_uniformScale);
+				ImGui::Checkbox("Uniform Scale (🔗)", &m_uniformScale);
 
 				if (activated && !m_isDraggingTransform)
 				{
@@ -239,6 +365,13 @@ namespace Editor
 				{
 					mr.meshPath = meshBuf;
 				}
+				ImGui::TextDisabled("Primitives:");
+				ImGui::SameLine();
+				if (ImGui::SmallButton("Cube")) mr.meshPath = "builtin:cube";
+				ImGui::SameLine();
+				if (ImGui::SmallButton("Sphere")) mr.meshPath = "builtin:sphere";
+				ImGui::SameLine();
+				if (ImGui::SmallButton("Plane")) mr.meshPath = "builtin:plane";
 
 				char matBuf[256];
 				memset(matBuf, 0, sizeof(matBuf));

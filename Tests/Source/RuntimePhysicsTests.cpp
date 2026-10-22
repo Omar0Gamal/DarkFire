@@ -289,6 +289,79 @@ TEST_SUITE("Milestone P5: Runtime, Scripting & Physics")
 		CHECK(state.linearVelocity.x == doctest::Approx(-10.0f).epsilon(0.01f));
 	}
 
+	TEST_CASE("P5.3 - Box-Sphere deep penetration resolution prevents ground clipping")
+	{
+		Physics::PhysicsWorld physics;
+		physics.init(Vector3(0.0f, 0.0f, 0.0f), 1.0f / 60.0f);
+
+		Core::Scene scene;
+
+		// Static ground box at y = -0.5, size = (50, 1, 50) -> top face is y = 0.0
+		auto ground = scene.createEntity("Ground");
+		auto& gTrans = ground.getComponent<Core::TransformComponent>();
+		gTrans.position = Vector3(0.0f, -0.5f, 0.0f);
+		auto& gCol = ground.addComponent<Core::ColliderComponent>();
+		gCol.shape = Core::ColliderShape::Box;
+		gCol.size = Vector3(50.0f, 1.0f, 50.0f);
+
+		// Dynamic sphere with radius = 0.5 placed with center at y = -0.05 (inside the box)
+		auto sphere = scene.createEntity("Sphere");
+		auto& sTrans = sphere.getComponent<Core::TransformComponent>();
+		sTrans.position = Vector3(0.0f, -0.05f, 0.0f);
+		auto& sCol = sphere.addComponent<Core::ColliderComponent>();
+		sCol.shape = Core::ColliderShape::Sphere;
+		sCol.radius = 0.5f;
+
+		auto& sRb = sphere.addComponent<Core::RigidbodyComponent>();
+		sRb.mass = 1.0f;
+		sRb.restitution = 0.0f;
+		sRb.useGravity = false;
+
+		physics.step(scene, 1.0f / 60.0f);
+
+		// Positional correction must push the sphere center completely out to y >= 0.5f
+		CHECK(sTrans.position.y >= 0.5f);
+		CHECK(sTrans.position.y == doctest::Approx(0.5f).epsilon(0.001f));
+	}
+
+	TEST_CASE("P5.3 - OBB vs OBB SAT collision detects rotated box intersection")
+	{
+		Physics::PhysicsWorld physics;
+		physics.init(Vector3(0.0f, 0.0f, 0.0f), 1.0f / 60.0f);
+
+		Core::Scene scene;
+
+		// Box A at (0, 0, 0), size (1, 1, 1), unrotated
+		auto boxA = scene.createEntity("BoxA");
+		auto& aTrans = boxA.getComponent<Core::TransformComponent>();
+		aTrans.position = Vector3(0.0f, 0.0f, 0.0f);
+		auto& aCol = boxA.addComponent<Core::ColliderComponent>();
+		aCol.shape = Core::ColliderShape::Box;
+		aCol.size = Vector3(1.0f, 1.0f, 1.0f);
+
+		// Box B at (1.1, 0, 0), size (1, 1, 1), rotated 45 degrees around Y
+		// Unrotated: right edge of A is 0.5, left edge of B is 1.1 - 0.5 = 0.6 (no AABB collision).
+		// Rotated 45 deg: corner of B extends by 0.5 * sqrt(2) = 0.707, reaching 1.1 - 0.707 = 0.393 (< 0.5).
+		// OBB SAT MUST detect this collision and resolve it!
+		auto boxB = scene.createEntity("BoxB");
+		auto& bTrans = boxB.getComponent<Core::TransformComponent>();
+		bTrans.position = Vector3(1.1f, 0.0f, 0.0f);
+		bTrans.setEulerDegrees(Vector3(0.0f, 45.0f, 0.0f));
+		auto& bCol = boxB.addComponent<Core::ColliderComponent>();
+		bCol.shape = Core::ColliderShape::Box;
+		bCol.size = Vector3(1.0f, 1.0f, 1.0f);
+
+		auto& bRb = boxB.addComponent<Core::RigidbodyComponent>();
+		bRb.mass = 1.0f;
+		bRb.isKinematic = false;
+		bRb.useGravity = false;
+
+		physics.step(scene, 1.0f / 60.0f);
+
+		// Positional correction must push Box B rightward away from Box A
+		CHECK(bTrans.position.x > 1.1f);
+	}
+
 	TEST_CASE("P5.3 - Trigger detection dispatches enter/exit without physical response")
 	{
 		Core::ScriptRegistry::Get().clear();

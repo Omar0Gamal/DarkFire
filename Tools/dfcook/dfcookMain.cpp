@@ -78,7 +78,7 @@ namespace dfcook
 		const std::string& profile,
 		const std::filesystem::path& outCsoPath)
 	{
-		UINT flags = D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_OPTIMIZATION_LEVEL3;
+		UINT flags = D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_OPTIMIZATION_LEVEL3 | D3DCOMPILE_PACK_MATRIX_ROW_MAJOR;
 
 		ID3DBlob* codeBlob = nullptr;
 		ID3DBlob* errorBlob = nullptr;

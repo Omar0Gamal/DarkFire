@@ -18,17 +18,20 @@ namespace Core::RHI
 	class D3D11Buffer : public IGpuBuffer
 	{
 	public:
-		D3D11Buffer(const GpuBufferDesc& desc, ComPtr<ID3D11Buffer> buffer)
-			: m_desc(desc), m_buffer(std::move(buffer)) {}
+		D3D11Buffer(const GpuBufferDesc& desc, ComPtr<ID3D11Buffer> buffer, ComPtr<ID3D11ShaderResourceView> srv = nullptr)
+			: m_desc(desc), m_buffer(std::move(buffer)), m_srv(std::move(srv)) {}
 		~D3D11Buffer() override = default;
 
 		void* getNativeHandle() const override { return m_buffer.Get(); }
 		const GpuBufferDesc& getDesc() const override { return m_desc; }
 		ID3D11Buffer* getD3D11Buffer() const noexcept { return m_buffer.Get(); }
+		void* getShaderResourceView() const override { return m_srv.Get(); }
+		ID3D11ShaderResourceView* getD3D11SRV() const noexcept { return m_srv.Get(); }
 
 	private:
 		GpuBufferDesc m_desc;
 		ComPtr<ID3D11Buffer> m_buffer;
+		ComPtr<ID3D11ShaderResourceView> m_srv;
 	};
 
 	class D3D11Texture : public IGpuTexture
@@ -236,6 +239,7 @@ namespace Core::RHI
 
 		void setShaderResourceVS(uint32_t slot, const std::shared_ptr<IGpuTexture>& texture) override;
 		void setShaderResourcePS(uint32_t slot, const std::shared_ptr<IGpuTexture>& texture) override;
+		void setShaderResourceBufferPS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer) override;
 		void setSamplerVS(uint32_t slot, const std::shared_ptr<ISamplerState>& sampler) override;
 		void setSamplerPS(uint32_t slot, const std::shared_ptr<ISamplerState>& sampler) override;
 

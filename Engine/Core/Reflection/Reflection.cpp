@@ -303,7 +303,9 @@ namespace Core
 				{ "drag", FieldType::Float, { true, 0.0f, 100.0f } },
 				{ "angularDrag", FieldType::Float, { true, 0.0f, 100.0f } },
 				{ "isKinematic", FieldType::Bool, {} },
-				{ "useGravity", FieldType::Bool, {} }
+				{ "useGravity", FieldType::Bool, {} },
+				{ "restitution", FieldType::Float, { true, 0.0f, 1.0f } },
+				{ "friction", FieldType::Float, { true, 0.0f, 10.0f } }
 			};
 			desc.hasComponent = [](const Scene& scene, entt::entity e) {
 				return scene.getRegistry().all_of<RigidbodyComponent>(e);
@@ -325,6 +327,8 @@ namespace Core
 				j["angularDrag"] = comp.angularDrag;
 				j["isKinematic"] = comp.isKinematic;
 				j["useGravity"] = comp.useGravity;
+				j["restitution"] = comp.restitution;
+				j["friction"] = comp.friction;
 			};
 			desc.deserializeFromJson = [](Scene& scene, entt::entity e, const void* jsonNode) {
 				const auto& j = *static_cast<const nlohmann::ordered_json*>(jsonNode);

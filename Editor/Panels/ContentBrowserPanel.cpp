@@ -1,4 +1,5 @@
 #include "Editor/Panels/ContentBrowserPanel.h"
+#include "Editor/UI/DockLayout.h"
 #include "Engine/Core/Assets/AssetManager.h"
 #include "Engine/Core/Log/Log.h"
 #include <imgui.h>
@@ -41,9 +42,22 @@ namespace Editor
 		m_historyIndex = 0;
 	}
 
-	void ContentBrowserPanel::onImGuiRender()
+	void ContentBrowserPanel::setRootDirectory(const std::filesystem::path& root)
 	{
-		ImGui::Begin("Content Browser");
+		m_rootDirectory = root;
+		if (!std::filesystem::exists(m_rootDirectory))
+		{
+			std::filesystem::create_directories(m_rootDirectory);
+		}
+		m_currentDirectory = m_rootDirectory;
+		m_history.clear();
+		m_history.push_back(m_currentDirectory);
+		m_historyIndex = 0;
+	}
+
+	void ContentBrowserPanel::onImGuiRender(bool* p_open)
+	{
+		ImGui::Begin(UI::PanelNames::FileSystem, p_open);
 
 		// Header navigation bar
 		drawBreadcrumbs();
@@ -319,7 +333,14 @@ namespace Editor
 				}
 				if (ImGui::MenuItem("Delete"))
 				{
-					Core::AssetManager::Get().deleteAsset(path);
+					if (isDir)
+					{
+						std::filesystem::remove_all(path);
+					}
+					else
+					{
+						Core::AssetManager::Get().deleteAsset(path);
+					}
 				}
 				ImGui::Separator();
 				if (ImGui::MenuItem("Show in Explorer"))
@@ -336,7 +357,14 @@ namespace Editor
 				if (ImGui::InputText("##RenameInput", m_renameBuffer, sizeof(m_renameBuffer), ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll))
 				{
 					std::filesystem::path newPath = path.parent_path() / m_renameBuffer;
-					Core::AssetManager::Get().renameAsset(path, newPath);
+					if (isDir)
+					{
+						std::filesystem::rename(path, newPath);
+					}
+					else
+					{
+						Core::AssetManager::Get().renameAsset(path, newPath);
+					}
 					m_renamingPath.clear();
 				}
 				if (!ImGui::IsItemActive() && ImGui::IsMouseClicked(0))
@@ -381,7 +409,7 @@ namespace Editor
 			std::ofstream matFile(matPath);
 			if (matFile.is_open())
 			{
-				matFile << "{\n  \"material_version\": 1,\n  \"shader\": \"/engine/Shaders/base.hlsl\",\n  \"parameters\": {}\n}\n";
+				matFile << "{\n  \"name\": \"NewMaterial\",\n  \"baseColor\": [1.0, 1.0, 1.0, 1.0],\n  \"roughness\": 0.5,\n  \"metallic\": 0.0,\n  \"emissive\": [0.0, 0.0, 0.0, 0.0],\n  \"tiling\": [1.0, 1.0],\n  \"albedoTexture\": \"\",\n  \"normalTexture\": \"\",\n  \"metallicRoughnessTexture\": \"\",\n  \"emissiveTexture\": \"\",\n  \"blendMode\": 0,\n  \"depthMode\": 0,\n  \"cullMode\": 1\n}\n";
 			}
 			Core::AssetManager::Get().registerAsset(matPath);
 		}

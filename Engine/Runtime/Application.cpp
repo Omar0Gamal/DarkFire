@@ -244,6 +244,58 @@ namespace Runtime
 		ImGuiIO& io = ImGui::GetIO();
 		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 		io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+		io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+
+		const float dpiScale = m_window ? m_window->getDpiScale() : 1.0f;
+		const float validDpi = (dpiScale > 0.5f) ? dpiScale : 1.0f;
+
+		// Crisp native fonts with 2x subpixel oversampling
+		ImFontConfig fontCfg;
+		fontCfg.OversampleH = 2;
+		fontCfg.OversampleV = 1;
+		fontCfg.PixelSnapH = true;
+
+		const float baseFontSize = std::round(15.0f * validDpi);
+		const float codeFontSize = std::round(14.0f * validDpi);
+
+		bool fontLoaded = false;
+		if (std::filesystem::exists("C:\\Windows\\Fonts\\segoeui.ttf"))
+		{
+			io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", baseFontSize, &fontCfg);
+			fontLoaded = true;
+		}
+
+		if (std::filesystem::exists("C:\\Windows\\Fonts\\consola.ttf"))
+		{
+			io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\consola.ttf", codeFontSize, &fontCfg);
+		}
+
+		if (fontLoaded)
+		{
+			// Merge native Windows vector icon glyphs (Segoe Fluent / MDL2)
+			static const ImWchar iconRanges[] = { 0xE700, 0xF8FF, 0 };
+			ImFontConfig iconCfg;
+			iconCfg.MergeMode = true;
+			iconCfg.PixelSnapH = true;
+			iconCfg.OversampleH = 2;
+			iconCfg.OversampleV = 1;
+			if (std::filesystem::exists("C:\\Windows\\Fonts\\SegoeIcons.ttf"))
+			{
+				io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\SegoeIcons.ttf", baseFontSize, &iconCfg, iconRanges);
+			}
+			else if (std::filesystem::exists("C:\\Windows\\Fonts\\segmdl2.ttf"))
+			{
+				io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segmdl2.ttf", baseFontSize, &iconCfg, iconRanges);
+			}
+		}
+
+		if (!fontLoaded)
+		{
+			io.Fonts->AddFontDefault();
+		}
+
+		ImGuiStyle& style = ImGui::GetStyle();
+		style.ScaleAllSizes(validDpi);
 
 		ImGui_ImplWin32_Init(m_window->getNativeHandle());
 

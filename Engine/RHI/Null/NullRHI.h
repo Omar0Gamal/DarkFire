@@ -234,6 +234,7 @@ namespace Core::RHI
 
 		void setShaderResourceVS(uint32_t slot, const std::shared_ptr<IGpuTexture>& texture) override;
 		void setShaderResourcePS(uint32_t slot, const std::shared_ptr<IGpuTexture>& texture) override;
+		void setShaderResourceBufferPS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer) override;
 		void setSamplerVS(uint32_t slot, const std::shared_ptr<ISamplerState>& sampler) override;
 		void setSamplerPS(uint32_t slot, const std::shared_ptr<ISamplerState>& sampler) override;
 

@@ -137,5 +137,26 @@ namespace Core
 			outRenderScene.environment.bloomIntensity = pp.bloomIntensity;
 			break;
 		}
+
+		// 6. Extract Particles
+		auto particleView = registry.view<ParticleEmitterComponent, ParticleRuntimeState>();
+		for (auto entity : particleView)
+		{
+			const auto& emitter = particleView.get<ParticleEmitterComponent>(entity);
+			const auto& state = particleView.get<ParticleRuntimeState>(entity);
+
+			for (int i = 0; i < state.activeCount; ++i)
+			{
+				const auto& p = state.particles[i];
+				Renderer::RenderParticleInstance pi{};
+				pi.position = p.position;
+				pi.size = p.size;
+				pi.color = Math::Vector4(p.color.R(), p.color.G(), p.color.B(), p.color.A());
+				pi.distanceToCamera = Vector3::Distance(p.position, outRenderScene.camera.position);
+				pi.texturePath = emitter.texturePath;
+				pi.blendMode = (emitter.blendMode == ParticleBlendMode::Additive) ? Renderer::BlendMode::Additive : Renderer::BlendMode::Translucent;
+				outRenderScene.particles.push_back(pi);
+			}
+		}
 	}
 }

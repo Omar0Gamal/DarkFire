@@ -290,8 +290,17 @@ namespace Core
 			.field("emissionRate", &ParticleEmitterComponent::emissionRate)
 			.field("lifetime", &ParticleEmitterComponent::lifetime)
 			.field("startVelocity", &ParticleEmitterComponent::startVelocity)
+			.field("velocityRandomness", &ParticleEmitterComponent::velocityRandomness)
+			.field("gravityScale", &ParticleEmitterComponent::gravityScale)
+			.field("startSize", &ParticleEmitterComponent::startSize)
+			.field("endSize", &ParticleEmitterComponent::endSize)
 			.field("startColor", &ParticleEmitterComponent::startColor, { false, 0, 0, "", true })
 			.field("endColor", &ParticleEmitterComponent::endColor, { false, 0, 0, "", true })
+			.enumField("blendMode", &ParticleEmitterComponent::blendMode, { "AlphaBlend", "Additive" })
+			.enumField("simulationSpace", &ParticleEmitterComponent::simulationSpace, { "World", "Local" })
+			.field("looping", &ParticleEmitterComponent::looping)
+			.field("playOnStart", &ParticleEmitterComponent::playOnStart)
+			.field("texturePath", &ParticleEmitterComponent::texturePath)
 			.serialize(
 				[](const Scene& scene, entt::entity e, void* jsonNode) {
 					auto& j = *static_cast<nlohmann::ordered_json*>(jsonNode);
@@ -300,8 +309,17 @@ namespace Core
 					j["emissionRate"] = comp.emissionRate;
 					j["lifetime"] = comp.lifetime;
 					SerializeVec3(j, "startVelocity", comp.startVelocity);
+					j["velocityRandomness"] = comp.velocityRandomness;
+					j["gravityScale"] = comp.gravityScale;
+					j["startSize"] = comp.startSize;
+					j["endSize"] = comp.endSize;
 					SerializeColor(j, "startColor", comp.startColor);
 					SerializeColor(j, "endColor", comp.endColor);
+					j["blendMode"] = static_cast<uint8_t>(comp.blendMode);
+					j["simulationSpace"] = static_cast<uint8_t>(comp.simulationSpace);
+					j["looping"] = comp.looping;
+					j["playOnStart"] = comp.playOnStart;
+					j["texturePath"] = comp.texturePath;
 				},
 				[](Scene& scene, entt::entity e, const void* jsonNode) {
 					const auto& j = *static_cast<const nlohmann::ordered_json*>(jsonNode);
@@ -310,8 +328,17 @@ namespace Core
 					if (j.contains("emissionRate")) comp.emissionRate = j["emissionRate"].get<float>();
 					if (j.contains("lifetime")) comp.lifetime = j["lifetime"].get<float>();
 					DeserializeVec3(j, "startVelocity", comp.startVelocity);
+					if (j.contains("velocityRandomness")) comp.velocityRandomness = j["velocityRandomness"].get<float>();
+					if (j.contains("gravityScale")) comp.gravityScale = j["gravityScale"].get<float>();
+					if (j.contains("startSize")) comp.startSize = j["startSize"].get<float>();
+					if (j.contains("endSize")) comp.endSize = j["endSize"].get<float>();
 					DeserializeColor(j, "startColor", comp.startColor);
 					DeserializeColor(j, "endColor", comp.endColor);
+					if (j.contains("blendMode")) comp.blendMode = static_cast<ParticleBlendMode>(j["blendMode"].get<uint8_t>());
+					if (j.contains("simulationSpace")) comp.simulationSpace = static_cast<SimulationSpace>(j["simulationSpace"].get<uint8_t>());
+					if (j.contains("looping")) comp.looping = j["looping"].get<bool>();
+					if (j.contains("playOnStart")) comp.playOnStart = j["playOnStart"].get<bool>();
+					if (j.contains("texturePath")) comp.texturePath = j["texturePath"].get<std::string>();
 				})
 			.registerSelf();
 

@@ -103,17 +103,29 @@ namespace Core::Renderer
 		float bloomIntensity = 0.04f;
 	};
 
+	struct DF_API RenderParticleInstance
+	{
+		Math::Vector3 position;
+		float size = 0.1f;
+		Math::Vector4 color = Math::Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+		float distanceToCamera = 0.0f;
+		std::string texturePath;
+		BlendMode blendMode = BlendMode::Translucent;
+	};
+
 	struct DF_API RenderScene
 	{
 		RenderCamera camera;
 		RenderEnvironment environment;
 		std::vector<RenderMeshInstance> meshes;
 		std::vector<RenderLight> lights;
+		std::vector<RenderParticleInstance> particles;
 
 		void clear()
 		{
 			meshes.clear();
 			lights.clear();
+			particles.clear();
 		}
 	};
 

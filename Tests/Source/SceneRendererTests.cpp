@@ -6,6 +6,7 @@
 #include "Engine/RHI/Null/NullRHI.h"
 #include "Engine/Renderer/RenderScene.h"
 #include "Engine/Renderer/SceneRenderer.h"
+#include "Engine/Core/Scene/Systems/ParticleSystem.h"
 
 #include <ostream>
 #include <fstream>
@@ -231,5 +232,116 @@ TEST_SUITE("Milestone P4: Frame Pipeline, Color Space & SceneRenderer")
 		CHECK(mat->getCullMode() == RHI::CullMode::Back);
 
 		std::filesystem::remove_all("Temp_MatTest");
+	}
+
+	TEST_CASE("P4.5: OBJ Vertex Welding & Lengyel Tangent Calculation")
+	{
+		std::filesystem::create_directories("Temp_ObjTest");
+		std::string objPath = "Temp_ObjTest/WeldedCube.obj";
+		{
+			std::ofstream f(objPath);
+			// 8 positions
+			f << "v -1.0 -1.0  1.0\n"
+			  << "v  1.0 -1.0  1.0\n"
+			  << "v  1.0  1.0  1.0\n"
+			  << "v -1.0  1.0  1.0\n"
+			  << "v  1.0 -1.0 -1.0\n"
+			  << "v -1.0 -1.0 -1.0\n"
+			  << "v -1.0  1.0 -1.0\n"
+			  << "v  1.0  1.0 -1.0\n"
+			  // 6 normals
+			  << "vn  0.0  0.0  1.0\n"
+			  << "vn  0.0  0.0 -1.0\n"
+			  << "vn  0.0  1.0  0.0\n"
+			  << "vn  0.0 -1.0  0.0\n"
+			  << "vn  1.0  0.0  0.0\n"
+			  << "vn -1.0  0.0  0.0\n"
+			  // 4 UVs
+			  << "vt 0.0 0.0\n"
+			  << "vt 1.0 0.0\n"
+			  << "vt 1.0 1.0\n"
+			  << "vt 0.0 1.0\n"
+			  // 6 faces (12 triangles, 36 indices)
+			  << "f 1/1/1 2/2/1 3/3/1\n f 1/1/1 3/3/1 4/4/1\n"
+			  << "f 5/1/2 6/2/2 7/3/2\n f 5/1/2 7/3/2 8/4/2\n"
+			  << "f 4/1/3 3/2/3 8/3/3\n f 4/1/3 8/3/3 7/4/3\n"
+			  << "f 6/1/4 5/2/4 2/3/4\n f 6/1/4 2/3/4 1/4/4\n"
+			  << "f 2/1/5 5/2/5 8/3/5\n f 2/1/5 8/3/5 3/4/5\n"
+			  << "f 6/1/6 1/2/6 4/3/6\n f 6/1/6 4/3/6 7/4/6\n";
+		}
+
+		auto mesh = Core::Renderer::LoadObjMesh(objPath);
+		// Cube has 6 faces * 4 vertices = 24 welded vertices (down from 36 without welding)
+		CHECK(mesh.vertices.size() == 24);
+		CHECK(mesh.indices.size() == 36);
+
+		for (const auto& v : mesh.vertices)
+		{
+			// Normal must be unit length
+			CHECK(v.normal.Length() == doctest::Approx(1.0f).epsilon(0.01f));
+
+			// Tangent XYZ must be unit length
+			Vector3 tan(v.tangent.x, v.tangent.y, v.tangent.z);
+			CHECK(tan.Length() == doctest::Approx(1.0f).epsilon(0.01f));
+
+			// Tangent must be orthonormal to Normal (|dot| < 1e-4)
+			CHECK(std::abs(v.normal.Dot(tan)) < 0.001f);
+
+			// Handedness must be +1.0 or -1.0
+			CHECK(std::abs(v.tangent.w) == doctest::Approx(1.0f));
+		}
+
+		std::filesystem::remove_all("Temp_ObjTest");
+	}
+
+	TEST_CASE("P4.6: CPU Particle System Simulation & Recycling")
+	{
+		Scene scene;
+		auto entity = scene.createEntity("ParticleFX");
+		auto& emitter = entity.addComponent<ParticleEmitterComponent>();
+		emitter.maxParticles = 100;
+		emitter.emissionRate = 50.0f;
+		emitter.lifetime = 0.5f;
+		emitter.startSize = 1.0f;
+		emitter.endSize = 0.1f;
+		emitter.startVelocity = Vector3(0.0f, 10.0f, 0.0f);
+		emitter.gravityScale = 1.0f;
+
+		scene.updateTransforms();
+
+		// Tick 0.1s -> should spawn 5 particles (50 * 0.1) at age 0
+		Core::Systems::ParticleSystem::Tick(scene, 0.1f);
+		auto& state = entity.getComponent<ParticleRuntimeState>();
+		CHECK(state.activeCount == 5);
+
+		for (int i = 0; i < state.activeCount; ++i)
+		{
+			const auto& p = state.particles[i];
+			CHECK(p.age == doctest::Approx(0.0f));
+			CHECK(p.size == doctest::Approx(1.0f));
+		}
+
+		// Tick another 0.1s -> existing particles advance age by 0.1s, 5 more spawn (total 10)
+		Core::Systems::ParticleSystem::Tick(scene, 0.1f);
+		CHECK(state.activeCount == 10);
+
+		for (int i = 0; i < 5; ++i)
+		{
+			const auto& p = state.particles[i];
+			CHECK(p.age == doctest::Approx(0.1f));
+			CHECK(p.size < 1.0f);
+			CHECK(p.size >= 0.1f);
+			CHECK(p.velocity.y < 10.0f);
+			CHECK(p.velocity.y > 5.0f);
+		}
+
+		// Tick 0.6s -> original particles should expire and new ones spawn
+		Core::Systems::ParticleSystem::Tick(scene, 0.6f);
+		CHECK(state.activeCount > 0);
+		CHECK(state.activeCount <= emitter.maxParticles);
+
+		// Reset -> should clear all active particles
+		Core::Systems::ParticleSystem::Reset(scene);
+		CHECK(state.activeCount == 0);
 	}
 }

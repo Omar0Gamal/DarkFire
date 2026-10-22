@@ -290,6 +290,15 @@ namespace Core::Renderer
 		m_meshCache["plane"] = planeGpu;
 		m_meshCache["plane.obj"] = planeGpu;
 
+		// Unit billboard quad for particles: XY [-0.5, 0.5] facing -Z
+		MeshData quadData;
+		quadData.vertices.push_back({ { -0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, -1.0f }, { 0.0f, 1.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } });
+		quadData.vertices.push_back({ {  0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, -1.0f }, { 1.0f, 1.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } });
+		quadData.vertices.push_back({ {  0.5f,  0.5f, 0.0f }, { 0.0f, 0.0f, -1.0f }, { 1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } });
+		quadData.vertices.push_back({ { -0.5f,  0.5f, 0.0f }, { 0.0f, 0.0f, -1.0f }, { 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } });
+		quadData.indices = { 0, 1, 2, 0, 2, 3 };
+		m_billboardQuadMesh = createGpuMesh(quadData);
+
 		resize(m_width, m_height);
 	}
 
@@ -1231,6 +1240,67 @@ namespace Core::Renderer
 
 			m_context->drawIndexed(gpuMesh.indexCount, 0, 0);
 			m_drawCallCount++;
+		}
+
+		// Render Camera-Facing Billboard Particles
+		if (!scene.particles.empty() && m_billboardQuadMesh.vertexBuffer)
+		{
+			Math::Vector3 camR(scene.camera.invViewMatrix._11, scene.camera.invViewMatrix._12, scene.camera.invViewMatrix._13);
+			Math::Vector3 camU(scene.camera.invViewMatrix._21, scene.camera.invViewMatrix._22, scene.camera.invViewMatrix._23);
+			Math::Vector3 camF(scene.camera.invViewMatrix._31, scene.camera.invViewMatrix._32, scene.camera.invViewMatrix._33);
+			if (camR.LengthSquared() > 1e-6f) camR.Normalize();
+			if (camU.LengthSquared() > 1e-6f) camU.Normalize();
+			if (camF.LengthSquared() > 1e-6f) camF.Normalize();
+
+			m_context->setVertexBuffer(0, m_billboardQuadMesh.vertexBuffer, sizeof(VertexMesh), 0);
+			m_context->setIndexBuffer(m_billboardQuadMesh.indexBuffer, RHI::PixelFormat::R32_UINT, 0);
+
+			for (const auto& p : scene.particles)
+			{
+				if (p.blendMode == BlendMode::Additive)
+				{
+					m_context->setBlendState(m_bsAdditive);
+				}
+				else
+				{
+					m_context->setBlendState(m_bsAlphaBlend);
+				}
+
+				auto tex = p.texturePath.empty() ? m_whiteTexture : getOrCreateTexture(p.texturePath, true);
+				m_context->setShaderResourcePS(DF_SLOT_TEX_ALBEDO, tex ? tex : m_whiteTexture);
+
+				CBPerMaterial pMat{};
+				pMat.baseColorFactor = p.color;
+				pMat.roughnessFactor = 1.0f;
+				pMat.metallicFactor = 0.0f;
+				pMat.tilingOffset = Math::Vector2(1.0f, 1.0f);
+				pMat.emissiveFactor = Math::Vector4(p.color.x * 2.0f, p.color.y * 2.0f, p.color.z * 2.0f, 0.0f);
+				if (m_cbMaterial)
+				{
+					m_context->updateSubresource(m_cbMaterial, &pMat, sizeof(pMat));
+					m_context->setConstantBufferPS(DF_SLOT_CB_PER_MATERIAL, m_cbMaterial);
+				}
+
+				Math::Matrix world = Math::Matrix::Identity;
+				world._11 = camR.x * p.size; world._12 = camR.y * p.size; world._13 = camR.z * p.size;
+				world._21 = camU.x * p.size; world._22 = camU.y * p.size; world._23 = camU.z * p.size;
+				world._31 = camF.x * p.size; world._32 = camF.y * p.size; world._33 = camF.z * p.size;
+				world._41 = p.position.x;    world._42 = p.position.y;    world._43 = p.position.z;
+
+				CBPerObject obj{};
+				obj.worldMatrix = world;
+				obj.invWorldMatrix = world.Invert();
+				obj.entityId = 0;
+
+				auto alloc = m_uploadRing.allocate(sizeof(CBPerObject), &obj);
+				if (alloc.isValid())
+				{
+					m_context->setConstantBufferSubrangeVS(DF_SLOT_CB_PER_OBJECT, alloc.buffer, alloc.firstConstant16, alloc.numConstants16);
+				}
+
+				m_context->drawIndexed(m_billboardQuadMesh.indexCount, 0, 0);
+				m_drawCallCount++;
+			}
 		}
 
 		m_context->setBlendState(nullptr);

@@ -137,6 +137,7 @@ namespace Core::Renderer
 		std::shared_ptr<RHI::IGpuTexture> m_flatNormalTexture;
 		std::shared_ptr<RHI::IGpuTexture> m_defaultMRTexture;
 		std::shared_ptr<RHI::IGpuTexture> m_blackTexture;
+		GpuMesh m_billboardQuadMesh;
 
 		// Render Targets for Post-Processing & SSAO
 		std::shared_ptr<RHI::IGpuTexture> m_ssaoRawTexture;

@@ -15,6 +15,7 @@
 #include "Engine/Platform/KeyCodes.h"
 #include "Engine/Core/Log/Log.h"
 #include "Engine/RHI/RHIDefines.h"
+#include "Engine/Core/Scene/Systems/ParticleSystem.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -520,6 +521,7 @@ namespace Editor
 		if (m_activeScene && m_viewportTexture)
 		{
 			m_activeScene->updateTransforms();
+			Core::Systems::ParticleSystem::Tick(*m_activeScene, deltaTime);
 			Core::ExtractRenderScene(*m_activeScene, m_renderScene);
 
 			// Override with Editor Camera

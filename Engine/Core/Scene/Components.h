@@ -91,9 +91,22 @@ namespace Core
 		Vector3 angularVelocity = Vector3(0.0f, 0.0f, 0.0f);
 	};
 
+	struct DF_API Particle
+	{
+		Vector3 position = Vector3(0.0f, 0.0f, 0.0f);
+		Vector3 velocity = Vector3(0.0f, 0.0f, 0.0f);
+		Color color = Color(1.0f, 1.0f, 1.0f, 1.0f);
+		float size = 0.1f;
+		float age = 0.0f;
+		float lifetime = 1.0f;
+	};
+
 	struct DF_API ParticleRuntimeState
 	{
 		int activeCount = 0;
+		float emitAccumulator = 0.0f;
+		uint32_t rngSeed = 1337;
+		std::vector<Particle> particles;
 	};
 
 	// ==========================================
@@ -173,14 +186,35 @@ namespace Core
 		uint8_t layer = 0; // Layer index 0..15 for collision filtering
 	};
 
+	enum class ParticleBlendMode : uint8_t
+	{
+		AlphaBlend = 0,
+		Additive
+	};
+
+	enum class SimulationSpace : uint8_t
+	{
+		World = 0,
+		Local
+	};
+
 	struct DF_API ParticleEmitterComponent
 	{
 		int maxParticles = 1000;
 		float emissionRate = 50.0f;
 		float lifetime = 2.0f;
 		Vector3 startVelocity = Vector3(0.0f, 5.0f, 0.0f);
+		float velocityRandomness = 1.0f;
+		float gravityScale = 0.0f;
+		float startSize = 0.2f;
+		float endSize = 0.05f;
 		Color startColor = Color(1.0f, 1.0f, 1.0f, 1.0f);
 		Color endColor = Color(1.0f, 1.0f, 1.0f, 0.0f);
+		ParticleBlendMode blendMode = ParticleBlendMode::AlphaBlend;
+		SimulationSpace simulationSpace = SimulationSpace::World;
+		bool looping = true;
+		bool playOnStart = true;
+		std::string texturePath;
 	};
 
 	// ==========================================

@@ -5,6 +5,7 @@
 #include "Engine/Core/Scripting/ScriptableEntity.h"
 #include "Engine/Core/Log/Log.h"
 #include "Engine/Core/Math/Math.h"
+#include "Engine/Core/Scene/Systems/ParticleSystem.h"
 
 namespace Runtime
 {
@@ -200,8 +201,9 @@ namespace Runtime
 			}
 		}
 
-		// 3. Update transforms
+		// 3. Update transforms and particle simulation
 		m_scene->updateTransforms();
+		Core::Systems::ParticleSystem::Tick(*m_scene, deltaTime);
 
 		// 4. Render Snapshot & Extraction with window aspect
 		float aspect = Application::Get().getWindow().getAspectRatio();

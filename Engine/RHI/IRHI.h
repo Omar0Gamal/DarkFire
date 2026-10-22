@@ -132,6 +132,12 @@ namespace Core::RHI
 
 		virtual Result<std::shared_ptr<IGpuBuffer>, std::string> createBuffer(const GpuBufferDesc& desc, const void* initialData = nullptr) = 0;
 		virtual Result<std::shared_ptr<IGpuTexture>, std::string> createTexture(const GpuTextureDesc& desc, const void* initialData = nullptr) = 0;
+		virtual Result<std::shared_ptr<IGpuTexture>, std::string> createTextureSubresources(const GpuTextureDesc& desc, std::span<const SubresourceData> subresources)
+		{
+			if (!subresources.empty())
+				return createTexture(desc, subresources[0].data);
+			return createTexture(desc, nullptr);
+		}
 
 		virtual Result<std::shared_ptr<IVertexShader>, std::string> createVertexShader(std::span<const uint8_t> bytecode) = 0;
 		virtual Result<std::shared_ptr<IPixelShader>, std::string> createPixelShader(std::span<const uint8_t> bytecode) = 0;

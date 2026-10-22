@@ -99,5 +99,43 @@ namespace Core
 			defSun.type = 0; // Directional
 			outRenderScene.lights.push_back(defSun);
 		}
+
+		// 4. Extract Environment
+		auto envView = registry.view<EnvironmentComponent>();
+		for (auto entity : envView)
+		{
+			const auto& env = envView.get<EnvironmentComponent>(entity);
+			outRenderScene.environment.skyType = static_cast<Renderer::SkyType>(env.skyType);
+			outRenderScene.environment.skyColor = Math::Vector4(env.skyColor.R(), env.skyColor.G(), env.skyColor.B(), env.skyColor.A());
+			outRenderScene.environment.horizonColor = Math::Vector4(env.horizonColor.R(), env.horizonColor.G(), env.horizonColor.B(), env.horizonColor.A());
+			outRenderScene.environment.groundColor = Math::Vector4(env.groundColor.R(), env.groundColor.G(), env.groundColor.B(), env.groundColor.A());
+			outRenderScene.environment.ambientColor = Math::Vector4(env.ambientColor.R(), env.ambientColor.G(), env.ambientColor.B(), env.ambientColor.A());
+			outRenderScene.environment.ambientIntensity = env.ambientEnergy;
+			outRenderScene.environment.skyboxTexturePath = env.skyboxTexturePath;
+			break;
+		}
+
+		// 5. Extract Post-Processing
+		auto ppView = registry.view<PostProcessingComponent>();
+		for (auto entity : ppView)
+		{
+			const auto& pp = ppView.get<PostProcessingComponent>(entity);
+			outRenderScene.environment.enableTonemapping = pp.enableTonemapping;
+			outRenderScene.environment.tonemapper = static_cast<Renderer::TonemapperType>(pp.tonemapper);
+			outRenderScene.environment.exposure = pp.exposure;
+			outRenderScene.environment.gamma = pp.gamma;
+			outRenderScene.environment.enableFXAA = pp.enableFXAA;
+			outRenderScene.environment.fxaaSubpix = pp.fxaaSubpix;
+			outRenderScene.environment.fxaaEdgeThreshold = pp.fxaaEdgeThreshold;
+			outRenderScene.environment.fxaaEdgeThresholdMin = pp.fxaaEdgeThresholdMin;
+			outRenderScene.environment.enableSSAO = pp.enableSSAO;
+			outRenderScene.environment.ssaoRadius = pp.ssaoRadius;
+			outRenderScene.environment.ssaoBias = pp.ssaoBias;
+			outRenderScene.environment.ssaoIntensity = pp.ssaoIntensity;
+			outRenderScene.environment.enableBloom = pp.enableBloom;
+			outRenderScene.environment.bloomThreshold = pp.bloomThreshold;
+			outRenderScene.environment.bloomIntensity = pp.bloomIntensity;
+			break;
+		}
 	}
 }

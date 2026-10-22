@@ -11,6 +11,7 @@ namespace Core::RHI
 	enum class PixelFormat : uint8_t
 	{
 		Unknown = 0,
+		R8_UNORM,
 		R8G8B8A8_UNORM,
 		R8G8B8A8_UNORM_SRGB,
 		R8G8B8A8_SNORM,
@@ -147,6 +148,13 @@ namespace Core::RHI
 		BufferBindFlags bindFlags = BufferBindFlags::ShaderResource;
 		BufferUsage usage = BufferUsage::Default;
 		uint32_t sampleCount = 1;
+	};
+
+	struct DF_API SubresourceData
+	{
+		const void* data = nullptr;
+		uint32_t rowPitch = 0;
+		uint32_t slicePitch = 0;
 	};
 
 	struct DF_API RasterizerStateDesc

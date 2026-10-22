@@ -2,6 +2,46 @@
   "scene_version": 1,
   "entities": [
     {
+      "uuid": 1000,
+      "name": "World Environment",
+      "tag": "Environment",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "EnvironmentComponent": {
+          "skyType": 0,
+          "skyColor": [0.12, 0.13, 0.16, 1.0],
+          "horizonColor": [0.35, 0.38, 0.44, 1.0],
+          "groundColor": [0.08, 0.08, 0.09, 1.0],
+          "ambientColor": [0.2, 0.22, 0.28, 1.0],
+          "ambientEnergy": 0.5,
+          "skyboxTexturePath": ""
+        },
+        "PostProcessingComponent": {
+          "enableTonemapping": true,
+          "tonemapper": 0,
+          "exposure": 1.0,
+          "gamma": 2.2,
+          "enableFXAA": true,
+          "fxaaSubpix": 0.75,
+          "fxaaEdgeThreshold": 0.166,
+          "fxaaEdgeThresholdMin": 0.0833,
+          "enableSSAO": true,
+          "ssaoRadius": 0.5,
+          "ssaoBias": 0.025,
+          "ssaoIntensity": 1.2,
+          "enableBloom": true,
+          "bloomThreshold": 1.0,
+          "bloomIntensity": 0.04
+        }
+      }
+    },
+    {
       "uuid": 1001,
       "name": "Main Camera",
       "tag": "MainCamera",

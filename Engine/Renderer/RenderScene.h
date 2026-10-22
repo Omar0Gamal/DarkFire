@@ -57,11 +57,50 @@ namespace Core::Renderer
 		bool isOrthographic = false;
 	};
 
+	enum class SkyType : uint8_t
+	{
+		ProceduralGradient = 0,
+		SkyboxTexture,
+		CustomColor
+	};
+
+	enum class TonemapperType : uint8_t
+	{
+		ACES = 0,
+		Reinhard,
+		Linear
+	};
+
 	struct DF_API RenderEnvironment
 	{
-		Math::Vector4 ambientColor = Math::Vector4(0.35f, 0.38f, 0.44f, 1.0f);
-		float ambientIntensity = 1.0f;
+		SkyType skyType = SkyType::ProceduralGradient;
+		Math::Vector4 skyColor = Math::Vector4(0.12f, 0.13f, 0.16f, 1.0f);
+		Math::Vector4 horizonColor = Math::Vector4(0.35f, 0.38f, 0.44f, 1.0f);
+		Math::Vector4 groundColor = Math::Vector4(0.08f, 0.08f, 0.09f, 1.0f);
+		Math::Vector4 ambientColor = Math::Vector4(0.2f, 0.22f, 0.28f, 1.0f);
+		float ambientIntensity = 0.5f;
 		std::shared_ptr<RHI::IGpuTexture> skyboxTexture;
+		std::string skyboxTexturePath;
+
+		// Post Processing settings from scene
+		bool enableTonemapping = true;
+		TonemapperType tonemapper = TonemapperType::ACES;
+		float exposure = 1.0f;
+		float gamma = 2.2f;
+
+		bool enableFXAA = true;
+		float fxaaSubpix = 0.75f;
+		float fxaaEdgeThreshold = 0.166f;
+		float fxaaEdgeThresholdMin = 0.0833f;
+
+		bool enableSSAO = true;
+		float ssaoRadius = 0.5f;
+		float ssaoBias = 0.025f;
+		float ssaoIntensity = 1.2f;
+
+		bool enableBloom = true;
+		float bloomThreshold = 1.0f;
+		float bloomIntensity = 0.04f;
 	};
 
 	struct DF_API RenderScene
@@ -78,6 +117,14 @@ namespace Core::Renderer
 		}
 	};
 
+	struct DF_API RenderViewOverrides
+	{
+		bool overrideFXAA = false;
+		bool enableFXAA = true;
+		bool overrideWireframe = false;
+		bool enableWireframe = false;
+	};
+
 	struct DF_API RenderView
 	{
 		uint32_t width = 1280;
@@ -85,5 +132,6 @@ namespace Core::Renderer
 		std::shared_ptr<RHI::IGpuTexture> targetTexture; // Offscreen target or null for backbuffer
 		std::shared_ptr<RHI::ISwapChain> swapChain;      // Optional swapchain
 		bool isEditorView = false;
+		RenderViewOverrides overrides{};
 	};
 }

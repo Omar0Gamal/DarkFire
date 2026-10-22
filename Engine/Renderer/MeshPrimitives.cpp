@@ -1,5 +1,6 @@
 #include "MeshPrimitives.h"
 #include "Engine/Core/Log/Log.h"
+#include "Engine/Core/VFS/AssetPathResolver.h"
 
 #pragma warning(push)
 #pragma warning(disable: 4702 4267 4244 4189)
@@ -151,35 +152,16 @@ namespace Core::Renderer
 			return CreatePlaneMesh(10.0f, 10.0f);
 		}
 
-		std::string resolvedPath = filePath;
-		if (!std::filesystem::exists(resolvedPath))
+		auto resolved = Core::AssetPathResolver::resolve(filePath);
+		if (!resolved.has_value() || resolved->isVFS)
 		{
-			std::string stripped = filePath;
-			if (stripped.starts_with("/engine/Content/")) stripped = stripped.substr(16);
-			else if (stripped.starts_with("/engine/")) stripped = stripped.substr(8);
-			else if (stripped.starts_with("engine/Content/")) stripped = stripped.substr(15);
-			else if (stripped.starts_with("engine/")) stripped = stripped.substr(7);
-
-			if (std::filesystem::exists("Engine/Content/" + stripped))
-			{
-				resolvedPath = "Engine/Content/" + stripped;
-			}
-			else if (std::filesystem::exists("Engine/Content/" + std::filesystem::path(filePath).filename().string()))
-			{
-				resolvedPath = "Engine/Content/" + std::filesystem::path(filePath).filename().string();
-			}
-			else if (std::filesystem::exists("Assets/" + filePath))
-			{
-				resolvedPath = "Assets/" + filePath;
-			}
-			else
-			{
-				DF_LOG_WARN("Renderer", "Obj file not found: {}, falling back to procedural primitive", filePath);
-				if (filePath.find("sphere") != std::string::npos) return CreateSphereMesh(0.5f, 32, 16);
-				if (filePath.find("plane") != std::string::npos) return CreatePlaneMesh(10.0f, 10.0f);
-				return CreateCubeMesh(1.0f);
-			}
+			DF_LOG_WARN("Renderer", "Obj file not found: {}, falling back to procedural primitive", filePath);
+			if (filePath.find("sphere") != std::string::npos) return CreateSphereMesh(0.5f, 32, 16);
+			if (filePath.find("plane") != std::string::npos) return CreatePlaneMesh(10.0f, 10.0f);
+			return CreateCubeMesh(1.0f);
 		}
+
+		std::string resolvedPath = resolved->physicalPath.string();
 
 		tinyobj::ObjReaderConfig readerConfig;
 		readerConfig.triangulate = true;

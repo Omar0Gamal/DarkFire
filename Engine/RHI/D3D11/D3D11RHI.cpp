@@ -13,6 +13,7 @@ namespace Core::RHI
 		{
 			switch (format)
 			{
+				case PixelFormat::R8_UNORM: return DXGI_FORMAT_R8_UNORM;
 				case PixelFormat::R8G8B8A8_UNORM: return DXGI_FORMAT_R8G8B8A8_UNORM;
 				case PixelFormat::R8G8B8A8_UNORM_SRGB: return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 				case PixelFormat::R8G8B8A8_SNORM: return DXGI_FORMAT_R8G8B8A8_SNORM;
@@ -909,7 +910,42 @@ namespace Core::RHI
 		return Result<std::shared_ptr<IGpuBuffer>, std::string>::ok(std::make_shared<D3D11Buffer>(desc, buffer, srv));
 	}
 
+		static uint32_t GetBytesPerPixel(PixelFormat format) noexcept
+		{
+			switch (format)
+			{
+				case PixelFormat::R8_UNORM: return 1;
+				case PixelFormat::R8G8B8A8_UNORM:
+				case PixelFormat::R8G8B8A8_UNORM_SRGB:
+				case PixelFormat::R8G8B8A8_SNORM:
+				case PixelFormat::R32_FLOAT:
+				case PixelFormat::R32_TYPELESS:
+				case PixelFormat::D32_FLOAT:
+				case PixelFormat::D24_UNORM_S8_UINT:
+				case PixelFormat::R11G11B10_FLOAT:
+				case PixelFormat::R32_UINT: return 4;
+				case PixelFormat::R32G32_FLOAT:
+				case PixelFormat::R16G16B16A16_FLOAT: return 8;
+				case PixelFormat::R32G32B32_FLOAT: return 12;
+				case PixelFormat::R32G32B32A32_FLOAT: return 16;
+				default: return 4;
+			}
+		}
+
 	Result<std::shared_ptr<IGpuTexture>, std::string> D3D11RHIDevice::createTexture(const GpuTextureDesc& desc, const void* initialData)
+	{
+		if (initialData)
+		{
+			SubresourceData sub{};
+			sub.data = initialData;
+			sub.rowPitch = desc.width * GetBytesPerPixel(desc.format);
+			sub.slicePitch = sub.rowPitch * desc.height;
+			return createTextureSubresources(desc, std::span<const SubresourceData>(&sub, 1));
+		}
+		return createTextureSubresources(desc, {});
+	}
+
+	Result<std::shared_ptr<IGpuTexture>, std::string> D3D11RHIDevice::createTextureSubresources(const GpuTextureDesc& desc, std::span<const SubresourceData> subresources)
 	{
 		if (!m_device)
 		{
@@ -949,12 +985,20 @@ namespace Core::RHI
 			tDesc.Format = ToDxgiFormat(desc.format);
 		}
 
-		D3D11_SUBRESOURCE_DATA subData{};
-		subData.pSysMem = initialData;
-		subData.SysMemPitch = desc.width * 4; // Basic pitch estimation
+		std::vector<D3D11_SUBRESOURCE_DATA> d3dSub;
+		if (!subresources.empty())
+		{
+			d3dSub.resize(subresources.size());
+			for (size_t i = 0; i < subresources.size(); ++i)
+			{
+				d3dSub[i].pSysMem = subresources[i].data;
+				d3dSub[i].SysMemPitch = subresources[i].rowPitch;
+				d3dSub[i].SysMemSlicePitch = subresources[i].slicePitch;
+			}
+		}
 
 		ComPtr<ID3D11Texture2D> texture;
-		const HRESULT hr = m_device->CreateTexture2D(&tDesc, initialData ? &subData : nullptr, texture.GetAddressOf());
+		const HRESULT hr = m_device->CreateTexture2D(&tDesc, d3dSub.empty() ? nullptr : d3dSub.data(), texture.GetAddressOf());
 		if (FAILED(hr))
 		{
 			return Result<std::shared_ptr<IGpuTexture>, std::string>::error("CreateTexture2D failed with HRESULT " + std::to_string(hr));
@@ -966,7 +1010,7 @@ namespace Core::RHI
 			D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc{};
 			srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
 			srvDesc.Texture2D.MostDetailedMip = 0;
-			srvDesc.Texture2D.MipLevels = desc.mipLevels;
+			srvDesc.Texture2D.MipLevels = (desc.mipLevels > 0) ? desc.mipLevels : static_cast<UINT>(-1);
 			srvDesc.Format = isDepth ? DXGI_FORMAT_R32_FLOAT : ToDxgiFormat(desc.format);
 
 			m_device->CreateShaderResourceView(texture.Get(), &srvDesc, srv.GetAddressOf());

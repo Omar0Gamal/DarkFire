@@ -64,7 +64,7 @@ namespace Core::Renderer
 		// Mesh, Material & Texture Resources
 		GpuMesh getOrCreateMesh(const std::string& meshPath);
 		std::shared_ptr<Material> getOrCreateMaterial(const std::string& materialPath);
-		std::shared_ptr<RHI::IGpuTexture> getOrCreateTexture(const std::string& texturePath);
+		std::shared_ptr<RHI::IGpuTexture> getOrCreateTexture(const std::string& texturePath, bool sRGB = false);
 
 		// Stats
 		[[nodiscard]] uint32_t getDrawCallCount() const noexcept { return m_drawCallCount; }
@@ -134,6 +134,10 @@ namespace Core::Renderer
 		uint32_t m_drawCallCount = 0;
 		uint32_t m_batchCount = 0;
 		uint32_t m_instanceCount = 0;
+
+		// Frame & Animation state
+		float m_totalTime = 0.0f;
+		uint32_t m_frameIndex = 0;
 
 		void initializeResources();
 		void executePasses(const RenderScene& scene, const RenderView& view);

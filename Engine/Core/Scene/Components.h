@@ -237,5 +237,56 @@ namespace Core
 		uint64_t prefabGuid = 0;
 		std::string prefabPath;
 	};
+
+	enum class SkyType : uint8_t
+	{
+		ProceduralGradient = 0,
+		SkyboxTexture,
+		CustomColor
+	};
+
+	struct DF_API EnvironmentComponent
+	{
+		SkyType skyType = SkyType::ProceduralGradient;
+		Color skyColor = Color(0.12f, 0.13f, 0.16f, 1.0f);
+		Color horizonColor = Color(0.35f, 0.38f, 0.44f, 1.0f);
+		Color groundColor = Color(0.08f, 0.08f, 0.09f, 1.0f);
+		Color ambientColor = Color(0.2f, 0.22f, 0.28f, 1.0f);
+		float ambientEnergy = 0.5f;
+		std::string skyboxTexturePath;
+	};
+
+	enum class TonemapperType : uint8_t
+	{
+		ACES = 0,
+		Reinhard,
+		Linear
+	};
+
+	struct DF_API PostProcessingComponent
+	{
+		// Tonemapping & SDR
+		bool enableTonemapping = true;
+		TonemapperType tonemapper = TonemapperType::ACES;
+		float exposure = 1.0f;
+		float gamma = 2.2f;
+
+		// FXAA 3.11
+		bool enableFXAA = true;
+		float fxaaSubpix = 0.75f;
+		float fxaaEdgeThreshold = 0.166f;
+		float fxaaEdgeThresholdMin = 0.0833f;
+
+		// SSAO (Screen Space Ambient Occlusion)
+		bool enableSSAO = true;
+		float ssaoRadius = 0.5f;
+		float ssaoBias = 0.025f;
+		float ssaoIntensity = 1.2f;
+
+		// Bloom (UE subtle defaults)
+		bool enableBloom = true;
+		float bloomThreshold = 1.0f;
+		float bloomIntensity = 0.04f;
+	};
 }
 

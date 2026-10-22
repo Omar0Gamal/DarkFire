@@ -1,7 +1,7 @@
 #include "Editor/Panels/HierarchyPanel.h"
 #include "Editor/Clipboard.h"
 #include "Editor/Commands/EntityCommands.h"
-#include "Editor/EditorIcons.h"
+#include "Editor/UI/EditorIcons.h"
 #include "Editor/UI/DockLayout.h"
 #include "Engine/Core/Scene/Components.h"
 #include <imgui.h>

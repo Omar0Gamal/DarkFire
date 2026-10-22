@@ -1,6 +1,7 @@
 #include "SceneRenderer.h"
 #include "Engine/Core/Log/Log.h"
 #include "Engine/Runtime/EngineContext.h"
+#include "Engine/Core/VFS/AssetPathResolver.h"
 #include <DirectXTex.h>
 #include <nlohmann/json.hpp>
 #include <fstream>
@@ -228,70 +229,28 @@ namespace Core::Renderer
 		return gpu;
 	}
 
-	std::shared_ptr<RHI::IGpuTexture> SceneRenderer::getOrCreateTexture(const std::string& texturePath)
+	std::shared_ptr<RHI::IGpuTexture> SceneRenderer::getOrCreateTexture(const std::string& texturePath, bool sRGB)
 	{
 		if (texturePath.empty())
 		{
 			return nullptr;
 		}
 
-		auto it = m_textureCache.find(texturePath);
+		std::string cacheKey = texturePath + (sRGB ? "#srgb" : "#linear");
+		auto it = m_textureCache.find(cacheKey);
 		if (it != m_textureCache.end())
 		{
 			return it->second;
 		}
 
-		std::vector<uint8_t> fileBytes;
-
-		// 1. Try VFS
-		auto& vfs = Core::EngineContext::Get().vfs;
-		std::string vpath = texturePath;
-		std::replace(vpath.begin(), vpath.end(), '\\', '/');
-		if (!vpath.empty() && vpath.front() != '/')
-		{
-			vpath = "/" + vpath;
-		}
-
-		auto vfsRes = vfs.readBinaryFile(vpath);
-		if (vfsRes.isOk() && !vfsRes.value().empty())
-		{
-			fileBytes = std::move(vfsRes.value());
-		}
-		else
-		{
-			// 2. Try physical file paths
-			std::string resolvedPath;
-			if (std::filesystem::exists(texturePath))
-			{
-				resolvedPath = texturePath;
-			}
-			else if (std::filesystem::exists("Engine/Content/" + std::filesystem::path(texturePath).filename().string()))
-			{
-				resolvedPath = "Engine/Content/" + std::filesystem::path(texturePath).filename().string();
-			}
-			else if (std::filesystem::exists("Assets/" + texturePath))
-			{
-				resolvedPath = "Assets/" + texturePath;
-			}
-
-			if (!resolvedPath.empty())
-			{
-				std::ifstream f(resolvedPath, std::ios::binary | std::ios::ate);
-				if (f.is_open())
-				{
-					std::streamsize size = f.tellg();
-					f.seekg(0, std::ios::beg);
-					fileBytes.resize(static_cast<size_t>(size));
-					f.read(reinterpret_cast<char*>(fileBytes.data()), size);
-				}
-			}
-		}
-
-		if (fileBytes.empty())
+		auto binRes = Core::AssetPathResolver::readBinary(texturePath);
+		if (!binRes.isOk() || binRes.value().empty())
 		{
 			DF_LOG_WARN("Renderer", "Could not load texture file: {}", texturePath);
 			return nullptr;
 		}
+
+		const auto& fileBytes = binRes.value();
 
 		DirectX::TexMetadata metadata{};
 		DirectX::ScratchImage scratchImage;
@@ -325,44 +284,73 @@ namespace Core::Renderer
 			return nullptr;
 		}
 
-		// Ensure 32-bit RGBA UNORM
-		const DirectX::Image* finalImage = scratchImage.GetImage(0, 0, 0);
+		DXGI_FORMAT targetFormat = sRGB ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
+
+		// Ensure 32-bit RGBA in target format
+		const DirectX::Image* baseImage = scratchImage.GetImage(0, 0, 0);
 		DirectX::ScratchImage convertedImage;
-		if (metadata.format != DXGI_FORMAT_R8G8B8A8_UNORM)
+		if (metadata.format != targetFormat)
 		{
 			hr = DirectX::Convert(
 				*scratchImage.GetImage(0, 0, 0),
-				DXGI_FORMAT_R8G8B8A8_UNORM,
+				targetFormat,
 				DirectX::TEX_FILTER_DEFAULT,
 				DirectX::TEX_THRESHOLD_DEFAULT,
 				convertedImage
 			);
 			if (SUCCEEDED(hr))
 			{
-				finalImage = convertedImage.GetImage(0, 0, 0);
-				metadata.format = DXGI_FORMAT_R8G8B8A8_UNORM;
+				baseImage = convertedImage.GetImage(0, 0, 0);
+				metadata.format = targetFormat;
 			}
 		}
 
-		if (!finalImage)
+		if (!baseImage)
 		{
 			return nullptr;
+		}
+
+		// Generate full mipmap chain for textures
+		DirectX::ScratchImage mipChain;
+		if (metadata.mipLevels <= 1 && metadata.width > 1 && metadata.height > 1)
+		{
+			hr = DirectX::GenerateMipMaps(*baseImage, DirectX::TEX_FILTER_DEFAULT, 0, mipChain);
+			if (SUCCEEDED(hr))
+			{
+				metadata = mipChain.GetMetadata();
+			}
+		}
+
+		const DirectX::ScratchImage& finalScratch = (mipChain.GetImageCount() > 0) ? mipChain :
+			(convertedImage.GetImageCount() > 0 ? convertedImage : scratchImage);
+
+		std::vector<RHI::SubresourceData> subresources(metadata.mipLevels);
+		for (size_t i = 0; i < metadata.mipLevels; ++i)
+		{
+			const DirectX::Image* img = finalScratch.GetImage(i, 0, 0);
+			if (img)
+			{
+				subresources[i].data = img->pixels;
+				subresources[i].rowPitch = static_cast<uint32_t>(img->rowPitch);
+				subresources[i].slicePitch = static_cast<uint32_t>(img->slicePitch);
+			}
 		}
 
 		RHI::GpuTextureDesc texDesc{};
 		texDesc.width = static_cast<uint32_t>(metadata.width);
 		texDesc.height = static_cast<uint32_t>(metadata.height);
-		texDesc.mipLevels = 1;
+		texDesc.mipLevels = static_cast<uint32_t>(metadata.mipLevels);
 		texDesc.arraySize = 1;
-		texDesc.format = RHI::PixelFormat::R8G8B8A8_UNORM;
+		texDesc.format = sRGB ? RHI::PixelFormat::R8G8B8A8_UNORM_SRGB : RHI::PixelFormat::R8G8B8A8_UNORM;
 		texDesc.usage = RHI::BufferUsage::Default;
 		texDesc.bindFlags = RHI::BufferBindFlags::ShaderResource;
 
-		auto texRes = m_device.createTexture(texDesc, finalImage->pixels);
+		auto texRes = m_device.createTextureSubresources(texDesc, subresources);
 		if (texRes.isOk())
 		{
-			m_textureCache[texturePath] = *texRes;
-			DF_LOG_INFO("Renderer", "Loaded texture '{}' ({}x{})", texturePath, texDesc.width, texDesc.height);
+			m_textureCache[cacheKey] = *texRes;
+			DF_LOG_INFO("Renderer", "Loaded texture '{}' ({}x{}, {} mips, {})",
+				texturePath, texDesc.width, texDesc.height, texDesc.mipLevels, sRGB ? "sRGB" : "Linear");
 			return *texRes;
 		}
 
@@ -386,54 +374,10 @@ namespace Core::Renderer
 
 		auto mat = std::make_shared<Material>(materialPath);
 		std::string jsonContent;
-
-		// 1. Try VFS
-		auto& vfs = Core::EngineContext::Get().vfs;
-		std::string vpath = materialPath;
-		std::replace(vpath.begin(), vpath.end(), '\\', '/');
-		if (!vpath.empty() && vpath.front() != '/')
+		auto textRes = Core::AssetPathResolver::readText(materialPath);
+		if (textRes.isOk())
 		{
-			vpath = "/" + vpath;
-		}
-
-		auto vfsRes = vfs.readTextFile(vpath);
-		if (vfsRes.isOk())
-		{
-			jsonContent = vfsRes.value();
-		}
-		else
-		{
-			// 2. Try physical file
-			if (std::filesystem::exists(materialPath))
-			{
-				std::ifstream f(materialPath);
-				if (f.is_open())
-				{
-					std::stringstream ss;
-					ss << f.rdbuf();
-					jsonContent = ss.str();
-				}
-			}
-			else if (std::filesystem::exists("Engine/Content/" + std::filesystem::path(materialPath).filename().string()))
-			{
-				std::ifstream f("Engine/Content/" + std::filesystem::path(materialPath).filename().string());
-				if (f.is_open())
-				{
-					std::stringstream ss;
-					ss << f.rdbuf();
-					jsonContent = ss.str();
-				}
-			}
-			else if (std::filesystem::exists("Assets/" + materialPath))
-			{
-				std::ifstream f("Assets/" + materialPath);
-				if (f.is_open())
-				{
-					std::stringstream ss;
-					ss << f.rdbuf();
-					jsonContent = ss.str();
-				}
-			}
+			jsonContent = textRes.value();
 		}
 
 		if (!jsonContent.empty())
@@ -468,23 +412,23 @@ namespace Core::Renderer
 				// Texture Maps
 				if (j.contains("albedoTexture") && j["albedoTexture"].is_string() && !j["albedoTexture"].get<std::string>().empty())
 				{
-					mat->setAlbedoTexture(getOrCreateTexture(j["albedoTexture"].get<std::string>()));
+					mat->setAlbedoTexture(getOrCreateTexture(j["albedoTexture"].get<std::string>(), true)); // sRGB = true
 				}
 				if (j.contains("normalTexture") && j["normalTexture"].is_string() && !j["normalTexture"].get<std::string>().empty())
 				{
-					mat->setNormalTexture(getOrCreateTexture(j["normalTexture"].get<std::string>()));
+					mat->setNormalTexture(getOrCreateTexture(j["normalTexture"].get<std::string>(), false)); // Linear
 				}
 				if (j.contains("metallicRoughnessTexture") && j["metallicRoughnessTexture"].is_string() && !j["metallicRoughnessTexture"].get<std::string>().empty())
 				{
-					mat->setMetallicRoughnessTexture(getOrCreateTexture(j["metallicRoughnessTexture"].get<std::string>()));
+					mat->setMetallicRoughnessTexture(getOrCreateTexture(j["metallicRoughnessTexture"].get<std::string>(), false)); // Linear
 				}
 				if (j.contains("emissiveTexture") && j["emissiveTexture"].is_string() && !j["emissiveTexture"].get<std::string>().empty())
 				{
-					mat->setEmissiveTexture(getOrCreateTexture(j["emissiveTexture"].get<std::string>()));
+					mat->setEmissiveTexture(getOrCreateTexture(j["emissiveTexture"].get<std::string>(), true)); // sRGB = true
 				}
 				if (j.contains("occlusionTexture") && j["occlusionTexture"].is_string() && !j["occlusionTexture"].get<std::string>().empty())
 				{
-					mat->setOcclusionTexture(getOrCreateTexture(j["occlusionTexture"].get<std::string>()));
+					mat->setOcclusionTexture(getOrCreateTexture(j["occlusionTexture"].get<std::string>(), false)); // Linear
 				}
 
 				// Render states
@@ -568,11 +512,15 @@ namespace Core::Renderer
 
 		if (!m_context) return;
 
-		// 1. Update PerFrame Constant Buffer
+		// 1. Update PerFrame Constant Buffer with real elapsed time and frame index
+		float dt = 0.016666f;
+		m_totalTime += dt;
+		m_frameIndex++;
+
 		CBPerFrame frameData{};
-		frameData.time = 0.0f;
-		frameData.deltaTime = 0.016f;
-		frameData.frameIndex = 0;
+		frameData.time = m_totalTime;
+		frameData.deltaTime = dt;
+		frameData.frameIndex = m_frameIndex;
 		m_context->updateSubresource(m_cbFrame, &frameData, sizeof(frameData));
 		m_context->setConstantBufferVS(DF_SLOT_CB_PER_FRAME, m_cbFrame);
 		m_context->setConstantBufferPS(DF_SLOT_CB_PER_FRAME, m_cbFrame);

@@ -61,13 +61,11 @@ DarkFire is a modern, high-performance, game-agnostic C++20 3D game engine and s
 
 ```
 DarkFire/
-├── Docs/               # Engineering documentation, shader audit reports, and roadmaps
+├── Docs/               # Engineering documentation and roadmaps
 │   ├── images/         # Documentation media and editor screenshots
 │   ├── Licenses/       # Licenses for all bundled third-party libraries
 │   ├── conventions.md  # Engine coding standards, coordinate systems, and style guide
-│   ├── rendering-pipeline.md # PBR, IBL, shadow cascades, and post-processing architecture
-│   ├── roadmap.md      # Detailed milestone roadmap and definition of done
-│   └── shader-system-audit.md # Complete D3D11 shader audit and disassembly report
+│   └── roadmap.md      # Detailed milestone roadmap and definition of done
 ├── Editor/             # Standalone desktop editor application (Editor.exe)
 ├── Engine/             # Core engine shared library (DarkFire.dll)
 │   ├── Audio/          # miniaudio spatial audio backend
@@ -193,8 +191,6 @@ flowchart LR
 
 - **[Coding Conventions & Architecture Style Guide](Docs/conventions.md)**
 - **[Master Engineering Roadmap & Milestones](Docs/roadmap.md)**
-- **[D3D11 Shader System Audit & Benchmark Report](Docs/shader-system-audit.md)**
-- **[Rendering Pipeline & PBR Implementation Notes](Docs/rendering-pipeline.md)**
 - **[Third-Party Dependencies & Libraries](ThirdParty/README.md)**
 
 ---

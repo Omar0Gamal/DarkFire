@@ -27,7 +27,7 @@ flowchart TD
         Milestone2["Milestone 2: High-Performance Universal Visual VFX & Volumetrics\n(Tile-Max Motion Blur, 3D Froxel Fog, Spot Shadow Atlas, Auto-Exposure)"]
         Milestone3["Milestone 3: Core Physics & Collision Infrastructure\n(Transform interpolation for 240Hz, TriangleMesh/ConvexMesh BVH, Sweeps)"]
         Milestone4["Milestone 4: Low-Latency Platform & Audio Infrastructure\n(DXGI waitable swapchain <8ms, Doppler velocity tracking, Mix buses)"]
-        Milestone5["Milestone 5: Deterministic Multiplayer & Network Infrastructure\n(UDP transport, Client prediction, Snapshot interpolation, Delta compression)"]
+        Milestone5["Milestone 5: Authoritative Deterministic Multiplayer & Studio-Grade Netcode\n(DarkFireNetworking 2.0: Dual TCP/UDP, Client prediction, Rollback, Visual smoothing, Hermite interpolation)"]
         Milestone6["Milestone 6: Vehicle Dynamics & Raycast Suspension Physics Math\n(Raycast spring-damper suspension, Pacejka slip friction, Downforce/Drag)"]
         Milestone7["Milestone 7: Advanced GPU Pipeline Specialization & Occlusion\n(Shader permutations, Two-phase Hi-Z GPU occlusion, Dithered LOD cross-fade)"]
     end
@@ -132,11 +132,12 @@ flowchart TD
         M4_3["4.3 Audio Mix Buses & Smoothing API\n(Master, SFX, Ambient, Music channels + fluent lerp API)"]
     end
 
-    subgraph M5["Milestone 5: Deterministic Multiplayer & Network Infrastructure"]
-        M5_1["5.1 Low-Latency UDP / Reliable Transport Layer\n(Packet fragmentation, sequence ACKs, loss/jitter simulation)"]
-        M5_2["5.2 Client-Side Prediction & Server Reconciliation\n(Command buffers, input prediction, server state replay)"]
-        M5_3["5.3 Snapshot Interpolation & Lag Compensation\n(Interpolation buffer, proxy smoothing, historical hitbox rewind)"]
-        M5_4["5.4 Entity Delta Compression & Bitpacking\n(Quantized vectors, 'Smallest Three' quaternion compression, bitwriter)"]
+    subgraph M5["Milestone 5: Authoritative Deterministic Multiplayer & Studio-Grade Netcode"]
+        M5_1["5.1 DarkFireNetworking 2.0 & Dual-Transport Architecture\n(C++20 coroutines, forward FIFO serialization, sequenced & reliable UDP, MTU fragmentation)"]
+        M5_2["5.2 Decoupled Fixed Simulation & NTP Clock Sync\n(60Hz FixedUpdate, 30Hz broadcast, uncapped render alpha, drift pacing)"]
+        M5_3["5.3 Project Settings & ImGui Editor Integration\n(Global config, PIE Network Simulator panel, component inspector)"]
+        M5_4["5.4 Game-Agnostic Prediction & Rollback Reconciliation\n(input_ring_buffer, redundant_input_bundle, single-frame resimulation)"]
+        M5_5["5.5 Visual Error Smoothing & Hermite Snapshot Interpolation\n(Zero-teleport mesh decay, snapshot_history Hermite cubic spline)"]
     end
 
     subgraph M6["Milestone 6: Vehicle Dynamics & Raycast Suspension Math Library"]
@@ -277,38 +278,234 @@ flowchart TD
 
 ---
 
-### Milestone 5: Core Deterministic Multiplayer & Network Synchronization Infrastructure
+### Milestone 5: Authoritative Deterministic Multiplayer & Studio-Grade Netcode (`DarkFireNetworking 2.0`)
 
-#### 5.1 Low-Latency UDP / Reliable Transport Layer
-* **Game-Agnostic Transport (`INetworkTransport`)**:
-  - Raw UDP socket transport with lightweight reliability header (packet ID, ACK bitfield, channel ID).
-  - Unreliable sequenced channel for frequent entity transform streams (position, orientation, velocity).
-  - Reliable ordered channel for game events (round start, lap completion, item pickup, player connect/disconnect).
-  - Integrated network simulator (artificial ping, packet loss %, jitter) for testing in Debug and Editor.
+DarkFireEngine integrates **DarkFireNetworking 2.0** (`https://github.com/Omar0Gamal/DarkFireNetworking`), a zero-copy, C++20 dual-transport (TCP + UDP) real-time multiplayer framework. Any game built on DarkFire (arcade kart racers, arena shooters, vehicle action titles) can opt into **studio-grade fixed-timestep simulation, client-side prediction, server rollback & resimulation, zero-teleport visual error smoothing, and remote entity snapshot interpolation directly from the Editor UI**—while keeping the engine 100% game-agnostic.
 
-#### 5.2 Client-Side Prediction & Server Reconciliation
-* **Authoritative Server / Responsive Client Loop**:
-  - `NetworkIdentityComponent` managing entity ownership (`isLocalPlayer`, `isServer`).
-  - Client buffers local inputs with sequence numbers and ticks physics immediately (zero local input latency).
-  - Server receives client input commands, validates them against physical limits, ticks authoritative simulation, and broadcasts snapshot states.
-  - On receiving server state, client detects discrepancies: if error exceeds threshold ($> 0.05\text{ m}$), replay buffered inputs from authoritative timestamp (Server Reconciliation).
+```mermaid
+flowchart TD
+    subgraph EditorLayer["Editor UI & Per-Game Project Settings"]
+        Settings["Project Settings Panel\n(bEnableNetworking, FixedSimulationHz 60, ServerTickHz 30, Redundancy 4)"]
+        SimPanel["PIE Network Simulator Panel\n(Artificial Latency min/max, Packet Loss %, Duplicate %)"]
+        Inspector["Inspector Panel\n(NetworkPredictionComponent, NetworkInterpolationComponent)"]
+    end
 
-#### 5.3 Snapshot Interpolation & Lag Compensation
-* **Smooth Remote Entity Visuals**:
-  - Remote proxies maintain an interpolation circular buffer (typically $50 - 100\text{ ms}$ history).
-  - Evaluate Hermite cubic spline position interpolation and quaternion spherical linear interpolation (`slerp`) between past snapshots, completely masking network jitter.
-* **Lag Compensation for Hit / Raycast Verification**:
-  - Server maintains historical ring buffer of entity bounding boxes.
-  - When a client sends a target interaction event timestamped at frame $T$, the server rewinds entity colliders to timestamp $T$, verifies line-of-sight/intersection, and restores current state.
+    subgraph SimulationLoop["Authoritative Decoupled Simulation Loop"]
+        Accum["Accumulator Pattern\nFixedUpdate(tick, dt=16.666ms)"]
+        RenderLoop["RenderUpdate (Uncapped Display)\nalpha = accumulator / fixed_dt\nInterpolate Visual Mesh Transforms"]
+    end
 
-#### 5.4 Entity Delta Compression & Bitpacking
-* **Bandwidth Optimization**:
-  - Custom `BitWriter` / `BitReader` stream implementation.
-  - Quantization primitives:
-    - Position: 16-bit fixed-point per axis within active world bounds.
-    - Quaternions: "Smallest Three" compression (saves 128-bit float4 into 48-bit representation: 2-bit largest index + 3 $\times$ 15-bit components with sign reconstruction).
-    - Velocities: Half-float (`FP16`).
-  - Baseline delta compression: Server transmits only fields that changed relative to the client's last acknowledged snapshot ID.
+    subgraph LocalClient["Local Client Pipeline (NetworkPredictionComponent)"]
+        SampleInput["1. CaptureInput(INetworkInput)"]
+        PredictStep["2. SimulateTick(input, fixed_dt)"]
+        RingBuf["3. input_ring_buffer<TInput, TState, 128>\nPush(tick, input, state)"]
+        Bundle["4. redundant_input_bundle<TInput, 4>\n(Current + 3 historical inputs)"]
+        Rollback["5. Server Reconciliation:\nApplyState(server) -> Resimulate [ack+1..current_tick]"]
+        ErrorSmooth["6. Visual Error Smoothing:\nDecay visual_error_offset to 0 (Zero-Teleport)"]
+    end
+
+    subgraph ServerBroadcast["Authoritative Server Pipeline"]
+        Recover["Recover Missing Inputs without gaps"]
+        AuthSim["Authoritative SimulateTick()"]
+        SnapshotPub["Broadcast World Snapshot (30 Hz)\n(State + last_processed_input_tick)"]
+    end
+
+    subgraph RemoteClient["Remote Proxy Pipeline (NetworkInterpolationComponent)"]
+        SnapHist["snapshot_history<TState, 64>"]
+        HermiteInterp["Hermite Cubic Spline Interpolation\nt_render = server_time - delay_ms"]
+    end
+
+    Settings --> Accum
+    SimPanel --> LocalClient
+    Inspector --> LocalClient
+    Inspector --> RemoteClient
+    Accum --> SampleInput --> PredictStep --> RingBuf --> Bundle
+    Bundle -- "UDP UnreliableSequenced" --> Recover --> AuthSim --> SnapshotPub
+    SnapshotPub -- "UDP Snapshot" --> Rollback
+    Rollback --> ErrorSmooth --> RenderLoop
+    SnapshotPub -- "UDP Snapshot" --> SnapHist --> HermiteInterp --> RenderLoop
+```
+
+---
+
+#### 5.1 Library Migration & Dual-Transport Architecture (`DarkFireNetworking 2.0`)
+* **Vendor & Target Integration (`ThirdParty/DarkFireNetworking`)**:
+  - Pull and integrate the latest `DarkFireNetworking 2.0` repository.
+  - Modern C++20 architecture:
+    - **Forward FIFO Serialization**: `byte_writer` and `byte_reader` with network byte order (Big-Endian via `<bit>`), strict bounds checking, and `std::span<const uint8_t>` zero-copy buffer views.
+    - **C++20 Coroutine Async Transport**: Replaces legacy callback chains with `asio::awaitable<void>` and `co_await`.
+    - **Dual-Transport Engines**:
+      - `dual_client` and `dual_server` orchestrating parallel TCP and UDP endpoints.
+      - **TCP Channel**: Framing, keepalives, and HMAC-SHA256 handshake challenge-response for secure connection authentication and reliable ordered events (logins, chat, match lifecycle).
+      - **UDP Channel (`udp_channel.hpp`)**: High-throughput datagram transport with sliding 32-bit ACK history bitfield, RFC 1982 wrap-around sequence filtering (`sequence_greater_than`), and MTU fragmentation/reassembly (payloads up to 64 KB sliced into $\le 1200$ B chunks).
+    - **Lock-Free Cross-Thread Concurrency**:
+      - Cache-line aligned SPSC ring buffer (`alignas(64)`) and Vyukov MPSC node queue for zero-allocation handoffs between background network I/O worker threads and the main simulation thread.
+
+#### 5.2 Decoupled Fixed-Timestep Simulation & NTP Clock Synchronization
+* **Authoritative Fixed Simulation & Uncapped Render Loop**:
+  - Main engine loop implements the accumulator pattern ("Fix Your Timestep"):
+    - **Simulation/Physics Tick (`FixedUpdate`)**: Configurable fixed rate, defaulting to **60 Hz** (`dt = 16.666ms`). Increments an authoritative `uint32_t current_tick`.
+    - **Server Network Broadcast Tick**: Configurable sub-multiple of the simulation rate, defaulting to **30 Hz** (every 2 simulation ticks).
+    - **Render Loop (`RenderUpdate`)**: Uncapped / V-Sync display rate. Evaluates $\alpha = \text{accumulator} / \text{fixed\_dt}$ ($0.0 \dots 1.0$) for sub-tick visual mesh interpolation.
+* **NTP Clock Sync & Time Drift Pacing (`darkfire::net::game::clock_sync` / `RTTTracker`)**:
+  - 4-timestamp round-trip measurement ($t_0, t_1, t_2, t_3$):
+    $$\text{offset} = \frac{(t_1 - t_0) + (t_2 - t_3)}{2}, \quad \text{RTT} = (t_3 - t_0) - (t_2 - t_1)$$
+  - Rolling window outlier rejection filter protects the smoothed clock offset against bufferbloat spikes.
+  - **Dynamic Time Drift Pacing**: When `bEnableTimeDriftPacing` is enabled, if the client's tick lead drifts outside the target buffer window on the server, subtly scales the client's frame delta accumulator by $0.98\times$ or $1.02\times$ until synchronized without hitching.
+
+#### 5.3 Per-Game Configurable Project Settings & Editor UI Integration
+* **100% Game-Agnostic Settings Architecture**:
+  - All simulation and networking parameters are serialized into per-game `.dfproj` configuration files and exposed inside the ImGui Editor UI without recompiling engine binaries.
+* **Global Project Settings Panel (`Editor/Panels/ProjectSettingsPanel.cpp`)**:
+  - `bool bEnableNetworking`: Master network subsystem toggle for the game project.
+  - `bool bUseFixedTimestep`: Toggle between fixed accumulator loop vs. variable delta time.
+  - `float FixedSimulationHz`: Slider/Input (30, 60, 120 Hz, default `60.0f`).
+  - `float ServerTickHz`: Slider/Input (15, 30, 60 Hz, default `30.0f`).
+  - `bool bEnableClientSidePrediction`: Global toggle for local prediction & rollback.
+  - `bool bEnableTimeDriftPacing`: Toggle dynamic client clock scaling.
+  - `int InputRedundancyCount`: Default `4` historical inputs per UDP packet.
+  - `float DefaultInterpolationDelayMs`: Default `66.0f` ms snapshot buffer delay.
+* **Network Simulator Debug Panel (Editor PIE Panel)**:
+  - Exposes `darkfire::net::game::NetworkSimulator` directly in the Editor during Play-In-Editor (PIE):
+    - Minimum / Maximum Artificial Latency (0 - 500 ms).
+    - Packet Loss Rate ($0.0\% - 50.0\%$).
+    - Duplicate Packet Rate ($0.0\% - 20.0\%$).
+    - Real-time telemetry: Sent packets, dropped packets, and delivery throughput.
+* **Per-Entity Component Inspector (`Editor/Panels/InspectorPanel.cpp`)**:
+  - `NetworkPredictionComponent`:
+    - `bEnablePrediction` (Checkbox).
+    - `bEnableVisualErrorSmoothing` (Checkbox).
+    - `ReconciliationThreshold` (Float drag: default `0.05` meters).
+    - `SmoothingDecayRate` (Float drag: default `10.0` units/sec).
+  - `NetworkInterpolationComponent`:
+    - `InterpolationMode`: Dropdown (`Linear` vs `HermiteSpline`).
+    - `CustomBufferDelayMs`: Float drag (default `66.0` ms).
+
+#### 5.4 Game-Agnostic Networked Entity & Component Interfaces
+* **Abstract Gameplay Interfaces**:
+  - **`INetworkInput`**:
+    ```cpp
+    struct INetworkInput {
+        virtual ~INetworkInput() = default;
+        virtual void Serialize(darkfire::net::byte_writer& writer) const = 0;
+        virtual bool Deserialize(darkfire::net::byte_reader& reader) = 0;
+    };
+    ```
+  - **`INetworkState`**:
+    ```cpp
+    struct INetworkState {
+        virtual ~INetworkState() = default;
+        virtual void Serialize(darkfire::net::byte_writer& writer) const = 0;
+        virtual bool Deserialize(darkfire::net::byte_reader& reader) = 0;
+        virtual bool NeedsReconciliation(const INetworkState& authoritative_state, float threshold) const = 0;
+    };
+    ```
+  - **`IPredictableActor`**:
+    ```cpp
+    class IPredictableActor {
+    public:
+        virtual ~IPredictableActor() = default;
+        virtual void CaptureInput(INetworkInput& out_input) = 0;
+        virtual void SimulateTick(const INetworkInput& input, float fixed_dt) = 0;
+        virtual void CaptureState(INetworkState& out_state) = 0;
+        virtual void ApplyState(const INetworkState& state) = 0;
+    };
+    ```
+
+#### 5.5 Client-Side Prediction, Redundant Wire Bundles & Rollback Reconciliation
+* **Client-Side Prediction Pipeline**:
+  - On every client `FixedUpdate(tick)`:
+    1. Sample local hardware input via `actor->CaptureInput(local_input)`.
+    2. Step local physics and actor logic immediately via `actor->SimulateTick(local_input, fixed_dt)`.
+    3. Capture resulting predicted state via `actor->CaptureState(predicted_state)`.
+    4. Store `{ tick, local_input, predicted_state }` into `darkfire::net::game::input_ring_buffer<TInput, TState, 128>`.
+    5. Construct `darkfire::net::game::redundant_input_bundle<TInput, 4>` ending at `tick` (containing inputs $[\text{tick}-3, \text{tick}]$).
+    6. Serialize bundle into a `Packet` with `PacketFlags::UnreliableSequenced` and dispatch over `dual_client` UDP channel.
+    - *Packet Drop Resilience*: Even with 10–25% packet drop over the Internet, the server continuously recovers missing inputs from redundant bundles without simulation gaps or stalls.
+* **Server Authoritative Verification & Broadcast**:
+  - Server receives `redundant_input_bundle`, extracts all un-simulated ticks sequentially, ticks authoritative physics, and periodically broadcasts world snapshot packets tagged with `last_processed_input_tick`.
+* **Server Reconciliation (Rollback & Single-Frame Resimulation)**:
+  - When the client receives an authoritative snapshot tagged with `last_processed_input_tick`:
+    1. Look up `last_processed_input_tick` in `input_ring_buffer`.
+    2. Compare the server's authoritative state against the stored predicted state via `NeedsReconciliation(server_state, ReconciliationThreshold)`.
+    3. If the position/orientation error exceeds `ReconciliationThreshold`:
+       - Record pre-snap visual position/rotation.
+       - Snap logical physics collider: `actor->ApplyState(server_state)`.
+       - Fast-forward replay loop:
+         ```cpp
+         for (uint32_t t = last_processed_input_tick + 1; t <= current_tick; ++t) {
+             if (auto* entry = input_ring_buffer.find(t)) {
+                 actor->SimulateTick(entry->input, fixed_dt);
+                 actor->CaptureState(entry->predicted_state);
+             }
+         }
+         ```
+       - Compute `visual_error_offset = old_visual_transform - new_logical_transform`.
+    4. Acknowledge verified history: `input_ring_buffer.acknowledge_up_to(last_processed_input_tick)`.
+
+#### 5.6 Visual Error Smoothing (Zero-Teleport Mesh Offset)
+* **Decoupled Physics Body vs. Rendered Mesh Transform**:
+  - On entities with `NetworkPredictionComponent`, the scene graph decouples the logical physics collider transform from the rendered mesh node transform:
+    $$\vec{p}_{\text{rendered}} = \vec{p}_{\text{physics}} + \vec{e}_{\text{visual}}, \quad q_{\text{rendered}} = q_{\text{physics}} \times q_{\text{visual\_error}}$$
+  - When rollback snaps the physics body to correct server prediction errors, the visual mesh node remains exactly where the player saw it prior to the snap.
+  - Every rendering frame, the visual error offset decays smoothly toward zero using exponential damping:
+    $$\vec{e}_{\text{visual}} \leftarrow \vec{e}_{\text{visual}} \times \exp(-\lambda \cdot \Delta t)$$
+  - Completely eliminates jarring snapping, micro-stutters, and visual teleportation.
+
+#### 5.7 Remote Entity Snapshot Interpolation (Hermite Cubic Spline)
+* **Smooth Remote Proxy Rendering (`NetworkInterpolationComponent`)**:
+  - Remote proxies maintain a `darkfire::net::game::snapshot_history<EntitySnapshot, 64>`.
+  - Every rendering frame, compute render timestamp:
+    $$t_{\text{render}} = t_{\text{estimated\_server\_time}} - \text{interpolation\_delay\_ms}$$
+  - Evaluates Hermite cubic spline interpolation using velocity tangents ($p_0, v_0, p_1, v_1$):
+    $$P(t) = (2t^3 - 3t^2 + 1)p_0 + (t^3 - 2t^2 + t)v_0 \Delta t + (-2t^3 + 3t^2)p_1 + (t^3 - t^2)v_1 \Delta t$$
+  - Orientations interpolated via Spherical Linear Interpolation (`slerp`).
+  - If packets are delayed, clamps smoothly to the newest snapshot without jitter or wild extrapolation.
+
+#### 5.8 Minimal Gameplay Integration Example (< 50 Lines of Game Code)
+The following shows how easily a gameplay programmer implements an arcade vehicle using DarkFire's game-agnostic networking primitives:
+
+```cpp
+#include <Engine/Network/NetworkInterfaces.h>
+#include <darkfire/darkfire.hpp>
+
+struct KartInput : public INetworkInput {
+    float throttle = 0.0f, steering = 0.0f;
+    bool bDrift = false;
+    void Serialize(darkfire::net::byte_writer& w) const override { w << throttle << steering << bDrift; }
+    bool Deserialize(darkfire::net::byte_reader& r) override { r >> throttle >> steering >> bDrift; return !r.HasError(); }
+};
+
+struct KartState : public INetworkState {
+    glm::vec3 position{0.0f}, velocity{0.0f};
+    glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
+    void Serialize(darkfire::net::byte_writer& w) const override { w << position.x << position.y << position.z << velocity.x << velocity.y << velocity.z << rotation.w << rotation.x << rotation.y << rotation.z; }
+    bool Deserialize(darkfire::net::byte_reader& r) override { r >> position.x >> position.y >> position.z >> velocity.x >> velocity.y >> velocity.z >> rotation.w >> rotation.x >> rotation.y >> rotation.z; return !r.HasError(); }
+    bool NeedsReconciliation(const INetworkState& auth, float thresh) const override {
+        const auto& a = static_cast<const KartState&>(auth);
+        return glm::distance(position, a.position) > thresh || glm::angle(glm::inverse(rotation) * a.rotation) > 0.1f;
+    }
+};
+
+class ArcadeKart : public IPredictableActor {
+public:
+    KartInput currentInput;
+    KartState currentState;
+    void CaptureInput(INetworkInput& out) override {
+        currentInput.throttle = Input::GetAxis("Forward");
+        currentInput.steering = Input::GetAxis("Steer");
+        currentInput.bDrift = Input::GetButton("Handbrake");
+        static_cast<KartInput&>(out) = currentInput;
+    }
+    void SimulateTick(const INetworkInput& in, float dt) override {
+        const auto& input = static_cast<const KartInput&>(in);
+        // Step vehicle physics (suspension, motor torque, Pacejka slip)
+        VehiclePhysics::StepVehicle(currentState.position, currentState.velocity, currentState.rotation, input.throttle, input.steering, input.bDrift, dt);
+    }
+    void CaptureState(INetworkState& out) override { static_cast<KartState&>(out) = currentState; }
+    void ApplyState(const INetworkState& state) override { currentState = static_cast<const KartState&>(state); }
+};
+```
 
 ---
 

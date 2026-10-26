@@ -1,4 +1,6 @@
 #include "Surface.hlsli"
+#include "Lighting.hlsli"
+#include "Atmosphere.hlsli"
 
 struct PSOutput
 {

@@ -1,7 +1,7 @@
 #ifndef DARKFIRE_SURFACE_HLSLI
 #define DARKFIRE_SURFACE_HLSLI
 
-#include "Lighting.hlsli"
+#include "NormalMapping.hlsli"
 
 struct SurfaceData
 {

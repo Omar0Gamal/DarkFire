@@ -1,4 +1,5 @@
 #include "Lighting.hlsli"
+#include "Atmosphere.hlsli"
 
 struct FullscreenVSOutput
 {

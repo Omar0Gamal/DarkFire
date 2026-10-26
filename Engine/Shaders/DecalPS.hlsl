@@ -1,12 +1,7 @@
 // DarkFire Engine - DecalPS.hlsl
 // Dual-Pipeline (Forward+ & Deferred) OBB Projected Decal Pixel Shader (ps_5_0)
 
-#define g_TextureDepth g_TextureDepth_Slot9Unused
 #include "Common.hlsli"
-#undef g_TextureDepth
-
-// Hardware Reversed-Z depth buffer bound at slot 8 for decal pass
-Texture2D g_TextureDepth : register(t8);
 
 struct DecalPSInput
 {

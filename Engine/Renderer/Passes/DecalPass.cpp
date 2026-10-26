@@ -59,7 +59,7 @@ namespace Core::Renderer
 		if (m_samplerPointClamp) m_context->setSamplerPS(DF_SLOT_SMP_POINT_CLAMP, m_samplerPointClamp);
 
 		// Bind depth SRV at PS slot 8
-		m_context->setShaderResourcePS(8, depthTex);
+		m_context->setShaderResourcePS(DF_SLOT_TEX_DEPTH, depthTex);
 
 		m_context->setVertexBuffer(0, cubeMesh.vertexBuffer, sizeof(VertexMesh), 0);
 		m_context->setIndexBuffer(cubeMesh.indexBuffer, RHI::PixelFormat::R32_UINT, 0);
@@ -105,6 +105,6 @@ namespace Core::Renderer
 		}
 
 		// Unbind PS slot 8 when done
-		m_context->setShaderResourcePS(8, nullptr);
+		m_context->setShaderResourcePS(DF_SLOT_TEX_DEPTH, nullptr);
 	}
 }

@@ -77,7 +77,6 @@ DarkFire/
 │   ├── Runtime/        # Application lifecycle, LayerStack, GameModuleLoader
 │   └── Shaders/        # HLSL 5.0 shader sources and shared binding definitions
 ├── Player/             # Standalone runtime executable host (Player.exe)
-├── Projects/           # Designated folder for user-created game projects (.gitkeep)
 ├── Scripts/            # Developer automation scripts (Setup, Generate, Build, Test, Package)
 ├── Templates/          # Sample game and testing project templates
 │   ├── Empty3D/        # Blank starting template

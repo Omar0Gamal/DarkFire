@@ -34,7 +34,3 @@ Cache/
 
 # Whitelist Premake Binary in ThirdParty
 !ThirdParty/Premake/**
-
-# User Projects
-Projects/*
-!Projects/.gitkeep

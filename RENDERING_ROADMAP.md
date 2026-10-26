@@ -31,6 +31,7 @@ flowchart TD
         Milestone6["Milestone 6: Modular Physics Simulation Toolkit & Multi-Body Constraint Math\n(Non-linear spring-damper, Pacejka/Coulomb slip friction, Aerodynamic drag & lift)"]
         Milestone7["Milestone 7: Advanced GPU Pipeline Specialization & Occlusion\n(Shader permutations, Two-phase Hi-Z GPU occlusion, Dithered LOD cross-fade)"]
         Milestone8["Milestone 8: Studio Tooling, Editor Infrastructure & Headless Player Runtime\n(Project Settings panel, 1-click packaging, multi-client PIE, headless server, meshoptimizer LODs)"]
+        Milestone9["Milestone 9: Visual Editor Authoring, Prefabs & Developer Ergonomics\n(Visual Material Editor, Full Prefab system, Universal drag-and-drop, PIE Eject, Collider handles)"]
     end
 
     Tier0 --> Tier1
@@ -43,6 +44,7 @@ flowchart TD
     Milestone5 --> Milestone6
     Milestone6 --> Milestone7
     Milestone7 --> Milestone8
+    Milestone8 --> Milestone9
 ```
 
 ---
@@ -163,12 +165,22 @@ flowchart TD
         M8_5["8.5 Offline Mesh Optimization & Automated LOD Generation\n(meshoptimizer vertex cache/overdraw reduction, 3-level quadric error LODs)"]
     end
 
+    subgraph M9["Milestone 9: Visual Editor Authoring, Prefabs & Developer Ergonomics"]
+        M9_1["9.1 Visual Material Editor & Live 3D PBR Preview\n(Interactive preview sphere/cube, color pickers, texture drop targets, live scene sync)"]
+        M9_2["9.2 Full Recursive Prefab System & Instance Overrides\n(Deep hierarchy serialization, .prefab drag-and-drop, instance override tracking)"]
+        M9_3["9.3 Universal Asset Drag-and-Drop in Inspector\n(AcceptDragDropPayload for mesh/mat/clip/tex, browse dialogs, ping in browser)"]
+        M9_4["9.4 Hierarchy Productivity, Visibility & Locking\n(Eye visibility toggles, lock selection, inline F2 renaming, group selection Ctrl+G)"]
+        M9_5["9.5 Viewport Ergonomics, PIE Eject & Collider Handles\n(F key focus framing, speed scaling, F8 PIE Eject camera, 3D collider wireframe handles)"]
+        M9_6["9.6 Visual Input Action & Axis Mapping Editor\n(Named action/axis bindings for Keyboard, Mouse, Gamepad, no hardcoded keys)"]
+    end
+
     M2 --> M3
     M3 --> M4
     M4 --> M5
     M5 --> M6
     M6 --> M7
     M7 --> M8
+    M8 --> M9
 ```
 
 ---
@@ -706,6 +718,130 @@ flowchart TD
 
 ---
 
+### Milestone 9: Visual Editor Authoring, Prefabs & Developer Ergonomics Workflow
+
+To completely eliminate the friction where developers spend most of their time editing JSON/text files on disk instead of building in the engine, Milestone 9 delivers a **cohesive visual authoring environment**. It provides a dedicated real-time Material Editor, a recursive Prefab system with instance overrides, universal drag-and-drop across every Inspector slot, interactive Viewport collider gizmos, Play-In-Editor (PIE) camera ejection, and a visual Input Mapping manager.
+
+```mermaid
+flowchart TD
+    subgraph VisualAuthoring["Visual Asset & Entity Authoring"]
+        MatEd["9.1 Visual Material Editor (MaterialEditorPanel)\n(Real-time PBR sphere/cube preview, color pickers, texture slot drop targets)"]
+        PrefabSys["9.2 Recursive Prefab System (PrefabManager)\n(Full entity hierarchy serialization, .prefab templates, override tracking)"]
+        UniversalDnD["9.3 Universal Inspector Drag & Drop (FieldDrawers)\n(AcceptDragDropPayload on all asset slots, browse buttons, asset pinging)"]
+    end
+
+    subgraph EditorErgonomics["Scene Navigation & Productivity"]
+        HierQoL["9.4 Hierarchy Productivity (HierarchyPanel)\n(Eye visibility toggles, selection locking, F2 inline renaming, Ctrl+G group)"]
+        ViewportNav["9.5 Viewport Interaction (SceneViewportPanel)\n(F key focus framing, speed slider, 3D collider sizing handles)"]
+        PIE_Eject["9.5 PIE Eject Mode (F8 / Eject)\n(Unpossess player, inspect world live, tweak parameters, re-possess)"]
+    end
+
+    subgraph ProjectManagement["Project & Input Configuration"]
+        InputMap["9.6 Visual Input Action & Axis Mapping Editor\n(Map 'Jump'/'Steer' to Keys/Axes visually, query via Input API)"]
+        AssetThumbs["9.7 Content Browser Thumbnail & Audio Previews\n(GPU texture thumbnails, double-click audio preview playback)"]
+    end
+
+    MatEd --> ViewportNav
+    PrefabSys --> HierQoL
+    UniversalDnD --> MatEd
+    UniversalDnD --> PrefabSys
+    InputMap --> PIE_Eject
+    AssetThumbs --> UniversalDnD
+```
+
+---
+
+#### 9.1 Visual Material Editor & Live 3D PBR Preview (`MaterialEditorPanel.cpp`)
+* **Dedicated Material Inspection & Authoring**:
+  - Double-clicking any `.mat` asset in the Content Browser or clicking `"Edit Material"` on a `MeshRendererComponent` opens a dedicated visual Material Editor tab.
+  - **Real-Time PBR Viewport Preview**:
+    - Embedded 3D viewport rendering a smooth rotating PBR test sphere, cube, or custom mesh with tone-mapped HDR environment lighting.
+    - Demonstrates true material reflectance, metallic reflections, roughness microfacets, and clearcoat layers in real time.
+  - **Visual Parameter Controls**:
+    - High-precision HDR color pickers for `baseColor` and `emissiveColor` with intensity multiplier.
+    - Interactive sliders for `roughness`, `metallic`, `clearcoatFactor`, `clearcoatRoughness`, `anisotropyFactor`, and `subsurfaceScattering`.
+    - UV tiling and offset controls ($U, V$ scale and displacement).
+    - Material pipeline settings: Blend Mode (Opaque, Cutout with alpha cutoff slider, Alpha Blended), Cull Mode (Back, Front, None), and Depth Write toggle.
+  - **Texture Slot Drag-and-Drop Targets**:
+    - Dedicated visual drop boxes for Albedo, Normal, ORM (Occlusion/Roughness/Metallic), Emissive, and Clearcoat textures.
+    - Dragging any `.dds`, `.png`, or `.jpg` from the Content Browser immediately binds the texture with live thumbnail feedback.
+  - **Live Scene Synchronization**:
+    - Modifying any parameter or texture immediately updates the live GPU constant buffer and binds across all active scene instances without saving to disk or reloading.
+
+#### 9.2 True Full Recursive Prefab System (`PrefabManager` & `PrefabComponent`)
+* **Production-Grade Prefab Architecture**:
+  - Replaces the legacy 4-line stub with a full recursive entity hierarchy serializer:
+    - Serializes complete entity trees: identity, transforms, mesh renderers, materials, colliders, rigidbodies, audio sources, scripts, and all nested child entities into self-contained `.prefab` files.
+  - **Prefab Instantiation Workflow**:
+    - Content Browser displays distinct prefab badges and thumbnails.
+    - Dragging a `.prefab` into the 3D Scene Viewport or Hierarchy panel instantiates the entire multi-level entity tree at the cursor hit location.
+    - The top toolbar button `"Instantiate"` in the Hierarchy panel opens a quick-pick modal to instantiate prefabs into the active scene.
+  - **Prefab Instance Override Tracking**:
+    - Entities created from a prefab hold a `PrefabInstanceComponent` referencing the root `prefabGuid` and path.
+    - Overridden component properties are highlighted with a subtle blue margin in the Inspector.
+    - Provides `"Apply Changes to Base Prefab"` and `"Revert All Overrides"` context actions.
+
+#### 9.3 Universal Asset Drag-and-Drop in Inspector (`FieldDrawers.cpp`)
+* **Frictionless Inspector Slot Binding**:
+  - Extends `DrawField()` in [`FieldDrawers.cpp`](file:///C:/Users/omarg/dev/DarkFire/Editor/Inspector/FieldDrawers.cpp) to accept `ImGui::AcceptDragDropPayload("DARKFIRE_ASSET_PATH")` for all asset-referencing string properties.
+  - **Context-Aware Visual Slots**:
+    - When hovering a dragged asset from the Content Browser, target slots highlight with a glowing border:
+      - Mesh slots (`.obj`, `.fbx`, `builtin:*`) highlight in Cyan.
+      - Material slots (`.mat`) highlight in Amber.
+      - Texture slots (`.dds`, `.png`, `.jpg`) highlight in Green.
+      - Audio clip slots (`.wav`, `.ogg`, `.mp3`, `builtin:*`) highlight in Magenta.
+      - Prefab slots (`.prefab`) highlight in Blue.
+  - **Ergonomic Slot Controls**:
+    - **`Browse (...)` Button**: Opens native file picker filtered by appropriate extension.
+    - **`Clear (X)` Button**: Clears the assigned asset path back to default.
+    - **`Ping (👁️)` Button**: Automatically focuses the Content Browser and highlights the assigned asset on disk.
+
+#### 9.4 Scene Hierarchy Productivity, Visibility & Locking
+* **Rapid Scene Management (`HierarchyPanel.cpp`)**:
+  - **Entity Visibility Toggles (Eye Icon 👁️)**:
+    - Clickable eye icon next to each entity in the hierarchy.
+    - Hides the entity mesh and debug gizmos from the 3D viewport while keeping its physics/script simulation running.
+  - **Entity Selection Locking (Lock Icon 🔒)**:
+    - Clickable lock icon preventing accidental selection, dragging, or gizmo manipulation in dense scenes.
+  - **Inline Renaming (`F2` Key / Double-Click)**:
+    - Pressing F2 or double-clicking the entity name opens an inline input field to rename entities directly in the tree without touching the Inspector.
+  - **Multi-Selection Batch Actions**:
+    - Select multiple entities using `Ctrl+Click` and `Shift+Click`.
+    - `Ctrl+G` shortcut groups all selected entities under a newly spawned empty parent node.
+    - Batch deletion, batch duplication, and batch drag-reparenting.
+
+#### 9.5 3D Viewport Ergonomics, PIE Eject & Collider Handles
+* **Tactile 3D Interaction (`SceneViewportPanel.cpp` & `ViewportOverlays.cpp`)**:
+  - **Focus on Entity (`F` Key)**:
+    - Pressing `F` smoothly lerps the Editor Camera to frame the bounding sphere of the selected entity or cluster of entities.
+  - **Smooth Camera Speed Scaling**:
+    - In-viewport toolbar slider and `Mouse Wheel` speed scaling while holding Right Mouse Button ($0.1\times$ for interior detail props up to $10.0\times$ for vast island landscapes).
+  - **Play-In-Editor (PIE) Eject Mode (`F8` / Eject Button)**:
+    - While playing the game in PIE, pressing `F8` unpossesses the player pawn.
+    - The editor camera can fly freely around the live simulation, select running AI actors, inspect state variables, tweak physics masses or light intensities in the Inspector, and press `F8` again to re-possess the player pawn.
+  - **Interactive 3D Collider Sizing Handles**:
+    - Automatically renders wireframe shapes in the viewport when an entity with `ColliderComponent` is selected (green boxes, spheres, capsules).
+    - Displays interactive axis drag handles in the viewport to resize box extents, sphere radius, or capsule height directly in 3D without manual number guessing in the Inspector.
+  - **Orientation Triad / View Cube**:
+    - Top-right 3D coordinate triad showing X/Y/Z axes; clicking faces snaps camera to Top, Bottom, Left, Right, Front, or Perspective views.
+
+#### 9.6 Visual Input Action & Axis Mapping Editor
+* **Eliminate Hardcoded Input Strings**:
+  - Dedicated **Input Mappings** tab inside the `Project Settings` panel.
+  - Developers configure named bindings visually:
+    - **Action Mappings**: E.g., `"Jump"` mapped to `[Space]`, `[Gamepad Face Down]`; `"Fire"` mapped to `[Left Mouse]`, `[Right Trigger]`.
+    - **Axis Mappings**: E.g., `"MoveForward"` mapped to `[W] (+1.0)`, `[S] (-1.0)`, `[Left Stick Y] (+1.0)`; `"Steer"` mapped to `[A] (-1.0)`, `[D] (+1.0)`, `[Left Stick X] (+1.0)`.
+  - Gameplay scripts query clean APIs (`Input::GetAction("Jump")`, `Input::GetAxis("Steer")`) instead of querying raw Win32 keys or hardcoded characters.
+
+#### 9.7 Content Browser Quality of Life & Asset Previews
+* **Asset Previews & Safety Workflows (`ContentBrowserPanel.cpp`)**:
+  - **Real Texture Thumbnails**: Renders downsampled GPU thumbnails for `.dds` and `.png` textures directly in the asset grid instead of generic text badges.
+  - **Audio Clip Previews**: Double-clicking an audio asset (`.wav`, `.ogg`, `.mp3`) plays the sound clip directly through `miniaudio` with a small waveform/stop button in the editor status bar.
+  - **Unsaved Scene Protection**: Double-clicking a `.scene` asset when the current scene has unsaved changes (`m_isSceneDirty`) pops up a modal: *"Save changes to current scene before opening?"* (`Save`, `Don't Save`, `Cancel`).
+  - **Asset Context Menu**: Right-click actions for *"Show in Explorer"*, *"Reimport Asset"*, and *"Copy Relative Path"*.
+
+---
+
 ## Testing & Performance Benchmarks
 
 Every milestone must maintain **100% pass rate** on the automated test suite and conform to DarkFire's performance standards:
@@ -732,4 +868,5 @@ Every milestone must maintain **100% pass rate** on the automated test suite and
 | **+ Milestone 3 & 4 (Physics & Platform)** | **9.2 / 10** | Tactile responsiveness and display perfection. 240Hz stutter-free display interpolation, <8ms input latency waitable swapchain, 3D Doppler sound. |
 | **+ Milestone 5 & 6 (Multiplayer & Physics Toolkit)** | **9.4 / 10** | Production-grade game-agnostic framework. Studio-grade prediction netcode, rollback resimulation, modular non-linear spring & friction math. |
 | **+ Milestone 7 (Pipeline Specialization)** | **9.6 / 10** | Full-Stack Commercial AAA Rendering Standard. Zero-CPU two-phase Hi-Z occlusion culling, specialized permutation passes (<1,200 instructions), dithered LOD fading. |
-| **+ Milestone 8 (Studio Tooling & Runtime)** | **9.7 / 10** | **Complete Commercial Studio Ecosystem.** One-click game distribution, headless dedicated server, multi-instance PIE, incremental asset cooking, meshoptimizer LODs. |
+| **+ Milestone 8 (Studio Tooling & Runtime)** | **9.7 / 10** | Complete Commercial Studio Ecosystem. One-click game distribution, headless dedicated server, multi-instance PIE, incremental asset cooking, meshoptimizer LODs. |
+| **+ Milestone 9 (Visual Editor & Prefabs)** | **9.8 / 10** | **Apex Commercial Studio Environment.** 100% visual game authoring with zero text-file editing; visual material editor with live 3D preview, recursive prefabs, universal drag-and-drop, interactive collider handles, PIE eject mode, and visual input mappings. |

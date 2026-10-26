@@ -20,9 +20,10 @@ float3 applyAtmosphericFog(
 	float3 V = camToFrag / max(dist, 0.0001f);
 
 	// Closed-form line integral of rho(y) = rho0 * exp(-b * y) from camera to surface
+	// Fully supports negative terrain elevation without artificial clamping to y = 0
 	float b = max(g_Pass.fogParams.x, 0.0001f);
-	float y0 = max(cameraPos.y, 0.0f);
-	float y1 = max(worldPos.y, 0.0f);
+	float y0 = cameraPos.y;
+	float y1 = worldPos.y;
 	float dy = y1 - y0;
 
 	float heightIntegral;
@@ -39,9 +40,16 @@ float3 applyAtmosphericFog(
 	float transmittance = exp(-opticalDepth);
 	float fogFactor = saturate(1.0f - transmittance);
 
-	// 8-step jittered volumetric sunbeam raymarch along cameraPos -> worldPos (clamped to min(dist, 65.0f))
+	// Performance optimization: skip 8-tap shadow raymarch if fog factor is negligible
+	if (fogFactor < 0.0001f)
+	{
+		return litColor;
+	}
+
+	// 8-step temporally stable volumetric sunbeam raymarch along cameraPos -> worldPos
+	float temporalOffset = float(g_Frame.frameIndex & 15u) * 0.0625f;
 	float jitter = (any(screenPos != float2(0.0f, 0.0f)))
-		? frac(InterleavedGradientNoise(screenPos) + frac(worldPos.x * 17.3f + worldPos.z * 17.3f))
+		? frac(InterleavedGradientNoise(screenPos) + temporalOffset)
 		: frac(worldPos.x * 17.3f + worldPos.z * 17.3f);
 
 	float marchDist = min(dist, 65.0f);
@@ -60,7 +68,7 @@ float3 applyAtmosphericFog(
 	float3 fogCol = g_Pass.fogColorDensity.rgb * lerp(0.35f, 1.0f, sunRayVisibility);
 	if (g_Pass.lightCount > 0 && (int)g_Lights[0].positionType.w == 0)
 	{
-		float3 sunDir = normalize(-g_Lights[0].directionRange.xyz);
+		float3 sunDir = safeNormalize(-g_Lights[0].directionRange.xyz);
 		float cosTheta = dot(V, sunDir);
 		float g = 0.76f;
 		float g2 = g * g;
@@ -68,9 +76,15 @@ float3 applyAtmosphericFog(
 		float denom = 1.0f + g2 - 2.0f * g * cosTheta;
 		float hgPhase = (1.0f / (4.0f * PI)) * ((1.0f - g2) / max(denom * sqrt(max(denom, 0.0001f)), 0.0001f));
 
-		// Directional sun in-scattering occluded by scene shadow map along view ray
-		float3 sunInscatter = g_Lights[0].colorIntensity.rgb * min(4.0f * PI * hgPhase, 3.5f) * g_Pass.fogParams.y;
-		fogCol += sunInscatter * saturate(sunDir.y * 0.5f + 0.5f) * sunRayVisibility;
+		// Soft-compressed phase peak: smooth asymptotic roll-off eliminates 29-degree flat plateau
+		float rawPeak = 4.0f * PI * hgPhase;
+		float softPeak = rawPeak / (1.0f + rawPeak / 3.5f);
+
+		// Directional sun in-scattering scaled in physical sync with light 0 intensity
+		float sunIntensity = max(g_Lights[0].colorIntensity.a, 0.0f);
+		float3 sunInscatter = g_Lights[0].colorIntensity.rgb * sunIntensity * softPeak * g_Pass.fogParams.y;
+		float twilightFade = smoothstep(-0.02f, 0.08f, sunDir.y);
+		fogCol += sunInscatter * twilightFade * sunRayVisibility;
 	}
 
 	return lerp(litColor, fogCol, fogFactor);

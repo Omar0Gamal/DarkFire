@@ -10,7 +10,7 @@
 float2 octEncode(float3 n)
 {
 	n /= (abs(n.x) + abs(n.y) + abs(n.z));
-	float2 oct = (n.z >= 0.0f) ? n.xy : ((1.0f - abs(n.yx)) * (n.xy >= 0.0f ? 1.0f : -1.0f));
+	float2 oct = (n.z >= 0.0f) ? n.xy : ((1.0f - abs(n.yx)) * signNotZero(n.xy));
 	return oct * 0.5f + 0.5f;
 }
 
@@ -38,7 +38,7 @@ float3 sampleDDGI(float3 worldPos, float3 N)
 		return float3(0.0f, 0.0f, 0.0f);
 	}
 	float3 minDist = min(distFromMin, distFromMax);
-	float edgeFade = saturate(min(minDist.x, min(minDist.y, minDist.z)) * 2.0f);
+	float edgeFade = smoothstep(0.0f, 1.0f, saturate(min(minDist.x, min(minDist.y, minDist.z)) * 2.0f));
 
 	int3 baseProbe = clamp(int3(floor(gridPos)), int3(0, 0, 0), int3(probeCounts) - int3(2, 2, 2));
 	float3 alpha = saturate(gridPos - float3(baseProbe));
@@ -46,6 +46,15 @@ float3 sampleDDGI(float3 worldPos, float3 N)
 	float3 totalRadiance = float3(0.0f, 0.0f, 0.0f);
 	float totalWeight = 0.0f;
 	float2 octUV = octEncode(N);
+
+	// Hoist atlas dimensions out of the probe iteration loop
+	float depthWidth = 512.0f, depthHeight = 256.0f;
+	g_TextureDDGIDepth.GetDimensions(depthWidth, depthHeight);
+	float2 invDepthAtlasSize = 1.0f / float2(depthWidth, depthHeight);
+
+	float radWidth = 512.0f, radHeight = 256.0f;
+	g_TextureDDGIRadiance.GetDimensions(radWidth, radHeight);
+	float2 invRadAtlasSize = 1.0f / float2(radWidth, radHeight);
 
 	[unroll]
 	for (int z = 0; z <= 1; ++z)
@@ -60,24 +69,31 @@ float3 sampleDDGI(float3 worldPos, float3 N)
 				uint probeIndex = cornerProbe.x + cornerProbe.y * (uint)probeCounts.x + cornerProbe.z * ((uint)probeCounts.x * (uint)probeCounts.y);
 
 				float3 probeWorldPos = gridOrigin + (float3(cornerProbe) - probeCounts * 0.5f + 0.5f) * probeSpacing;
-				float3 probeToPoint = worldPos - probeWorldPos;
-				float dist = length(probeToPoint);
-				float3 dir = (dist > 0.001f) ? (probeToPoint / dist) : N;
+				float3 pointToProbe = probeWorldPos - biasedPos;
+				float dist = length(pointToProbe);
+				float3 dirToProbe = (dist > 0.001f) ? (pointToProbe / dist) : N;
 
 				float trilinearWeight = ((x == 1) ? alpha.x : (1.0f - alpha.x)) *
 				                        ((y == 1) ? alpha.y : (1.0f - alpha.y)) *
 				                        ((z == 1) ? alpha.z : (1.0f - alpha.z));
-				float normalWeight = saturate(dot(dir, N) * 0.5f + 0.5f);
-				normalWeight = normalWeight * normalWeight + 0.01f;
 
-				// Chebyshev depth visibility test with stable variance floor
+				// Normal / front-facing weight towards probe (McGuire weight crush)
+				float normalWeight = saturate(dot(dirToProbe, N) * 0.5f + 0.5f);
+				if (normalWeight < 0.2f)
+				{
+					normalWeight *= (normalWeight * normalWeight) / 0.04f;
+				}
+				else
+				{
+					normalWeight = normalWeight * normalWeight + 0.01f;
+				}
+
+				// Chebyshev depth visibility test: probe direction towards point
 				uint depthProbesPerRow = 16;
 				uint depthTileX = probeIndex % depthProbesPerRow;
 				uint depthTileY = probeIndex / depthProbesPerRow;
-				float depthWidth = 512.0f;
-				float depthHeight = 256.0f;
-				g_TextureDDGIDepth.GetDimensions(depthWidth, depthHeight);
-				float2 depthAtlasUV = (float2(depthTileX * 16, depthTileY * 16) + octUV * 15.0f + 0.5f) / float2(depthWidth, depthHeight);
+				float2 octDirUV = octEncode(-dirToProbe);
+				float2 depthAtlasUV = (float2(depthTileX * 16, depthTileY * 16) + octDirUV * 15.0f + 0.5f) * invDepthAtlasSize;
 				float2 depthMoments = g_TextureDDGIDepth.SampleLevel(g_SamplerLinearClamp, depthAtlasUV, 0).rg;
 
 				float mean = depthMoments.x;
@@ -88,14 +104,11 @@ float3 sampleDDGI(float3 worldPos, float3 N)
 
 				float weight = trilinearWeight * normalWeight * chebyshevWeight;
 
-				// Sample radiance atlas (8x8 texels per probe)
+				// Sample radiance atlas (8x8 texels per probe) using surface normal N
 				uint radProbesPerRow = 32;
 				uint radTileX = probeIndex % radProbesPerRow;
 				uint radTileY = probeIndex / radProbesPerRow;
-				float radWidth = 512.0f;
-				float radHeight = 256.0f;
-				g_TextureDDGIRadiance.GetDimensions(radWidth, radHeight);
-				float2 radAtlasUV = (float2(radTileX * 8, radTileY * 8) + octUV * 7.0f + 0.5f) / float2(radWidth, radHeight);
+				float2 radAtlasUV = (float2(radTileX * 8, radTileY * 8) + octUV * 7.0f + 0.5f) * invRadAtlasSize;
 				float3 probeRadiance = g_TextureDDGIRadiance.SampleLevel(g_SamplerLinearClamp, radAtlasUV, 0).rgb;
 
 				totalRadiance += probeRadiance * weight;
@@ -115,13 +128,13 @@ float3 sampleDDGI(float3 worldPos, float3 N)
 // Box-Projected Parallax-Corrected Reflection Helper
 float3 boxProjectDirection(float3 worldPos, float3 R, float3 boxMin, float3 boxMax, float3 probePos)
 {
-	float3 invR = 1.0f / ( sign(R) * max(abs(R), 1e-5f) );
+	float3 invR = 1.0f / ( signNotZero(R) * max(abs(R), 1e-5f) );
 	float3 tMin = (boxMin - worldPos) * invR;
 	float3 tMax = (boxMax - worldPos) * invR;
 	float3 tFar = max(tMin, tMax);
 	float t = min(tFar.x, min(tFar.y, tFar.z));
 	float3 hitPos = worldPos + R * max(t, 0.0f);
-	return normalize(hitPos - probePos);
+	return safeNormalize(hitPos - probePos);
 }
 
 float3 boxProjectDirection(float3 dir, float3 worldPos, float3 boxCenter, float3 boxHalfExtents)
@@ -135,8 +148,8 @@ float3 boxProjectDirectionWithFalloff(float3 worldPos, float3 R, float3 boxCente
 {
 	float3 boxMin = boxCenter - boxHalfExtents;
 	float3 boxMax = boxCenter + boxHalfExtents;
-	float3 nrdir = normalize(R);
-	float3 invR = 1.0f / (sign(nrdir) * max(abs(nrdir), 1e-5f));
+	float3 nrdir = safeNormalize(R);
+	float3 invR = 1.0f / (signNotZero(nrdir) * max(abs(nrdir), 1e-5f));
 	float3 tMin = (boxMin - worldPos) * invR;
 	float3 tMax = (boxMax - worldPos) * invR;
 	float3 tFar = max(tMin, tMax);
@@ -147,7 +160,7 @@ float3 boxProjectDirectionWithFalloff(float3 worldPos, float3 R, float3 boxCente
 	float maxDist = max(distToEdge.x, max(distToEdge.y, distToEdge.z));
 	blendWeight = (maxDist <= 1.0f) ? 1.0f : saturate(1.0f - (maxDist - 1.0f) / 0.25f);
 
-	return normalize(hitPos - boxCenter);
+	return safeNormalize(hitPos - boxCenter);
 }
 
 // PBR Lighting Evaluation with Shadows & Pre-Filtered Environment IBL
@@ -172,7 +185,8 @@ float3 evaluateDirectLighting(
 	float3 F0,
 	float ao = 1.0f,
 	uint matFlagsOverride = 0xFFFFFFFFu,
-	float sheenOverride = -1.0f)
+	float sheenOverride = -1.0f,
+	float3 tangentWS = float3(0.0f, 0.0f, 0.0f))
 {
 	uint matFlags = (matFlagsOverride != 0xFFFFFFFFu) ? matFlagsOverride : g_Material.materialFlags;
 	float sheenVal = (sheenOverride >= 0.0f) ? sheenOverride : g_Material.sheenFactor;
@@ -188,12 +202,11 @@ float3 evaluateDirectLighting(
 	uint2 clusterData = g_ClusterGrid[clusterIdx];
 	uint clusterOffset = clusterData.x;
 	uint activeLightCount = clusterData.y;
-	bool useClusters = (activeLightCount > 0);
-	uint totalIterations = useClusters ? activeLightCount : g_Pass.lightCount;
+	uint totalIterations = min(activeLightCount, 64u);
 
 	for (uint iter = 0; iter < totalIterations; ++iter)
 	{
-		uint i = useClusters ? g_ClusterLightIndices[clusterOffset + iter] : iter;
+		uint i = g_ClusterLightIndices[clusterOffset + iter];
 		LightData light = g_Lights[i];
 		int type = (int)light.positionType.w;
 
@@ -219,27 +232,27 @@ float3 evaluateDirectLighting(
 				shadowFactor = 0.0f;
 			}
 		}
-		else if (type == 1) // Point Light (Unreal Engine 4/5 physical attenuation)
+		else if (type == 1) // Point Light (meter-scale physical attenuation)
 		{
 			float3 toLight = light.positionType.xyz - worldPos;
 			float dist = length(toLight);
 			float range = light.directionRange.w;
 			if (dist > range) continue;
 
-			L = normalize(toLight);
+			L = safeNormalize(toLight);
 			float distOverRange = dist / max(range, 0.001f);
 			float falloff = saturate(1.0f - distOverRange * distOverRange * distOverRange * distOverRange);
-			attenuation = (falloff * falloff) / (dist * dist + 1.0f);
+			attenuation = (falloff * falloff) / (dist * dist + 0.01f);
 		}
-		else if (type == 2) // Spot Light (Unreal Engine 4/5 attenuation + smoothstep^2 cone)
+		else if (type == 2) // Spot Light (meter-scale attenuation + smoothstep^2 cone)
 		{
 			float3 toLight = light.positionType.xyz - worldPos;
 			float dist = length(toLight);
 			float range = light.directionRange.w;
 			if (dist > range) continue;
 
-			L = normalize(toLight);
-			float cosAngle = dot(-L, normalize(light.directionRange.xyz));
+			L = safeNormalize(toLight);
+			float cosAngle = dot(-L, safeNormalize(light.directionRange.xyz));
 			float innerCos = light.spotAnglesPad.x;
 			float outerCos = light.spotAnglesPad.y;
 			float spotFactor = saturate((cosAngle - outerCos) / max(innerCos - outerCos, 0.0001f));
@@ -247,15 +260,10 @@ float3 evaluateDirectLighting(
 
 			float distOverRange = dist / max(range, 0.001f);
 			float falloff = saturate(1.0f - distOverRange * distOverRange * distOverRange * distOverRange);
-			attenuation = spotAttenuation * (falloff * falloff) / (dist * dist + 1.0f);
-
-			if (i == 0)
-			{
-				shadowFactor = evaluateDirectionalShadow(worldPos, N, L, screenPos);
-			}
+			attenuation = spotAttenuation * (falloff * falloff) / (dist * dist + 0.01f);
 		}
 
-		float3 H = normalize(V + L);
+		float3 H = safeNormalize(V + L);
 		float3 radiance = light.colorIntensity.rgb * light.colorIntensity.a * attenuation;
 
 		float NDF = DistributionGGX(N, H, roughness);
@@ -272,7 +280,7 @@ float3 evaluateDirectLighting(
 
 		float NdotL = max(dot(N, L), 0.0f);
 		float microShadow = computeMicroShadow(dot(N, L), ao);
-		float directLightAtten = radiance * shadowFactor * directOcclusion * microShadow;
+		float3 directLightRadiance = radiance * (shadowFactor * directOcclusion * microShadow);
 
 		if (matFlags & DF_MAT_FLAG_CLOTH)
 		{
@@ -280,9 +288,9 @@ float3 evaluateDirectLighting(
 			float wrapNdotL = saturate((dot(N, L) + 0.35f) / 1.35f);
 			float NdotH = saturate(dot(N, H));
 			float sinTheta = max(0.001f, sqrt(max(1.0f - NdotH * NdotH, 0.0001f)));
-			float invR = 1.0f / max(roughness, 0.01f);
-			float sheenNDF = (2.0f + invR * invR) * pow(sinTheta, invR) * INV_PI * 0.5f;
-			sheenNDF = min(sheenNDF, 2.0f);
+			float alphaCloth = max(roughness * roughness, 0.002f);
+			float invAlpha = 1.0f / alphaCloth;
+			float sheenNDF = (2.0f + invAlpha) * pow(sinTheta, invAlpha) * (INV_PI * 0.5f);
 
 			float NdotV = max(dot(N, V), 0.001f);
 			float NdotL_raw = max(dot(N, L), 0.001f);
@@ -290,13 +298,13 @@ float3 evaluateDirectLighting(
 
 			// Tinted cloth sheen (matches fabric weave color without white plastic rim)
 			float3 clothSheen = albedo * sheenVal * (sheenNDF * sheenVis);
-			float3 clothDiffuse = albedo * wrapNdotL * (1.0f - metallic);
+			float3 clothDiffuse = albedo * INV_PI * wrapNdotL * (1.0f - metallic);
 
 			float backNdotL = max(dot(-N, L), 0.0f);
-			clothDiffuse += albedo * (backNdotL * 0.35f) * (1.0f - metallic);
+			clothDiffuse += albedo * INV_PI * (backNdotL * 0.35f) * (1.0f - metallic);
 
 			float3 directSpecular = specular * NdotL_raw * metallic;
-			Lo += (clothDiffuse + clothSheen * NdotL_raw + directSpecular) * directLightAtten;
+			Lo += (clothDiffuse + clothSheen * NdotL_raw + directSpecular) * directLightRadiance;
 		}
 		else
 		{
@@ -333,9 +341,27 @@ float3 evaluateDirectLighting(
 				float aniso = clamp(g_Material.extraMaterialParams.z, -0.99f, 0.99f);
 				float at = max(roughness * roughness * (1.0f + aniso), 0.001f);
 				float ab = max(roughness * roughness * (1.0f - aniso), 0.001f);
-				float3 upVec = abs(N.z) < 0.999f ? float3(0.0f, 0.0f, 1.0f) : float3(1.0f, 0.0f, 0.0f);
-				float3 T = normalize(cross(upVec, N));
-				float3 B = cross(N, T);
+				float3 T, B;
+				if (any(abs(tangentWS) > 0.001f))
+				{
+					T = normalize(tangentWS - dot(tangentWS, N) * N);
+					B = cross(N, T);
+				}
+				else
+				{
+					float3 upVec = abs(N.z) < 0.999f ? float3(0.0f, 0.0f, 1.0f) : float3(1.0f, 0.0f, 0.0f);
+					T = normalize(cross(upVec, N));
+					B = cross(N, T);
+				}
+				if (abs(g_Material.extraMaterialParams.w) > 0.001f)
+				{
+					float cosRot = cos(g_Material.extraMaterialParams.w);
+					float sinRot = sin(g_Material.extraMaterialParams.w);
+					float3 rotT = T * cosRot + B * sinRot;
+					float3 rotB = -T * sinRot + B * cosRot;
+					T = rotT;
+					B = rotB;
+				}
 				float anisoNDF = DistributionAnisotropicGGX(N, H, T, B, at, ab);
 				float anisoG = GeometrySmithAnisotropic(N, V, L, T, B, at, ab);
 				specular = (anisoNDF * anisoG * F);
@@ -343,22 +369,23 @@ float3 evaluateDirectLighting(
 
 			// Energy conservation: clearcoat attenuates base layer by (1.0 - ccF)
 			float3 directBase = (directDiffuse + specular * NdotL) * (1.0f - ccF);
-			Lo += (directBase + ccSpec * NdotL) * directLightAtten;
+			Lo += (directBase + ccSpec * NdotL) * directLightRadiance;
 		}
 	}
 
 	// 1. Pre-Convolved Environment & Hemispherical Diffuse IBL (Zero Screen-Space Noise)
 	float3 kD_env = (1.0f - F0) * (1.0f - metallic);
 	float3 diffuseAO = multiBounceAO(ao, albedo);
-	// In shadow areas, heavily occlude outdoor sky ambient so interiors stay naturally shaded
+	// In shadow areas, occlude outdoor sky ambient while maintaining natural diffuse fill
 	float primarySunVis = sampleVolumetricShadow(worldPos + N * 0.15f);
-	float skyShadowOcclusion = lerp(0.04f, 1.0f, primarySunVis);
+	float skyShadowOcclusion = lerp(0.35f, 1.0f, primarySunVis);
 
 	// Bent-Normal Diffuse IBL: bias normal towards open courtyard sky in crevices and corners
 	float3 bentN = N;
 	if (ao < 0.99f)
 	{
-		bentN = normalize(lerp(N, float3(0.0f, 1.0f, 0.0f), (1.0f - ao) * 0.35f));
+		float pullWeight = max(N.y, 0.0f) * (1.0f - ao) * 0.35f;
+		bentN = normalize(lerp(N, float3(0.0f, 1.0f, 0.0f), pullWeight));
 	}
 
 	float skyWeight = saturate(bentN.y * 0.5f + 0.5f);
@@ -376,60 +403,27 @@ float3 evaluateDirectLighting(
 	}
 
 	// Sample diffuse irradiance: prioritize local probe (Slot 18), fallback to specular probe mip 5 (Slot 17), then sky (Slot 12)
-	float2 diffEqUV = float2(atan2(N_probe.z, N_probe.x) * (0.5f * INV_PI) + 0.5f, 0.5f - asin(clamp(N_probe.y, -1.0f, 1.0f)) * INV_PI);
-	float3 envDiffuseSample = float3(0.0f, 0.0f, 0.0f);
-	bool usedDiffuseProbe = false;
-	if (hasProbe)
+	float2 diffEqUV = float2(atan2(N_probe.z, N_probe.x) * (0.5f * INV_PI) + 0.5f, clamp(0.5f - asin(clamp(N_probe.y, -1.0f, 1.0f)) * INV_PI, 0.001f, 0.999f));
+	float3 skyDiffuseSample = (g_Pass.ambientLightColor.a > 0.0001f)
+		? g_TextureSkyEquirect.SampleLevel(g_SamplerLinearWrap, diffEqUV, 5.0f).rgb
+		: skyHemi;
+	float3 skyDiffuse = skyDiffuseSample * g_Pass.ambientLightColor.a * albedo * kD_env * diffuseAO * skyShadowOcclusion;
+	if (matFlags & DF_MAT_FLAG_CLOTH)
 	{
-		envDiffuseSample = g_TextureIrradianceIBL.SampleLevel(g_SamplerLinearWrap, diffEqUV, 0.0f).rgb;
-		if (any(envDiffuseSample > 0.0001f))
-		{
-			usedDiffuseProbe = true;
-		}
-		else
-		{
-			envDiffuseSample = g_TextureSpecularIBL.SampleLevel(g_SamplerLinearWrap, diffEqUV, 5.0f).rgb;
-			if (any(envDiffuseSample > 0.0001f))
-			{
-				usedDiffuseProbe = true;
-			}
-		}
-	}
-	if (!usedDiffuseProbe)
-	{
-		float3 skySample = g_TextureSkyEquirect.SampleLevel(g_SamplerLinearWrap, diffEqUV, 5.0f).rgb;
-		if (any(skySample > 0.0001f))
-		{
-			envDiffuseSample = skySample;
-		}
-		else
-		{
-			envDiffuseSample = skyHemi;
-		}
+		skyDiffuse = skyDiffuseSample * g_Pass.ambientLightColor.a * albedo * diffuseAO * skyShadowOcclusion;
 	}
 
-	// Diffuse Indirect:
-	// If using local baked probe, irradiance represents pre-baked indirect bounced light.
-	// Scaled by 0.20f bounce factor to match authentic 1st-bounce GI energy without blowing out,
-	// modulated by probe intensity and multi-bounce AO (diffuseAO).
-	// If using outdoor sky, heavily occlude in indoor shadows (skyShadowOcclusion).
-	float3 diffuseIBL;
-	if (usedDiffuseProbe)
+	float3 diffuseIBL = skyDiffuse;
+	if (hasProbe)
 	{
+		float3 probeDiffuseSample = g_TextureIrradianceIBL.SampleLevel(g_SamplerLinearWrap, diffEqUV, 0.0f).rgb;
 		float probeIntensity = max(g_Pass.probeBoxExtents.w, 0.0f);
-		diffuseIBL = envDiffuseSample * (probeIntensity * 0.20f) * albedo * kD_env * diffuseAO * diffProbeBlend;
+		float3 probeDiffuse = probeDiffuseSample * (probeIntensity * 0.20f) * albedo * kD_env * diffuseAO;
 		if (matFlags & DF_MAT_FLAG_CLOTH)
 		{
-			diffuseIBL = envDiffuseSample * (probeIntensity * 0.20f) * albedo * diffuseAO * diffProbeBlend;
+			probeDiffuse = probeDiffuseSample * (probeIntensity * 0.20f) * albedo * diffuseAO;
 		}
-	}
-	else
-	{
-		diffuseIBL = envDiffuseSample * g_Pass.ambientLightColor.a * albedo * kD_env * diffuseAO * skyShadowOcclusion;
-		if (matFlags & DF_MAT_FLAG_CLOTH)
-		{
-			diffuseIBL = envDiffuseSample * g_Pass.ambientLightColor.a * albedo * diffuseAO * skyShadowOcclusion;
-		}
+		diffuseIBL = lerp(skyDiffuse, probeDiffuse, diffProbeBlend);
 	}
 
 	// Dynamic DDGI Irradiance Probe Volume Integration
@@ -440,7 +434,7 @@ float3 evaluateDirectLighting(
 		{
 			float3 ddgiDiffuse = ddgiIrradiance * albedo * kD_env * diffuseAO;
 			// If a high-fidelity baked irradiance probe is active, preserve its authentic occlusion and blend DDGI softly as secondary bounce
-			float ddgiWeight = usedDiffuseProbe ? saturate(g_DDGI.ddgiParams.x * 0.20f) : saturate(g_DDGI.ddgiParams.x);
+			float ddgiWeight = hasProbe ? saturate(g_DDGI.ddgiParams.x * 0.20f) : saturate(g_DDGI.ddgiParams.x);
 			diffuseIBL = lerp(diffuseIBL, ddgiDiffuse, ddgiWeight);
 		}
 	}
@@ -458,35 +452,27 @@ float3 evaluateDirectLighting(
 	}
 
 	float rWeight = saturate(R_lookup.y * 0.5f + 0.5f);
-	float3 envRadiance = lerp(g_Pass.skyGroundColor.rgb, lerp(g_Pass.skyHorizonColor.rgb, g_Pass.skyZenithColor.rgb, saturate(R_lookup.y)), rWeight) * g_Pass.ambientLightColor.a;
+	float3 skyHemiSpec = lerp(g_Pass.skyGroundColor.rgb, lerp(g_Pass.skyHorizonColor.rgb, g_Pass.skyZenithColor.rgb, saturate(R_lookup.y)), rWeight) * g_Pass.ambientLightColor.a;
 
-	float2 eqUV = float2(atan2(R_lookup.z, R_lookup.x) * (0.5f * INV_PI) + 0.5f, 0.5f - asin(clamp(R_lookup.y, -1.0f, 1.0f)) * INV_PI);
-	bool usedSpecProbe = false;
+	float2 eqUV = float2(atan2(R_lookup.z, R_lookup.x) * (0.5f * INV_PI) + 0.5f, clamp(0.5f - asin(clamp(R_lookup.y, -1.0f, 1.0f)) * INV_PI, 0.001f, 0.999f));
+	float3 envRadiance = (g_Pass.ambientLightColor.a > 0.0001f)
+		? g_TextureSkyEquirect.SampleLevel(g_SamplerLinearWrap, eqUV, roughness * 5.0f).rgb * g_Pass.ambientLightColor.a
+		: skyHemiSpec;
+
 	if (hasProbe)
 	{
 		float3 localProbeSample = g_TextureSpecularIBL.SampleLevel(g_SamplerLinearWrap, eqUV, roughness * 5.0f).rgb;
-		if (any(localProbeSample > 0.0001f))
-		{
-			envRadiance = localProbeSample * max(g_Pass.probeBoxExtents.w, 0.0f) * specProbeBlend;
-			usedSpecProbe = true;
-		}
-	}
-	if (!usedSpecProbe)
-	{
-		float3 skySample = g_TextureSkyEquirect.SampleLevel(g_SamplerLinearWrap, eqUV, roughness * 5.0f).rgb;
-		if (any(skySample > 0.0001f))
-		{
-			envRadiance = skySample * g_Pass.ambientLightColor.a;
-		}
+		float3 localRadiance = localProbeSample * max(g_Pass.probeBoxExtents.w, 0.0f);
+		envRadiance = lerp(envRadiance, localRadiance, specProbeBlend);
 	}
 
 	float NoV = max(dot(N, V), 0.0f);
 	float2 envBRDF = envBRDFApprox(roughness, NoV);
-	// Lagarde directional specular occlusion (prevents probe leaking into dark crevices)
-	float specOcclusion = saturate(pow(NoV + ao, 2.0f) - 1.0f + roughness) * skyShadowOcclusion;
+	// Frostbite directional specular occlusion (Lagarde & de Rousiers 2014)
+	float specOcclusion = computeSpecularOcclusion(NoV, ao, roughness);
 	float horizOcclusion = computeHorizonOcclusion(R, N);
 
-	// Multi-scatter GGX energy compensation (Fdez-Agüera 2019) with roughness-attenuated Fresnel grazing peak
+	// Multi-scatter GGX energy compensation (Fdez-AgÃ¼era 2019) with roughness-attenuated Fresnel grazing peak
 	// For dielectrics, quadratic roughness attenuation prevents artificial wet/plastic sheen on dry stone & brick walls
 	float Ess = envBRDF.x + envBRDF.y;
 	float3 F_ms = F0 * (1.0f / max(Ess, 0.001f) - 1.0f);
@@ -515,10 +501,17 @@ float3 evaluateDirectLighting(
 	{
 		float ccFactor = saturate(g_Material.extraMaterialParams.x > 0.0001f ? g_Material.extraMaterialParams.x : g_Material.transmissionColor.w);
 		float ccRoughness = max(g_Material.extraMaterialParams.y, 0.02f);
-		float3 ccSky = g_TextureSkyEquirect.SampleLevel(g_SamplerLinearWrap, eqUV, ccRoughness * 5.0f).rgb * g_Pass.ambientLightColor.a;
+		float3 ccEnv = (g_Pass.ambientLightColor.a > 0.0001f)
+			? g_TextureSkyEquirect.SampleLevel(g_SamplerLinearWrap, eqUV, ccRoughness * 5.0f).rgb * g_Pass.ambientLightColor.a
+			: skyHemiSpec;
+		if (hasProbe)
+		{
+			float3 ccProbe = g_TextureSpecularIBL.SampleLevel(g_SamplerLinearWrap, eqUV, ccRoughness * 5.0f).rgb * max(g_Pass.probeBoxExtents.w, 0.0f);
+			ccEnv = lerp(ccEnv, ccProbe, specProbeBlend);
+		}
 		float2 ccBRDF = envBRDFApprox(ccRoughness, NoV);
 		float3 ccF_env = fresnelSchlickRoughness(NoV, float3(0.04f, 0.04f, 0.04f), ccRoughness) * ccFactor;
-		float3 ccSpecIBL = ccSky * (0.04f * ccBRDF.x + ccBRDF.y) * ccFactor * (specOcclusion * horizOcclusion);
+		float3 ccSpecIBL = ccEnv * (0.04f * ccBRDF.x + ccBRDF.y) * ccFactor * (specOcclusion * horizOcclusion);
 
 		// Attenuate base IBL by (1.0 - ccF_env)
 		diffuseIBL *= (1.0f - ccF_env);

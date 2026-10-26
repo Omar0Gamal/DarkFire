@@ -125,7 +125,7 @@ PSOutput main(PSInput input)
 		F0,
 		ao);
 
-	float3 litColor = applyAtmosphericFog(directLighting, input.positionWS, g_View.cameraPosition);
+	float3 litColor = applyAtmosphericFog(directLighting, input.positionWS, g_View.cameraPosition, input.positionCS.xy);
 
 	PSOutput output;
 	output.color = float4(litColor, 1.0f);

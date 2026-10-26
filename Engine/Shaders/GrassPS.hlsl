@@ -64,7 +64,7 @@ PSOutput main(PSInput input, bool isFrontFace : SV_IsFrontFace)
 	float3 subsurfaceLight = sRGBToLinear(float3(0.55f, 0.78f, 0.18f)) * subsurfaceFactor;
 
 	float3 totalLit = directLighting + subsurfaceLight;
-	float3 litColor = applyAtmosphericFog(totalLit, input.positionWS, g_View.cameraPosition);
+	float3 litColor = applyAtmosphericFog(totalLit, input.positionWS, g_View.cameraPosition, input.positionCS.xy);
 
 	PSOutput output;
 	output.color = float4(litColor, 1.0f);

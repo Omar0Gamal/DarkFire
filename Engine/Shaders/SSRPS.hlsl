@@ -42,7 +42,7 @@ float4 main(VSOutput input) : SV_Target
 	float3 worldNormal = nr.xyz * 2.0f - 1.0f;
 	float roughness = nr.w;
 
-	if (roughness > g_SSR.ssrParams.z) // Exceeds SSR roughness cutoff
+	if (roughness < 0.0f || roughness > g_SSR.ssrParams.z) // Cloth material or exceeds SSR roughness cutoff
 	{
 		return float4(0.0f, 0.0f, 0.0f, 0.0f);
 	}

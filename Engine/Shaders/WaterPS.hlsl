@@ -108,10 +108,10 @@ PSOutput main(PSInput input)
 	float skyT = saturate(R.y * 0.5f + 0.5f);
 	float3 skyReflection = lerp(g_Pass.skyHorizonColor.rgb, g_Pass.skyZenithColor.rgb, skyT);
 
-	// Sample pre-filtered equirectangular sky if bound
-	float2 eqUV = float2(atan2(R.z, R.x) * (0.5f * INV_PI) + 0.5f, 0.5f - asin(clamp(R.y, -1.0f, 1.0f)) * INV_PI);
+	// Sample pre-filtered equirectangular sky if ambient lighting is enabled (clamped V prevents pole wrapping)
+	float2 eqUV = float2(atan2(R.z, R.x) * (0.5f * INV_PI) + 0.5f, clamp(0.5f - asin(clamp(R.y, -1.0f, 1.0f)) * INV_PI, 0.001f, 0.999f));
 	float3 skySample = g_TextureSkyEquirect.SampleLevel(g_SamplerLinearWrap, eqUV, 1.0f).rgb;
-	if (any(skySample > 0.001f))
+	if (g_Pass.ambientLightColor.a > 0.0001f)
 	{
 		skyReflection = skySample * g_Pass.ambientLightColor.a;
 	}
@@ -142,8 +142,13 @@ PSOutput main(PSInput input)
 		}
 	}
 
-	float3 finalColor = lerp(withFoam, reflectionColor, fresnel.r) + sunSpecular;
-	finalColor = applyAtmosphericFog(finalColor, input.positionWS, g_View.cameraPosition);
+	// Water surface emission/reflection composite (fogged at water surface distance)
+	float3 waterSurface = lerp(lerp(waterBodyColor, foamLinear, totalFoam), reflectionColor, fresnel.r) + sunSpecular;
+	float3 foggedWater = applyAtmosphericFog(waterSurface, input.positionWS, g_View.cameraPosition, input.positionCS.xy);
+
+	// Transmitted seabed already contains atmospheric fog from opaque pass; avoid double-fogging
+	float seabedWeight = waterTransmittance * (1.0f - totalFoam) * (1.0f - fresnel.r);
+	float3 finalColor = lerp(foggedWater, seabedColor, seabedWeight);
 
 	PSOutput output;
 	output.color = float4(finalColor, 1.0f);

@@ -62,6 +62,6 @@ float4 main(FullscreenVSOutput input) : SV_Target0
 		matFlags,
 		sheenVal);
 
-	float3 litColor = applyAtmosphericFog(directLighting + emissive, worldPos, g_View.cameraPosition);
+	float3 litColor = applyAtmosphericFog(directLighting + emissive, worldPos, g_View.cameraPosition, input.positionCS.xy);
 	return float4(litColor, 1.0f);
 }

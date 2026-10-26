@@ -98,7 +98,7 @@ float2 envBRDFApprox(float roughness, float NoV)
 // Lagarde & de Rousiers 2014 specular occlusion from ambient occlusion & roughness
 float computeSpecularOcclusion(float NoV, float ao, float roughness)
 {
-	return saturate(pow(NoV + ao, exp2(-16.0f * roughness - 1.0f)) - 1.0f + ao);
+	return saturate(pow(max(NoV + ao, 0.0f), exp2(-16.0f * roughness - 1.0f)) - 1.0f + ao);
 }
 
 // Jimenez 2016 multi-bounce ambient occlusion approximation

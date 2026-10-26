@@ -29,10 +29,13 @@ PSOutput main(PSInput input, bool isFrontFace : SV_IsFrontFace)
 		s.roughness,
 		s.metallic,
 		s.F0,
-		ao);
+		ao,
+		0xFFFFFFFFu,
+		-1.0f,
+		input.tangentWS.xyz);
 
 	PSOutput output;
-	float3 litColor = applyAtmosphericFog(directLighting + s.emissive, input.positionWS, g_View.cameraPosition);
+	float3 litColor = applyAtmosphericFog(directLighting + s.emissive, input.positionWS, g_View.cameraPosition, input.positionCS.xy);
 	output.color = float4(litColor, s.albedo.a);
 	output.entityId = input.entityId;
 	output.normalRoughness = float4(s.normalWS * 0.5f + 0.5f, s.roughness);

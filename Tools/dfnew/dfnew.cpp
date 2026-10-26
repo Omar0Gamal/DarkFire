@@ -67,7 +67,7 @@ int main(int argc, char** argv)
 
 	if (projectName.empty())
 	{
-		std::cout << "Usage: dfnew <ProjectName> [--template <Empty3D|Playground3D>] [--path <DestinationPath>]\n";
+		std::cout << "Usage: dfnew <ProjectName> [--template <Empty3D|Playground3D|GraphicsTest3D>] [--path <DestinationPath>]\n";
 		return 1;
 	}
 

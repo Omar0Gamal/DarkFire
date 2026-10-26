@@ -3,6 +3,22 @@
 #include "Editor/EditorLayer.h"
 #include <iostream>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+
+// Request high-performance discrete GPU on hybrid / Optimus laptops
+extern "C" {
+	__declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001;
+	__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
+#endif
+
 int main(int argc, char** argv)
 {
 	Platform::CrashHandler::Install();

@@ -4,8 +4,18 @@ setlocal enabledelayedexpansion
 pushd "%~dp0.."
 set ROOT_DIR=%CD%
 
-set PROJECT_PATH=%1
-if "%PROJECT_PATH%"=="" set PROJECT_PATH=Templates\Playground3D\Project.dfproj
+set ARG1=%1
+if "%ARG1%"=="" set ARG1=Templates\Playground3D\Project.dfproj
+
+if exist "%ARG1%\Project.dfproj" (
+    set PROJECT_PATH=%ARG1%\Project.dfproj
+) else if exist "Templates\%ARG1%\Project.dfproj" (
+    set PROJECT_PATH=Templates\%ARG1%\Project.dfproj
+) else if exist "%ARG1%" (
+    set PROJECT_PATH=%ARG1%
+) else (
+    set PROJECT_PATH=Templates\%ARG1%\Project.dfproj
+)
 
 for %%F in ("%PROJECT_PATH%") do (
     set PROJECT_DIR=%%~dpF
@@ -91,12 +101,26 @@ if exist "%ENGINE_DLL%" (
     echo [DarkFire] Packaged engine core: DarkFire.dll
 )
 
-:: 6. Clean intermediate loose folders so the package is clean with .pak archives
+:: 6. Copy Project definition, Scenes, and Assets into package directory
+if exist "%PROJECT_PATH%" (
+    copy /Y "%PROJECT_PATH%" "%PACKAGE_DIR%\Project.dfproj" >nul
+    copy /Y "%PROJECT_PATH%" "%PACKAGE_DIR%\%PROJECT_NAME%.dfproj" >nul
+    echo [DarkFire] Packaged Project file: %PROJECT_NAME%.dfproj
+)
+if exist "%PROJECT_DIR%Scenes" (
+    mkdir "%PACKAGE_DIR%\Scenes" 2>nul
+    xcopy /E /I /Y "%PROJECT_DIR%Scenes" "%PACKAGE_DIR%\Scenes" >nul
+    echo [DarkFire] Packaged Scenes.
+)
+if exist "%PROJECT_DIR%Assets" (
+    mkdir "%PACKAGE_DIR%\Assets" 2>nul
+    xcopy /E /I /Y "%PROJECT_DIR%Assets" "%PACKAGE_DIR%\Assets" >nul
+    echo [DarkFire] Packaged Assets.
+)
+
+:: Clean intermediate cooked folders
 if exist "%PACKAGE_DIR%\Shaders" rmdir /S /Q "%PACKAGE_DIR%\Shaders"
 if exist "%PACKAGE_DIR%\Content" rmdir /S /Q "%PACKAGE_DIR%\Content"
-if exist "%PACKAGE_DIR%\Assets"  rmdir /S /Q "%PACKAGE_DIR%\Assets"
-
-:: (Project.dfproj is cooked directly into Game.pak and mounted at /Project.dfproj)
 
 :: 8. Copy ThirdParty licenses
 if exist "%ROOT_DIR%\Docs\Licenses" (

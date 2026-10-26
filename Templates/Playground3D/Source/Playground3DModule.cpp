@@ -4,14 +4,22 @@
 #include "Engine/Core/Scene/Components.h"
 #include "Engine/Platform/Input.h"
 #include "Engine/Core/Log/Log.h"
+#include <cmath>
 
 namespace Playground
 {
 	using Core::Vector3;
+	using Core::Vector2;
 
 	class PlayerController : public Core::ScriptableEntity
 	{
 	public:
+		void onCreate() override
+		{
+			exposeFloat("Move Speed", m_speed, 1.0f, 30.0f, 0.2f);
+			exposeFloat("Jump Force", m_jumpForce, 1.0f, 25.0f, 0.2f);
+		}
+
 		void onStart() override
 		{
 			Core::Log::Get().info("Playground3D", "PlayerController script started on entity: '{}'", getEntity().getName());
@@ -19,78 +27,83 @@ namespace Playground
 
 		void onUpdate(float deltaTime) override
 		{
-			Vector3 moveDir(0.0f, 0.0f, 0.0f);
-			if (Platform::Input::isKeyPressed(Platform::KeyCode::W) || Platform::Input::isKeyPressed(Platform::KeyCode::Up))
-			{
-				moveDir.z += 1.0f;
-			}
-			if (Platform::Input::isKeyPressed(Platform::KeyCode::S) || Platform::Input::isKeyPressed(Platform::KeyCode::Down))
-			{
-				moveDir.z -= 1.0f;
-			}
-			if (Platform::Input::isKeyPressed(Platform::KeyCode::D) || Platform::Input::isKeyPressed(Platform::KeyCode::Right))
-			{
-				moveDir.x += 1.0f;
-			}
-			if (Platform::Input::isKeyPressed(Platform::KeyCode::A) || Platform::Input::isKeyPressed(Platform::KeyCode::Left))
-			{
-				moveDir.x -= 1.0f;
-			}
+			Vector2 moveInput = getMovementInput2D();
+			Vector3 moveDir(moveInput.x, 0.0f, moveInput.y);
 
-			if (moveDir.LengthSquared() > 0.0f)
+			if (hasRigidbody())
 			{
-				moveDir.Normalize();
-			}
-
-			auto* state = getEntity().tryGetComponent<Core::RigidbodyRuntimeState>();
-			if (state)
-			{
-				state->linearVelocity.x = moveDir.x * m_speed;
-				state->linearVelocity.z = moveDir.z * m_speed;
+				setHorizontalVelocity(moveDir * m_speed);
+				if (isKeyJustPressed(Platform::KeyCode::Space))
+				{
+					addImpulse(Vector3(0.0f, m_jumpForce, 0.0f));
+					Core::Log::Get().info("Playground3D", "Player jumped with force: {}", m_jumpForce);
+				}
 			}
 			else
 			{
-				auto& trans = getEntity().getTransform();
-				trans.position += moveDir * (m_speed * deltaTime);
-			}
-
-			if (Platform::Input::isKeyJustPressed(Platform::KeyCode::Space))
-			{
-				if (state)
-				{
-					state->linearVelocity.y = m_jumpForce;
-					Core::Log::Get().info("Playground3D", "Player jumped!");
-				}
+				translate(moveDir * (m_speed * deltaTime));
 			}
 		}
 
 		void onCollisionEnter(Core::Entity other) override
 		{
-			Core::Log::Get().info("Playground3D", "PlayerController: Hit '{}'", other.getName());
+			Core::Log::Get().info("Playground3D", "PlayerController: Collided with '{}'", other.getName());
 		}
 
 	private:
-		float m_speed = 5.0f;
-		float m_jumpForce = 6.0f;
+		float m_speed = 7.0f;
+		float m_jumpForce = 7.5f;
 	};
 
 	class Rotator : public Core::ScriptableEntity
 	{
 	public:
+		void onCreate() override
+		{
+			exposeFloat("Rotation Speed", m_rotationSpeed, -360.0f, 360.0f, 1.0f);
+		}
+
 		void onUpdate(float deltaTime) override
 		{
-			auto& trans = getEntity().getTransform();
-			Vector3 degs = trans.eulerDegrees;
-			degs.y += m_rotationSpeed * deltaTime;
-			if (degs.y >= 360.0f)
-			{
-				degs.y -= 360.0f;
-			}
-			trans.setEulerDegrees(degs);
+			rotateY(m_rotationSpeed * deltaTime);
 		}
 
 	private:
 		float m_rotationSpeed = 60.0f; // degrees/sec
+	};
+
+	class FloatingPickup : public Core::ScriptableEntity
+	{
+	public:
+		void onCreate() override
+		{
+			exposeFloat("Spin Speed", m_spinSpeed, -360.0f, 360.0f, 5.0f);
+			exposeFloat("Bob Frequency", m_bobFreq, 0.1f, 10.0f, 0.1f);
+			exposeFloat("Bob Amplitude", m_bobAmp, 0.01f, 2.0f, 0.05f);
+		}
+
+		void onStart() override
+		{
+			Core::Log::Get().info("Playground3D", "FloatingPickup initialized on entity '{}'", getEntity().getName());
+		}
+
+		void onUpdate(float deltaTime) override
+		{
+			rotateY(m_spinSpeed * deltaTime);
+			m_timer += deltaTime;
+			translate(Vector3(0.0f, std::cos(m_timer * m_bobFreq) * m_bobAmp * deltaTime, 0.0f));
+		}
+
+		void onTriggerEnter(Core::Entity other) override
+		{
+			Core::Log::Get().info("Playground3D", "FloatingPickup: Collected by '{}'!", other.getName());
+		}
+
+	private:
+		float m_spinSpeed = 90.0f; // degrees/sec
+		float m_bobFreq = 2.5f;
+		float m_bobAmp = 0.5f;
+		float m_timer = 0.0f;
 	};
 
 	class TriggerZone : public Core::ScriptableEntity
@@ -110,10 +123,19 @@ namespace Playground
 	class Bouncer : public Core::ScriptableEntity
 	{
 	public:
+		void onCreate() override
+		{
+			exposeFloat("Bounce Multiplier", m_bounceMultiplier, 0.1f, 5.0f, 0.05f);
+		}
+
 		void onCollisionEnter(Core::Entity other) override
 		{
-			Core::Log::Get().info("Playground3D", "Bouncer: Bounced off '{}'!", other.getName());
+			addImpulse(Vector3(0.0f, 7.5f * m_bounceMultiplier, 0.0f));
+			Core::Log::Get().info("Playground3D", "Bouncer: Propelled entity '{}' upwards!", other.getName());
 		}
+
+	private:
+		float m_bounceMultiplier = 1.25f;
 	};
 }
 
@@ -133,6 +155,7 @@ extern "C"
 		ctx.log.info("Playground3D", "Registering Playground3D scripts into ScriptRegistry...");
 		Core::ScriptRegistry::Get().registerScript<Playground::PlayerController>("PlayerController");
 		Core::ScriptRegistry::Get().registerScript<Playground::Rotator>("Rotator");
+		Core::ScriptRegistry::Get().registerScript<Playground::FloatingPickup>("FloatingPickup");
 		Core::ScriptRegistry::Get().registerScript<Playground::TriggerZone>("TriggerZone");
 		Core::ScriptRegistry::Get().registerScript<Playground::Bouncer>("Bouncer");
 	}

@@ -100,4 +100,21 @@ namespace Platform
 
 		Count = 5
 	};
+
+	enum class GamepadButton : uint8_t
+	{
+		DPadUp = 0, DPadDown, DPadLeft, DPadRight,
+		Start, Back, LeftThumb, RightThumb,
+		LeftBumper, RightBumper,
+		A, B, X, Y,
+		Count
+	};
+
+	enum class GamepadAxis : uint8_t
+	{
+		LeftStickX = 0, LeftStickY,
+		RightStickX, RightStickY,
+		LeftTrigger, RightTrigger,
+		Count
+	};
 }

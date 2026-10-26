@@ -15,6 +15,7 @@ namespace Core::RHI
 		R8G8B8A8_UNORM,
 		R8G8B8A8_UNORM_SRGB,
 		R8G8B8A8_SNORM,
+		R16G16_FLOAT,
 		R16G16B16A16_FLOAT,
 		R32G32B32A32_FLOAT,
 		R32G32B32_FLOAT,
@@ -24,7 +25,15 @@ namespace Core::RHI
 		D32_FLOAT,
 		D24_UNORM_S8_UINT,
 		R11G11B10_FLOAT,
-		R32_UINT
+		R32_UINT,
+		BC1_UNORM,
+		BC1_UNORM_SRGB,
+		BC3_UNORM,
+		BC3_UNORM_SRGB,
+		BC4_UNORM,
+		BC5_UNORM,
+		BC7_UNORM,
+		BC7_UNORM_SRGB
 	};
 
 	enum class PrimitiveTopology : uint8_t
@@ -33,7 +42,8 @@ namespace Core::RHI
 		LineList,
 		LineStrip,
 		TriangleList,
-		TriangleStrip
+		TriangleStrip,
+		PatchList3ControlPoints
 	};
 
 	enum class BufferUsage : uint8_t
@@ -53,7 +63,8 @@ namespace Core::RHI
 		ShaderResource = 1 << 3,
 		RenderTarget = 1 << 4,
 		DepthStencil = 1 << 5,
-		UnorderedAccess = 1 << 6
+		UnorderedAccess = 1 << 6,
+		IndirectDrawArgs = 1 << 7
 	};
 
 	inline BufferBindFlags operator|(BufferBindFlags a, BufferBindFlags b) noexcept
@@ -64,6 +75,17 @@ namespace Core::RHI
 	inline bool operator&(BufferBindFlags a, BufferBindFlags b) noexcept
 	{
 		return (static_cast<uint32_t>(a) & static_cast<uint32_t>(b)) != 0;
+	}
+
+	inline BufferBindFlags& operator|=(BufferBindFlags& a, BufferBindFlags b) noexcept
+	{
+		a = a | b;
+		return a;
+	}
+
+	inline bool hasFlag(BufferBindFlags flags, BufferBindFlags flag) noexcept
+	{
+		return (flags & flag);
 	}
 
 	enum class CullMode : uint8_t
@@ -228,6 +250,8 @@ namespace Core::RHI
 		ComparisonFunc comparisonFunc = ComparisonFunc::Never;
 		float minLOD = 0.0f;
 		float maxLOD = 3.402823466e+38F;
+		float borderColor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+		uint32_t maxAnisotropy = 16;
 
 		bool operator==(const SamplerStateDesc& o) const noexcept
 		{
@@ -237,7 +261,12 @@ namespace Core::RHI
 				addressW == o.addressW &&
 				comparisonFunc == o.comparisonFunc &&
 				minLOD == o.minLOD &&
-				maxLOD == o.maxLOD;
+				maxLOD == o.maxLOD &&
+				borderColor[0] == o.borderColor[0] &&
+				borderColor[1] == o.borderColor[1] &&
+				borderColor[2] == o.borderColor[2] &&
+				borderColor[3] == o.borderColor[3] &&
+				maxAnisotropy == o.maxAnisotropy;
 		}
 	};
 

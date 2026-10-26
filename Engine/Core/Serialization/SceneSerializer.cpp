@@ -43,6 +43,7 @@ namespace Core
 			entityNode["uuid"] = idComp.id.value();
 			entityNode["name"] = idComp.name;
 			entityNode["tag"] = idComp.tag;
+			entityNode["isActive"] = idComp.isActive;
 
 			const auto& hComp = m_scene->m_registry.get<HierarchyComponent>(handle);
 			if (hComp.parent != entt::null && m_scene->m_registry.valid(hComp.parent))
@@ -140,9 +141,12 @@ namespace Core
 			uint64_t uuidVal = entityNode["uuid"].get<uint64_t>();
 			std::string name = entityNode.value("name", "Entity");
 			std::string tag = entityNode.value("tag", "Default");
+			bool isActive = entityNode.value("isActive", true);
 
 			Entity entity = m_scene->createEntityWithUUID(UUID(uuidVal), name);
-			entity.getComponent<IdentityComponent>().tag = tag;
+			auto& idComp = entity.getComponent<IdentityComponent>();
+			idComp.tag = tag;
+			idComp.isActive = isActive;
 
 			uint64_t parentUuid = entityNode.value("parent", (uint64_t)0);
 			if (parentUuid != 0)

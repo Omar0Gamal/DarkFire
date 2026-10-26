@@ -340,11 +340,326 @@ namespace Core::Renderer
 		return psRes;
 	}
 
+	Result<std::shared_ptr<RHI::IHullShader>, std::string> ShaderLibrary::getOrCreateHullShader(
+		const std::string& shaderName,
+		const std::string& entryPoint,
+		const std::vector<std::string>& keywords)
+	{
+		const std::string key = buildKey(shaderName, entryPoint, keywords);
+		auto it = m_hullShaders.find(key);
+		if (it != m_hullShaders.end())
+		{
+			return Result<std::shared_ptr<RHI::IHullShader>, std::string>::ok(it->second);
+		}
+
+		std::string baseStem = std::filesystem::path(shaderName).stem().string();
+		std::vector<uint8_t> precompiledBytecode;
+		std::filesystem::path csoPath = std::filesystem::path(m_shaderDir) / (baseStem + ".cso");
+		if (!std::filesystem::exists(csoPath))
+		{
+			if (std::filesystem::exists("Engine/Shaders/" + baseStem + ".cso")) csoPath = "Engine/Shaders/" + baseStem + ".cso";
+			else if (std::filesystem::exists("../../../Engine/Shaders/" + baseStem + ".cso")) csoPath = "../../../Engine/Shaders/" + baseStem + ".cso";
+		}
+		if (std::filesystem::exists(csoPath))
+		{
+			std::ifstream csoFile(csoPath, std::ios::binary | std::ios::ate);
+			if (csoFile.is_open())
+			{
+				auto sz = csoFile.tellg();
+				csoFile.seekg(0, std::ios::beg);
+				precompiledBytecode.resize(static_cast<size_t>(sz));
+				csoFile.read(reinterpret_cast<char*>(precompiledBytecode.data()), sz);
+			}
+		}
+		if (precompiledBytecode.empty())
+		{
+			auto& vfs = Core::EngineContext::Get().vfs;
+			auto vfsRes = vfs.readBinaryFile("/Shaders/" + baseStem + ".cso");
+			if (vfsRes.isOk()) precompiledBytecode = std::move(vfsRes.value());
+			else
+			{
+				auto vfsRes2 = vfs.readBinaryFile("/engine/Shaders/" + baseStem + ".cso");
+				if (vfsRes2.isOk()) precompiledBytecode = std::move(vfsRes2.value());
+			}
+		}
+		if (!precompiledBytecode.empty())
+		{
+			auto hsRes = m_device.createHullShader(precompiledBytecode);
+			if (hsRes)
+			{
+				m_hullShaders[key] = *hsRes;
+				return hsRes;
+			}
+		}
+
+		std::filesystem::path filePath = std::filesystem::path(m_shaderDir) / shaderName;
+		if (!std::filesystem::exists(filePath))
+		{
+			if (std::filesystem::exists("Engine/Shaders/" + shaderName)) filePath = "Engine/Shaders/" + shaderName;
+			else if (std::filesystem::exists("../../../Engine/Shaders/" + shaderName)) filePath = "../../../Engine/Shaders/" + shaderName;
+		}
+		std::ifstream file(filePath);
+		if (!file.is_open())
+		{
+			m_lastError = "Shader file not found: " + filePath.string();
+			return Result<std::shared_ptr<RHI::IHullShader>, std::string>::error(m_lastError);
+		}
+		std::stringstream ss;
+		ss << file.rdbuf();
+		auto compileRes = compileSource(ss.str(), filePath.string(), entryPoint, "hs_5_0", keywords);
+		if (!compileRes)
+		{
+			m_lastError = compileRes.error();
+			return Result<std::shared_ptr<RHI::IHullShader>, std::string>::error(m_lastError);
+		}
+		auto hsRes = m_device.createHullShader(*compileRes);
+		if (!hsRes)
+		{
+			m_lastError = hsRes.error();
+			return Result<std::shared_ptr<RHI::IHullShader>, std::string>::error(m_lastError);
+		}
+		m_hullShaders[key] = *hsRes;
+		m_bytecodeCache[key] = *compileRes;
+		return hsRes;
+	}
+
+	Result<std::shared_ptr<RHI::IDomainShader>, std::string> ShaderLibrary::getOrCreateDomainShader(
+		const std::string& shaderName,
+		const std::string& entryPoint,
+		const std::vector<std::string>& keywords)
+	{
+		const std::string key = buildKey(shaderName, entryPoint, keywords);
+		auto it = m_domainShaders.find(key);
+		if (it != m_domainShaders.end())
+		{
+			return Result<std::shared_ptr<RHI::IDomainShader>, std::string>::ok(it->second);
+		}
+
+		std::string baseStem = std::filesystem::path(shaderName).stem().string();
+		std::vector<uint8_t> precompiledBytecode;
+		std::filesystem::path csoPath = std::filesystem::path(m_shaderDir) / (baseStem + ".cso");
+		if (!std::filesystem::exists(csoPath))
+		{
+			if (std::filesystem::exists("Engine/Shaders/" + baseStem + ".cso")) csoPath = "Engine/Shaders/" + baseStem + ".cso";
+			else if (std::filesystem::exists("../../../Engine/Shaders/" + baseStem + ".cso")) csoPath = "../../../Engine/Shaders/" + baseStem + ".cso";
+		}
+		if (std::filesystem::exists(csoPath))
+		{
+			std::ifstream csoFile(csoPath, std::ios::binary | std::ios::ate);
+			if (csoFile.is_open())
+			{
+				auto sz = csoFile.tellg();
+				csoFile.seekg(0, std::ios::beg);
+				precompiledBytecode.resize(static_cast<size_t>(sz));
+				csoFile.read(reinterpret_cast<char*>(precompiledBytecode.data()), sz);
+			}
+		}
+		if (precompiledBytecode.empty())
+		{
+			auto& vfs = Core::EngineContext::Get().vfs;
+			auto vfsRes = vfs.readBinaryFile("/Shaders/" + baseStem + ".cso");
+			if (vfsRes.isOk()) precompiledBytecode = std::move(vfsRes.value());
+			else
+			{
+				auto vfsRes2 = vfs.readBinaryFile("/engine/Shaders/" + baseStem + ".cso");
+				if (vfsRes2.isOk()) precompiledBytecode = std::move(vfsRes2.value());
+			}
+		}
+		if (!precompiledBytecode.empty())
+		{
+			auto dsRes = m_device.createDomainShader(precompiledBytecode);
+			if (dsRes)
+			{
+				m_domainShaders[key] = *dsRes;
+				return dsRes;
+			}
+		}
+
+		std::filesystem::path filePath = std::filesystem::path(m_shaderDir) / shaderName;
+		if (!std::filesystem::exists(filePath))
+		{
+			if (std::filesystem::exists("Engine/Shaders/" + shaderName)) filePath = "Engine/Shaders/" + shaderName;
+			else if (std::filesystem::exists("../../../Engine/Shaders/" + shaderName)) filePath = "../../../Engine/Shaders/" + shaderName;
+		}
+		std::ifstream file(filePath);
+		if (!file.is_open())
+		{
+			m_lastError = "Shader file not found: " + filePath.string();
+			return Result<std::shared_ptr<RHI::IDomainShader>, std::string>::error(m_lastError);
+		}
+		std::stringstream ss;
+		ss << file.rdbuf();
+		auto compileRes = compileSource(ss.str(), filePath.string(), entryPoint, "ds_5_0", keywords);
+		if (!compileRes)
+		{
+			m_lastError = compileRes.error();
+			return Result<std::shared_ptr<RHI::IDomainShader>, std::string>::error(m_lastError);
+		}
+		auto dsRes = m_device.createDomainShader(*compileRes);
+		if (!dsRes)
+		{
+			m_lastError = dsRes.error();
+			return Result<std::shared_ptr<RHI::IDomainShader>, std::string>::error(m_lastError);
+		}
+		m_domainShaders[key] = *dsRes;
+		m_bytecodeCache[key] = *compileRes;
+		return dsRes;
+	}
+
+	Result<std::shared_ptr<RHI::IComputeShader>, std::string> ShaderLibrary::loadComputeShader(
+		const std::string& name,
+		const std::filesystem::path& path,
+		const std::string& entryPoint)
+	{
+		auto it = m_computeShaders.find(name);
+		if (it != m_computeShaders.end())
+		{
+			return Result<std::shared_ptr<RHI::IComputeShader>, std::string>::ok(it->second);
+		}
+
+		std::string baseStem = path.stem().string();
+		std::vector<uint8_t> precompiledBytecode;
+
+		std::filesystem::path csoPath = std::filesystem::path(m_shaderDir) / (baseStem + ".cso");
+		if (!std::filesystem::exists(csoPath))
+		{
+			if (std::filesystem::exists(path.parent_path() / (baseStem + ".cso")))
+			{
+				csoPath = path.parent_path() / (baseStem + ".cso");
+			}
+			else if (std::filesystem::exists("Engine/Shaders/" + baseStem + ".cso"))
+			{
+				csoPath = "Engine/Shaders/" + baseStem + ".cso";
+			}
+			else if (std::filesystem::exists("../../../Engine/Shaders/" + baseStem + ".cso"))
+			{
+				csoPath = "../../../Engine/Shaders/" + baseStem + ".cso";
+			}
+		}
+
+		if (std::filesystem::exists(csoPath))
+		{
+			std::ifstream csoFile(csoPath, std::ios::binary | std::ios::ate);
+			if (csoFile.is_open())
+			{
+				auto sz = csoFile.tellg();
+				csoFile.seekg(0, std::ios::beg);
+				precompiledBytecode.resize(static_cast<size_t>(sz));
+				csoFile.read(reinterpret_cast<char*>(precompiledBytecode.data()), sz);
+			}
+		}
+
+		if (precompiledBytecode.empty())
+		{
+			auto& vfs = Core::EngineContext::Get().vfs;
+			auto vfsRes = vfs.readBinaryFile("/Shaders/" + baseStem + ".cso");
+			if (vfsRes.isOk())
+			{
+				precompiledBytecode = std::move(vfsRes.value());
+			}
+			else
+			{
+				auto vfsRes2 = vfs.readBinaryFile("/engine/Shaders/" + baseStem + ".cso");
+				if (vfsRes2.isOk())
+				{
+					precompiledBytecode = std::move(vfsRes2.value());
+				}
+			}
+		}
+
+		if (!precompiledBytecode.empty())
+		{
+			auto csRes = m_device.createComputeShader(precompiledBytecode);
+			if (csRes)
+			{
+				m_computeShaders[name] = *csRes;
+				m_bytecodeCache[name] = precompiledBytecode;
+				return csRes;
+			}
+		}
+
+		std::filesystem::path filePath = path;
+		if (!std::filesystem::exists(filePath))
+		{
+			filePath = std::filesystem::path(m_shaderDir) / path;
+			if (!std::filesystem::exists(filePath))
+			{
+				if (std::filesystem::exists("Engine/Shaders/" + path.string()))
+				{
+					filePath = "Engine/Shaders/" + path.string();
+				}
+				else if (std::filesystem::exists("../../../Engine/Shaders/" + path.string()))
+				{
+					filePath = "../../../Engine/Shaders/" + path.string();
+				}
+			}
+		}
+
+		std::ifstream file(filePath);
+		if (!file.is_open())
+		{
+			m_lastError = "Compute shader file not found: " + path.string();
+			DF_LOG_ERROR("Shader", "{}", m_lastError);
+			return Result<std::shared_ptr<RHI::IComputeShader>, std::string>::error(m_lastError);
+		}
+
+		std::stringstream ss;
+		ss << file.rdbuf();
+		const std::string source = ss.str();
+
+		auto compileRes = compileSource(source, filePath.string(), entryPoint, "cs_5_0");
+		if (!compileRes)
+		{
+			m_lastError = compileRes.error();
+			DF_LOG_ERROR("Shader", "Compute Shader compilation error in {}: {}", path.string(), m_lastError);
+			return Result<std::shared_ptr<RHI::IComputeShader>, std::string>::error(m_lastError);
+		}
+
+		auto csRes = m_device.createComputeShader(*compileRes);
+		if (!csRes)
+		{
+			m_lastError = csRes.error();
+			DF_LOG_ERROR("Shader", "Failed to create Compute Shader GPU resource for {}: {}", path.string(), m_lastError);
+			return Result<std::shared_ptr<RHI::IComputeShader>, std::string>::error(m_lastError);
+		}
+
+		m_computeShaders[name] = *csRes;
+		m_bytecodeCache[name] = *compileRes;
+		return csRes;
+	}
+
+	std::shared_ptr<RHI::IComputeShader> ShaderLibrary::getComputeShader(const std::string& name) const
+	{
+		auto it = m_computeShaders.find(name);
+		if (it != m_computeShaders.end())
+		{
+			return it->second;
+		}
+		return nullptr;
+	}
+
+	Result<std::shared_ptr<RHI::IComputeShader>, std::string> ShaderLibrary::getOrCreateComputeShader(
+		const std::string& shaderName,
+		const std::string& entryPoint,
+		const std::vector<std::string>& keywords)
+	{
+		const std::string key = buildKey(shaderName, entryPoint, keywords);
+		auto it = m_computeShaders.find(key);
+		if (it != m_computeShaders.end())
+		{
+			return Result<std::shared_ptr<RHI::IComputeShader>, std::string>::ok(it->second);
+		}
+		return loadComputeShader(key, shaderName, entryPoint);
+	}
+
 	void ShaderLibrary::reloadShaders()
 	{
 		DF_LOG_INFO("Shader", "ShaderLibrary: Reloading shaders...");
 		m_vertexShaders.clear();
 		m_pixelShaders.clear();
+		m_hullShaders.clear();
+		m_domainShaders.clear();
+		m_computeShaders.clear();
 		m_bytecodeCache.clear();
 	}
 }

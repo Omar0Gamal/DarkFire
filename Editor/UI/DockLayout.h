@@ -23,6 +23,7 @@ namespace Editor::UI
 		inline constexpr const char* Viewport3D   = "3D Viewport###DF_Viewport3D";
 		inline constexpr const char* GameViewport = "Game Viewport###DF_GameView";
 		inline constexpr const char* Inspector    = "Inspector###DF_Inspector";
+		inline constexpr const char* WorldSettings = "World Settings###DF_WorldSettings";
 		inline constexpr const char* Console      = "Console###DF_Console";
 		inline constexpr const char* Profiler     = "Profiler###DF_Profiler";
 		inline constexpr const char* ScriptEditor = "Script Editor###DF_ScriptEditor";

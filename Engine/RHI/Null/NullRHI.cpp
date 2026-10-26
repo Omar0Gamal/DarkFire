@@ -34,6 +34,15 @@ namespace Core::RHI
 				case PixelFormat::R16G16B16A16_FLOAT:
 				case PixelFormat::R32G32_FLOAT:
 					return 8;
+				case PixelFormat::BC1_UNORM:
+				case PixelFormat::BC1_UNORM_SRGB:
+				case PixelFormat::BC4_UNORM:
+				case PixelFormat::BC3_UNORM:
+				case PixelFormat::BC3_UNORM_SRGB:
+				case PixelFormat::BC5_UNORM:
+				case PixelFormat::BC7_UNORM:
+				case PixelFormat::BC7_UNORM_SRGB:
+					return 1;
 				case PixelFormat::R32G32B32_FLOAT:
 					return 12;
 				case PixelFormat::R32G32B32A32_FLOAT:
@@ -173,6 +182,12 @@ namespace Core::RHI
 		(void)texture;
 	}
 
+	void NullDeviceContext::setShaderResourceBufferVS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer)
+	{
+		(void)slot;
+		(void)buffer;
+	}
+
 	void NullDeviceContext::setShaderResourcePS(uint32_t slot, const std::shared_ptr<IGpuTexture>& texture)
 	{
 		(void)slot;
@@ -209,6 +224,26 @@ namespace Core::RHI
 		(void)indexCount;
 		(void)startIndexLocation;
 		(void)baseVertexLocation;
+		m_drawIndexedCallCount++;
+	}
+
+	void NullDeviceContext::drawIndexedInstanced(uint32_t indexCountPerInstance, uint32_t instanceCount, uint32_t startIndexLocation, int32_t baseVertexLocation, uint32_t startInstanceLocation)
+	{
+		(void)startIndexLocation;
+		(void)baseVertexLocation;
+		(void)startInstanceLocation;
+		if (indexCountPerInstance > 0 && instanceCount > 0)
+		{
+			m_drawCallCount++;
+			m_drawIndexedCallCount++;
+		}
+	}
+
+	void NullDeviceContext::drawIndexedInstancedIndirect(const std::shared_ptr<IGpuBuffer>& argumentBuffer, uint32_t offsetBytes)
+	{
+		(void)argumentBuffer;
+		(void)offsetBytes;
+		m_drawCallCount++;
 		m_drawIndexedCallCount++;
 	}
 
@@ -270,6 +305,21 @@ namespace Core::RHI
 		return Result<std::shared_ptr<IPixelShader>, std::string>::ok(std::make_shared<NullPixelShader>(bytecode));
 	}
 
+	Result<std::shared_ptr<IHullShader>, std::string> NullRHIDevice::createHullShader(std::span<const uint8_t> bytecode)
+	{
+		return Result<std::shared_ptr<IHullShader>, std::string>::ok(std::make_shared<NullHullShader>(bytecode));
+	}
+
+	Result<std::shared_ptr<IDomainShader>, std::string> NullRHIDevice::createDomainShader(std::span<const uint8_t> bytecode)
+	{
+		return Result<std::shared_ptr<IDomainShader>, std::string>::ok(std::make_shared<NullDomainShader>(bytecode));
+	}
+
+	Result<std::shared_ptr<IComputeShader>, std::string> NullRHIDevice::createComputeShader(std::span<const uint8_t> bytecode)
+	{
+		return Result<std::shared_ptr<IComputeShader>, std::string>::ok(std::make_shared<NullComputeShader>(bytecode));
+	}
+
 	Result<std::shared_ptr<IInputLayout>, std::string> NullRHIDevice::createInputLayout(std::span<const InputElementDesc> elements, std::span<const uint8_t> vsBytecode)
 	{
 		(void)vsBytecode;
@@ -319,6 +369,8 @@ namespace Core::RHI
 		h = fnv1a64(&desc.comparisonFunc, sizeof(desc.comparisonFunc), h);
 		h = fnv1a64(&desc.minLOD, sizeof(desc.minLOD), h);
 		h = fnv1a64(&desc.maxLOD, sizeof(desc.maxLOD), h);
+		h = fnv1a64(desc.borderColor, sizeof(desc.borderColor), h);
+		h = fnv1a64(&desc.maxAnisotropy, sizeof(desc.maxAnisotropy), h);
 		return h;
 	}
 

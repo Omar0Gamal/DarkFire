@@ -5,6 +5,7 @@
 #include "Engine/RHI/IRHI.h"
 #include "Engine/Renderer/DrawItem.h"
 #include "Engine/Renderer/Material.h"
+#include "Engine/Core/Scene/Components.h"
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -26,6 +27,8 @@ namespace Core::Renderer
 		int32_t baseVertex = 0;
 		RenderLayer layer = RenderLayer::Opaque;
 		float distanceToCamera = 0.0f;
+		bool castShadows = true;
+		bool receiveShadows = true;
 	};
 
 	struct DF_API RenderLight
@@ -38,6 +41,11 @@ namespace Core::Renderer
 		float innerConeAngle = 0.785f; // ~45 deg
 		float outerConeAngle = 0.872f; // ~50 deg
 		uint32_t type = 0;             // 0 = Directional, 1 = Point, 2 = Spot
+		bool castShadows = true;
+		float shadowBias = 0.0015f;
+		float shadowNormalBias = 0.02f;
+		float shadowSoftness = 1.0f;
+		float shadowDistance = 60.0f;
 	};
 
 	struct DF_API RenderCamera
@@ -68,7 +76,9 @@ namespace Core::Renderer
 	{
 		ACES = 0,
 		Reinhard,
-		Linear
+		Linear,
+		AgX,
+		Neutral
 	};
 
 	struct DF_API RenderEnvironment
@@ -82,25 +92,90 @@ namespace Core::Renderer
 		std::shared_ptr<RHI::IGpuTexture> skyboxTexture;
 		std::string skyboxTexturePath;
 
-		// Post Processing settings from scene
+		// Pipeline, Geometry, Shadows & Post Processing settings from scene
+		uint8_t renderPipeline = 0; // 0 = Forward+, 1 = Deferred PBR
+		bool enableShadows = true;
+		bool enablePCSS = false;
+		bool enableContactShadows = false;
+		bool enableTessellation = false;
+		float tessellationFactor = 3.0f;
+		int32_t meshLodBias = 0; // -1=Force LOD0, 0=Auto Distance LOD, 1=Force LOD1, 2=Force LOD2
+
 		bool enableTonemapping = true;
 		TonemapperType tonemapper = TonemapperType::ACES;
 		float exposure = 1.0f;
 		float gamma = 2.2f;
+		bool enableAutoExposure = false;
+		float autoExposureMinEV = -1.5f;
+		float autoExposureMaxEV = 1.5f;
+		float autoExposureSpeed = 2.5f;
+		float contrast = 1.0f;
+		float saturation = 1.0f;
+		float vignetteIntensity = 0.0f;
+		float colorTemperature = 0.0f;
+
+		bool enableBoxProjectedIBL = false;
+		Math::Vector3 iblBoxCenter = Math::Vector3(0.0f, 6.0f, 0.0f);
+		Math::Vector3 iblBoxExtents = Math::Vector3(30.0f, 16.0f, 18.0f);
+		float iblBoxIntensity = 1.0f;
+		bool captureProbeSceneGeometry = true;
+		std::string bakedProbeCubemapPath;
+
+		// Temporal Anti-Aliasing (Tier 1)
+		bool enableTAA = true;
+
+		// High-Performance GPU Compute (Tier 1)
+		bool enableClusteredLighting = true;
+		bool enableGpuCulling = true;
 
 		bool enableFXAA = true;
 		float fxaaSubpix = 0.75f;
 		float fxaaEdgeThreshold = 0.166f;
 		float fxaaEdgeThresholdMin = 0.0833f;
+		float casSharpening = 0.35f;
 
-		bool enableSSAO = true;
+		bool enableSSAO = false;
 		float ssaoRadius = 0.5f;
 		float ssaoBias = 0.025f;
-		float ssaoIntensity = 1.2f;
+		float ssaoIntensity = 1.0f;
 
-		bool enableBloom = true;
+		bool enableBloom = false;
 		float bloomThreshold = 1.0f;
 		float bloomIntensity = 0.04f;
+
+		float ssaoDirectLightInfluence = 0.35f;
+
+		// Atmospheric Fog
+		bool enableFog = false;
+		Math::Vector4 fogColor = Math::Vector4(0.45f, 0.52f, 0.65f, 1.0f);
+		float fogDensity = 0.008f;
+		float fogHeightFalloff = 0.08f;
+		float fogSunScattering = 0.35f;
+
+		// Screen-Space Reflections (Hi-Z SSR)
+		bool enableSSR = false;
+		float ssrMaxDistance = 25.0f;
+		float ssrThickness = 0.5f;
+		float ssrRoughnessCutoff = 0.65f;
+		float ssrIntensity = 1.0f;
+		uint32_t ssrStepCount = 32;
+
+		// Separable Subsurface Scattering (SSS)
+		bool enableSSS = false;
+		float sssRadius = 1.5f;
+		float sssMaxDepthDiff = 0.2f;
+
+		// DDGI Dynamic Probe Volume
+		bool enableDDGI = false;
+		Math::Vector3 ddgiOrigin = Math::Vector3(0.0f, 0.0f, 0.0f);
+		Math::Vector3 ddgiProbeCounts = Math::Vector3(16.0f, 8.0f, 16.0f);
+		float ddgiProbeSpacing = 2.0f;
+		float ddgiNormalBias = 0.15f;
+		float ddgiHysteresis = 0.95f;
+		float ddgiIntensity = 1.0f;
+		float ddgiEnergyPreservation = 0.85f;
+
+		uint32_t debugView = 0; // 0=Lit, 1=SSAO, 2=Bloom, 3=Shadows, 4=Normals, 5=Albedo, 6=MetallicRoughness
 	};
 
 	struct DF_API RenderParticleInstance
@@ -113,6 +188,40 @@ namespace Core::Renderer
 		BlendMode blendMode = BlendMode::Translucent;
 	};
 
+	struct DF_API RenderTerrainInstance
+	{
+		Math::Matrix world{};
+		uint32_t entityId = 0;
+		Core::TerrainComponent component{};
+	};
+
+	struct DF_API RenderFoliageInstance
+	{
+		Math::Matrix world{};
+		uint32_t entityId = 0;
+		Core::FoliageComponent component{};
+	};
+
+	struct DF_API RenderWaterInstance
+	{
+		Math::Matrix world{};
+		uint32_t entityId = 0;
+		Core::WaterComponent component{};
+	};
+
+	struct DF_API RenderDecalInstance
+	{
+		Math::Matrix world{};
+		Math::Matrix invWorld{};
+		uint32_t entityId = 0;
+		Math::Vector4 color = Math::Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+		std::string albedoTexturePath;
+		std::string normalTexturePath;
+		float normalStrength = 1.0f;
+		float roughness = 0.5f;
+		float fadeDistance = 50.0f;
+	};
+
 	struct DF_API RenderScene
 	{
 		RenderCamera camera;
@@ -120,12 +229,20 @@ namespace Core::Renderer
 		std::vector<RenderMeshInstance> meshes;
 		std::vector<RenderLight> lights;
 		std::vector<RenderParticleInstance> particles;
+		std::vector<RenderTerrainInstance> terrains;
+		std::vector<RenderFoliageInstance> foliage;
+		std::vector<RenderWaterInstance> waters;
+		std::vector<RenderDecalInstance> decals;
 
 		void clear()
 		{
 			meshes.clear();
 			lights.clear();
 			particles.clear();
+			terrains.clear();
+			foliage.clear();
+			waters.clear();
+			decals.clear();
 		}
 	};
 
@@ -137,7 +254,9 @@ namespace Core::Renderer
 		bool enableSSAO = true;
 		bool overrideBloom = false;
 		bool enableBloom = true;
-		uint32_t debugView = 0; // 0 = Lit, 1 = SSAO, 2 = Bloom
+		bool overrideShadows = false;
+		bool enableShadows = true;
+		uint32_t debugView = 0; // 0 = Lit, 1 = SSAO, 2 = Bloom, 3 = Shadows, 4 = Normals, 5 = Albedo, 6 = MetallicRoughness, 7 = SSR, 8 = SSGI
 		bool overrideWireframe = false;
 		bool enableWireframe = false;
 	};

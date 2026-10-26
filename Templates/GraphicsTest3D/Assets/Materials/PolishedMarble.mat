@@ -1,0 +1,13 @@
+{
+  "name": "PolishedMarble",
+  "baseColor": [0.22, 0.23, 0.25, 1.0],
+  "roughness": 0.35,
+  "metallic": 0.0,
+  "normalPath": "Assets/Models/Sponza/Sponza_Detail_Normal.png",
+  "normalScale": 0.5,
+  "emissive": [0.0, 0.0, 0.0, 0.0],
+  "tiling": [2.0, 2.0],
+  "blendMode": 0,
+  "depthMode": 0,
+  "cullMode": 1
+}

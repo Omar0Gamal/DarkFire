@@ -1,3 +1,5 @@
+#include "CookCommon.h"
+
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -5,233 +7,20 @@
 #include <string_view>
 #include <filesystem>
 #include <algorithm>
-#include <chrono>
 #include <cstdint>
 #include <cstring>
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#include <d3dcompiler.h>
-#include <DirectXTex.h>
-
 namespace dfcook
 {
-#pragma pack(push, 1)
-	struct PakHeader
+	std::vector<uint8_t> ReadDiskFile(const std::filesystem::path& path)
 	{
-		char magic[4];          // "DFPK"
-		uint32_t version;       // 1
-		uint32_t entryCount;    // Number of entries
-		uint64_t tableOffset;   // Offset to entry table
-	};
-
-	struct PakDiskEntry
-	{
-		uint64_t pathHash;
-		uint64_t dataOffset;
-		uint64_t dataSize;
-		uint32_t pathLength;
-	};
-#pragma pack(pop)
-
-	static constexpr uint64_t FNV1A_OFFSET = 14695981039346656037ULL;
-	static constexpr uint64_t FNV1A_PRIME = 1099511628211ULL;
-
-	inline uint64_t HashPath(std::string_view path) noexcept
-	{
-		uint64_t hash = FNV1A_OFFSET;
-		for (char c : path)
-		{
-			char lower = (c >= 'A' && c <= 'Z') ? static_cast<char>(c + 32) : (c == '\\' ? '/' : c);
-			hash ^= static_cast<uint64_t>(static_cast<uint8_t>(lower));
-			hash *= FNV1A_PRIME;
-		}
-		return hash;
-	}
-
-	inline std::string NormalizeVirtualPath(std::string_view path)
-	{
-		std::string result(path);
-		std::replace(result.begin(), result.end(), '\\', '/');
-		if (!result.empty() && result.front() != '/')
-		{
-			result.insert(result.begin(), '/');
-		}
-		return result;
-	}
-
-	struct CookedAsset
-	{
-		std::string virtualPath;
-		uint64_t size = 0;
-		uint64_t hash = 0;
-	};
-
-	bool CompileShader(
-		const std::filesystem::path& hlslPath,
-		const std::string& entryPoint,
-		const std::string& profile,
-		const std::filesystem::path& outCsoPath)
-	{
-		UINT flags = D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_OPTIMIZATION_LEVEL3 | D3DCOMPILE_PACK_MATRIX_ROW_MAJOR;
-
-		ID3DBlob* codeBlob = nullptr;
-		ID3DBlob* errorBlob = nullptr;
-
-		HRESULT hr = D3DCompileFromFile(
-			hlslPath.c_str(),
-			nullptr,
-			D3D_COMPILE_STANDARD_FILE_INCLUDE,
-			entryPoint.c_str(),
-			profile.c_str(),
-			flags,
-			0,
-			&codeBlob,
-			&errorBlob);
-
-		if (FAILED(hr))
-		{
-			std::cerr << "[dfcook] Shader compilation error in " << hlslPath.filename().string() << ":" << std::endl;
-			if (errorBlob)
-			{
-				std::cerr << static_cast<const char*>(errorBlob->GetBufferPointer()) << std::endl;
-				errorBlob->Release();
-			}
-			if (codeBlob) codeBlob->Release();
-			return false;
-		}
-
-		if (errorBlob) errorBlob->Release();
-
-		std::filesystem::create_directories(outCsoPath.parent_path());
-		std::ofstream outFile(outCsoPath, std::ios::binary | std::ios::trunc);
-		if (!outFile.is_open())
-		{
-			std::cerr << "[dfcook] Failed to write CSO file: " << outCsoPath.string() << std::endl;
-			if (codeBlob) codeBlob->Release();
-			return false;
-		}
-
-		outFile.write(static_cast<const char*>(codeBlob->GetBufferPointer()), codeBlob->GetBufferSize());
-		outFile.close();
-
-		std::cout << "[dfcook] Compiled " << hlslPath.filename().string() << " (" << profile << ") -> " << outCsoPath.filename().string() << " (" << codeBlob->GetBufferSize() << " bytes)" << std::endl;
-		codeBlob->Release();
-		return true;
-	}
-
-	bool CookShaders(const std::filesystem::path& shadersInDir, const std::filesystem::path& shadersOutDir)
-	{
-		std::cout << "[dfcook] Precompiling shaders from: " << shadersInDir.string() << std::endl;
-
-		if (!std::filesystem::exists(shadersInDir))
-		{
-			std::cerr << "[dfcook] Shaders directory not found: " << shadersInDir.string() << std::endl;
-			return false;
-		}
-
-		bool allSucceeded = true;
-
-		for (const auto& entry : std::filesystem::directory_iterator(shadersInDir))
-		{
-			if (!entry.is_regular_file()) continue;
-
-			std::string ext = entry.path().extension().string();
-			std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-			if (ext != ".hlsl") continue;
-
-			std::string stem = entry.path().stem().string();
-			std::string profile = "vs_5_0";
-			if (stem.ends_with("PS") || stem.ends_with("Pixel"))
-			{
-				profile = "ps_5_0";
-			}
-			else if (stem.ends_with("VS") || stem.ends_with("Vertex"))
-			{
-				profile = "vs_5_0";
-			}
-			else
-			{
-				continue; // Skip helper hlsl files
-			}
-
-			std::filesystem::path outCso = shadersOutDir / (stem + ".cso");
-			if (!CompileShader(entry.path(), "main", profile, outCso))
-			{
-				allSucceeded = false;
-			}
-		}
-
-		return allSucceeded;
-	}
-
-	bool CookTextures(const std::filesystem::path& inDir, const std::filesystem::path& outDir)
-	{
-		std::cout << "[dfcook] Cooking textures from: " << inDir.string() << " to: " << outDir.string() << std::endl;
-		if (!std::filesystem::exists(inDir)) return true;
-
-		HRESULT hrCo = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-		(void)hrCo;
-
-		for (const auto& entry : std::filesystem::recursive_directory_iterator(inDir))
-		{
-			if (!entry.is_regular_file()) continue;
-
-			std::string ext = entry.path().extension().string();
-			std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-
-			if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp")
-			{
-				auto relPath = std::filesystem::relative(entry.path(), inDir);
-				auto outDdsPath = outDir / relPath;
-				outDdsPath.replace_extension(".dds");
-				std::filesystem::create_directories(outDdsPath.parent_path());
-
-				DirectX::TexMetadata metadata;
-				DirectX::ScratchImage image;
-
-				HRESULT hr = DirectX::LoadFromWICFile(entry.path().c_str(), DirectX::WIC_FLAGS_NONE, &metadata, image);
-				if (FAILED(hr))
-				{
-					std::cerr << "[dfcook] Failed to load image: " << entry.path().string() << std::endl;
-					continue;
-				}
-
-				DirectX::ScratchImage mipChain;
-				hr = DirectX::GenerateMipMaps(image.GetImages(), image.GetImageCount(), image.GetMetadata(), DirectX::TEX_FILTER_DEFAULT, 0, mipChain);
-				const DirectX::ScratchImage& imageToCompress = SUCCEEDED(hr) ? mipChain : image;
-
-				DirectX::ScratchImage compressed;
-				hr = DirectX::Compress(
-					imageToCompress.GetImages(),
-					imageToCompress.GetImageCount(),
-					imageToCompress.GetMetadata(),
-					DXGI_FORMAT_BC7_UNORM,
-					DirectX::TEX_COMPRESS_PARALLEL,
-					DirectX::TEX_THRESHOLD_DEFAULT,
-					compressed);
-
-				if (SUCCEEDED(hr))
-				{
-					DirectX::SaveToDDSFile(compressed.GetImages(), compressed.GetImageCount(), compressed.GetMetadata(), DirectX::DDS_FLAGS_NONE, outDdsPath.c_str());
-					std::cout << "[dfcook] Compressed texture " << relPath.string() << " -> " << outDdsPath.filename().string() << std::endl;
-				}
-				else
-				{
-					// Fallback to uncompressed DDS
-					DirectX::SaveToDDSFile(imageToCompress.GetImages(), imageToCompress.GetImageCount(), imageToCompress.GetMetadata(), DirectX::DDS_FLAGS_NONE, outDdsPath.c_str());
-					std::cout << "[dfcook] Saved uncompressed texture " << relPath.string() << " -> " << outDdsPath.filename().string() << std::endl;
-				}
-			}
-		}
-
-		CoUninitialize();
-		return true;
+		std::ifstream file(path, std::ios::binary | std::ios::ate);
+		if (!file.is_open()) return {};
+		auto sz = file.tellg();
+		file.seekg(0, std::ios::beg);
+		std::vector<uint8_t> buf(static_cast<size_t>(sz));
+		file.read(reinterpret_cast<char*>(buf.data()), sz);
+		return buf;
 	}
 
 	bool WritePakArchive(
@@ -306,20 +95,10 @@ namespace dfcook
 		return true;
 	}
 
-	std::vector<uint8_t> ReadDiskFile(const std::filesystem::path& path)
-	{
-		std::ifstream file(path, std::ios::binary | std::ios::ate);
-		if (!file.is_open()) return {};
-		auto sz = file.tellg();
-		file.seekg(0, std::ios::beg);
-		std::vector<uint8_t> buf(static_cast<size_t>(sz));
-		file.read(reinterpret_cast<char*>(buf.data()), sz);
-		return buf;
-	}
-
 	bool CreateEnginePak(
 		const std::filesystem::path& cookedShadersDir,
 		const std::filesystem::path& engineContentDir,
+		const std::filesystem::path& bakedContentDir,
 		const std::filesystem::path& outPakPath,
 		std::vector<CookedAsset>& manifestAssets)
 	{
@@ -353,7 +132,44 @@ namespace dfcook
 			}
 		}
 
+		// 3. Pack Baked Content (BRDF LUT, Environment IBL, etc.)
+		if (std::filesystem::exists(bakedContentDir))
+		{
+			for (const auto& entry : std::filesystem::directory_iterator(bakedContentDir))
+			{
+				if (entry.is_regular_file())
+				{
+					std::string ext = entry.path().extension().string();
+					std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+					if (ext == ".dds")
+					{
+						std::string vpath = "/Content/Baked/" + entry.path().filename().string();
+						auto it = std::find_if(files.begin(), files.end(), [&](const auto& item) {
+							return item.first == vpath;
+						});
+						if (it != files.end())
+						{
+							it->second = ReadDiskFile(entry.path());
+						}
+						else
+						{
+							files.push_back({ vpath, ReadDiskFile(entry.path()) });
+						}
+					}
+				}
+			}
+		}
+
 		return WritePakArchive(outPakPath, files, manifestAssets);
+	}
+
+	inline bool CreateEnginePak(
+		const std::filesystem::path& cookedShadersDir,
+		const std::filesystem::path& engineContentDir,
+		const std::filesystem::path& outPakPath,
+		std::vector<CookedAsset>& manifestAssets)
+	{
+		return CreateEnginePak(cookedShadersDir, engineContentDir, outPakPath.parent_path() / "Content" / "Baked", outPakPath, manifestAssets);
 	}
 
 	bool CreateGamePak(
@@ -441,6 +257,8 @@ int main(int argc, char** argv)
 	bool cookShaders = false;
 	bool cookTextures = false;
 	bool cookPaks = false;
+	bool cookLighting = false;
+	dfcook::BakeQuality bakeQuality = dfcook::BakeQuality::Production;
 
 	for (int i = 1; i < argc; ++i)
 	{
@@ -465,11 +283,24 @@ int main(int argc, char** argv)
 		{
 			cookPaks = true;
 		}
+		else if (arg == "--ibl" || arg == "--lighting")
+		{
+			cookLighting = true;
+		}
+		else if ((arg == "--bake-quality" || arg == "-bq") && i + 1 < argc)
+		{
+			std::string qStr = argv[++i];
+			std::transform(qStr.begin(), qStr.end(), qStr.begin(), ::tolower);
+			if (qStr == "fast" || qStr == "0") bakeQuality = dfcook::BakeQuality::Fast;
+			else if (qStr == "balanced" || qStr == "1") bakeQuality = dfcook::BakeQuality::Balanced;
+			else bakeQuality = dfcook::BakeQuality::Production;
+		}
 		else if (arg == "--all")
 		{
 			cookShaders = true;
 			cookTextures = true;
 			cookPaks = true;
+			cookLighting = true;
 		}
 		else if (!arg.starts_with("--") && i == 1)
 		{
@@ -481,11 +312,18 @@ int main(int argc, char** argv)
 		}
 	}
 
-	if (!cookShaders && !cookTextures && !cookPaks)
+	if (!cookShaders && !cookTextures && !cookPaks && !cookLighting)
 	{
 		cookShaders = true;
 		cookTextures = true;
 		cookPaks = true;
+		cookLighting = true;
+	}
+
+	// Run CookLightingIBL automatically whenever --shaders, --pak, or --all is passed
+	if (cookShaders || cookPaks)
+	{
+		cookLighting = true;
 	}
 
 	std::cout << "[dfcook] Target Project: " << projectPath.string() << std::endl;
@@ -495,6 +333,7 @@ int main(int argc, char** argv)
 	std::filesystem::path engineContentDir = "Engine/Content";
 	std::filesystem::path cookedShadersDir = outputDir / "Shaders";
 	std::filesystem::path cookedContentDir = outputDir / "Content";
+	std::filesystem::path cookedBakedDir = outputDir / "Content" / "Baked";
 
 	std::vector<dfcook::CookedAsset> manifestAssets;
 
@@ -506,10 +345,38 @@ int main(int argc, char** argv)
 		}
 	}
 
+	if (cookLighting)
+	{
+		if (!dfcook::CookLightingIBL(cookedBakedDir, bakeQuality))
+		{
+			std::cerr << "[dfcook] Warning: Offline Lighting & IBL baking failed!" << std::endl;
+		}
+
+		if (std::filesystem::exists(projectPath))
+		{
+			std::filesystem::path projectAssetsDir = projectPath.parent_path() / "Assets" / "Textures";
+			if (std::filesystem::exists(projectAssetsDir))
+			{
+				for (const auto& entry : std::filesystem::directory_iterator(projectAssetsDir))
+				{
+					if (entry.is_regular_file() && entry.path().extension() == ".hdr")
+					{
+						std::filesystem::path outDds = entry.path();
+						outDds.replace_extension(".dds");
+						if (!std::filesystem::exists(outDds))
+						{
+							dfcook::ConvolveProbeHDR(entry.path(), outDds, bakeQuality);
+						}
+					}
+				}
+			}
+		}
+	}
+
 	if (cookTextures)
 	{
 		dfcook::CookTextures(engineContentDir, cookedContentDir);
-		if (std::filesystem::exists(projectPath))
+		if (!cookPaks && std::filesystem::exists(projectPath))
 		{
 			std::filesystem::path projectAssetsDir = projectPath.parent_path() / "Assets";
 			dfcook::CookTextures(projectAssetsDir, outputDir / "Assets");
@@ -519,7 +386,7 @@ int main(int argc, char** argv)
 	if (cookPaks)
 	{
 		std::filesystem::path enginePakPath = outputDir / "Engine.pak";
-		dfcook::CreateEnginePak(cookedShadersDir, engineContentDir, enginePakPath, manifestAssets);
+		dfcook::CreateEnginePak(cookedShadersDir, engineContentDir, cookedBakedDir, enginePakPath, manifestAssets);
 
 		std::filesystem::path gamePakPath = outputDir / "Game.pak";
 		dfcook::CreateGamePak(projectPath, gamePakPath, manifestAssets);

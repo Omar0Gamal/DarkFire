@@ -12,6 +12,8 @@
 #include "Editor/Panels/ContentBrowserPanel.h"
 #include "Editor/Panels/ProfilerPanel.h"
 #include "Editor/Panels/ProjectManagerPanel.h"
+#include "Editor/Panels/WorldSettingsPanel.h"
+#include "Editor/Scripting/ScriptWizardModal.h"
 #include "Editor/Viewport/SceneViewportPanel.h"
 #include "Editor/Viewport/GameViewportPanel.h"
 #include "Editor/PlaySession.h"
@@ -60,6 +62,7 @@ namespace Editor
 		void onSimulate();
 		void onStop();
 		void onPlayStandalone();
+		void buildAndReloadGameModule();
 
 		EditorMode getEditorMode() const noexcept { return m_playSession.getEditorMode(); }
 		PlayState getPlayState() const noexcept { return m_playSession.getPlayState(); }
@@ -101,6 +104,8 @@ namespace Editor
 		ContentBrowserPanel m_contentBrowserPanel;
 		ProfilerPanel m_profilerPanel;
 		ProjectManagerPanel m_projectManagerPanel;
+		WorldSettingsPanel m_worldSettingsPanel;
+		ScriptWizardModal m_scriptWizardModal;
 		SceneViewportPanel m_sceneViewportPanel;
 		GameViewportPanel m_gameViewportPanel;
 
@@ -113,6 +118,7 @@ namespace Editor
 		bool m_showGameViewport = true;
 		bool m_showHierarchy = true;
 		bool m_showInspector = true;
+		bool m_showWorldSettings = true;
 		bool m_showConsole = true;
 		bool m_showContentBrowser = true;
 		bool m_showProfiler = true;

@@ -26,7 +26,7 @@ namespace Runtime
 		static Application& Get() noexcept { return *s_instance; }
 
 		bool init();
-		void run();
+		void run(int maxFrames = -1);
 		void close();
 
 		void pushLayer(std::shared_ptr<Layer> layer);
@@ -41,6 +41,10 @@ namespace Runtime
 		Core::Renderer::SceneRenderer& getRenderer() noexcept { return *m_sceneRenderer; }
 		Physics::IPhysicsWorld& getPhysicsWorld() noexcept { return *m_physicsWorld; }
 		const ProjectConfig& getConfig() const noexcept { return m_config; }
+		void setVSync(bool vsync) noexcept { m_config.vsync = vsync; }
+		[[nodiscard]] bool isVSync() const noexcept { return m_config.vsync; }
+		LayerStack& getLayerStack() noexcept { return m_layerStack; }
+		const LayerStack& getLayerStack() const noexcept { return m_layerStack; }
 
 	protected:
 		virtual void onInit() {}
@@ -61,13 +65,11 @@ namespace Runtime
 		std::unique_ptr<Physics::IPhysicsWorld> m_physicsWorld;
 		LayerStack m_layerStack;
 
-#if defined(DF_EDITOR)
 		bool m_imguiInitialized = false;
 		void initImGui();
 		void shutdownImGui();
 		void beginImGuiFrame();
 		void endImGuiFrame();
-#endif
 	};
 }
 

@@ -2,7 +2,9 @@
 #include "Engine/Runtime/Application.h"
 #include "Engine/Core/Scene/Components.h"
 #include "Engine/Core/Scripting/ScriptableEntity.h"
+#include "Engine/Core/Scripting/ScriptRegistry.h"
 #include "Engine/Core/Log/Log.h"
+#include "Engine/Audio/AudioSystem.h"
 
 namespace Editor
 {
@@ -34,6 +36,20 @@ namespace Editor
 			auto& sc = view.get<Core::ScriptsComponent>(handle);
 			for (auto& s : sc.scripts)
 			{
+				if (!s.instance && !s.scriptName.empty())
+				{
+					s.instance = Core::ScriptRegistry::Get().instantiate(s.scriptName);
+					if (s.instance)
+					{
+						s.instance->bind(Core::Entity(handle, activeScene.get()), activeScene.get());
+						s.instance->onCreate();
+						if (!s.serializedFieldsJson.empty())
+						{
+							s.instance->deserializeExposedFields(s.serializedFieldsJson);
+						}
+					}
+				}
+
 				if (s.isEnabled && s.instance && !s.isStarted)
 				{
 					s.instance->onStart();
@@ -42,6 +58,7 @@ namespace Editor
 			}
 		}
 
+		Audio::AudioSystem::Get().init();
 		Core::Log::Get().info("Editor", "Play mode started.");
 	}
 
@@ -132,6 +149,7 @@ namespace Editor
 		m_playState = PlayState::Stopped;
 
 		if (onSceneChanged) onSceneChanged();
+		Audio::AudioSystem::Get().shutdown();
 		Core::Log::Get().info("Editor", "Simulation stopped. Restored edit scene.");
 	}
 
@@ -179,6 +197,8 @@ namespace Editor
 					}
 				}
 			}
+
+			Audio::AudioSystem::Get().update(*activeScene, deltaTime);
 		}
 	}
 }

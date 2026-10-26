@@ -17,6 +17,12 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+
+// Request high-performance discrete GPU on hybrid / Optimus laptops
+extern "C" {
+	__declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001;
+	__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
 #endif
 
 static std::filesystem::path GetExecutablePath()
@@ -68,6 +74,9 @@ int main(int argc, char** argv)
 			ctx.log.info("Player", "Mounted Game.pak from current directory.");
 		}
 		std::string projectPath;
+		std::string overrideScene;
+		std::string screenshotPath;
+		int overrideDebugView = -1;
 
 		int maxFrames = -1;
 
@@ -81,6 +90,18 @@ int main(int argc, char** argv)
 			else if (arg == "--frames" && i + 1 < argc)
 			{
 				maxFrames = std::stoi(argv[++i]);
+			}
+			else if (arg == "--scene" && i + 1 < argc)
+			{
+				overrideScene = argv[++i];
+			}
+			else if (arg == "--screenshot" && i + 1 < argc)
+			{
+				screenshotPath = argv[++i];
+			}
+			else if (arg == "--debug-view" && i + 1 < argc)
+			{
+				overrideDebugView = std::stoi(argv[++i]);
 			}
 		}
 
@@ -161,7 +182,30 @@ int main(int argc, char** argv)
 			{
 				ctx.log.info("Player", "Using packaged standalone configuration for '{}'", exeStem);
 				config.name = exeStem;
-				config.startScene = "Scenes/Playground.scene";
+				if (std::filesystem::exists(exeDir / "Scenes/SponzaAtrium.scene"))
+				{
+					config.startScene = "Scenes/SponzaAtrium.scene";
+				}
+				else if (std::filesystem::exists(exeDir / "Scenes/Playground.scene"))
+				{
+					config.startScene = "Scenes/Playground.scene";
+				}
+				else
+				{
+					std::error_code ec;
+					for (const auto& entry : std::filesystem::directory_iterator(exeDir / "Scenes", ec))
+					{
+						if (entry.is_regular_file() && entry.path().extension() == ".scene")
+						{
+							config.startScene = "Scenes/" + entry.path().filename().string();
+							break;
+						}
+					}
+					if (config.startScene.empty())
+					{
+						config.startScene = "Scenes/Playground.scene";
+					}
+				}
 				config.modulePath = (exeDir / (exeStem + ".dll")).string();
 				configLoaded = true;
 			}
@@ -264,11 +308,12 @@ int main(int argc, char** argv)
 
 		// Create Scene Runtime Layer
 		auto sceneLayer = std::make_shared<Runtime::SceneRuntimeLayer>();
-		std::filesystem::path scenePath = projectDir / config.startScene;
-		std::string vscenePath = "/" + config.startScene;
+		std::string startSceneToLoad = overrideScene.empty() ? config.startScene : overrideScene;
+		std::filesystem::path scenePath = projectDir / startSceneToLoad;
+		std::string vscenePath = "/" + startSceneToLoad;
 		if (std::filesystem::exists(scenePath) || ctx.vfs.exists(vscenePath) || ctx.vfs.exists("/Scenes/" + scenePath.filename().string()))
 		{
-			ctx.log.info("Player", "Loading start scene: {}", config.startScene);
+			ctx.log.info("Player", "Loading start scene: {}", startSceneToLoad);
 			sceneLayer->loadScene(scenePath);
 		}
 		else
@@ -276,16 +321,24 @@ int main(int argc, char** argv)
 			ctx.log.warn("Player", "Start scene '{}' not found. Running with empty scene.", scenePath.string());
 		}
 
+		if (overrideDebugView >= 0 && sceneLayer->getScene())
+		{
+			auto ppView = sceneLayer->getScene()->view<Core::PostProcessingComponent>();
+			for (auto e : ppView)
+			{
+				ppView.get<Core::PostProcessingComponent>(e).debugView = static_cast<uint32_t>(overrideDebugView);
+			}
+		}
+
 		app.pushLayer(sceneLayer);
 
 		if (maxFrames > 0)
 		{
 			ctx.log.info("Player", "Running in bounded frame test mode (maxFrames = {})...", maxFrames);
-			for (int frame = 0; frame < maxFrames; ++frame)
+			app.run(maxFrames);
+			if (!screenshotPath.empty())
 			{
-				app.getWindow().pollEvents();
-				sceneLayer->onFixedUpdate(1.0f / 60.0f);
-				sceneLayer->onUpdate(1.0f / 60.0f);
+				app.getRenderer().saveScreenshot(screenshotPath, app.getSwapChain());
 			}
 			ctx.log.info("Player", "Bounded frame execution completed successfully.");
 		}

@@ -59,7 +59,10 @@ workspace "DarkFire"
 				"ThirdParty/imgui/backends/imgui_impl_dx11.h",
 				"ThirdParty/imgui/backends/imgui_impl_dx11.cpp",
 				"ThirdParty/ImGuizmo/src/ImGuizmo.h",
-				"ThirdParty/ImGuizmo/src/ImGuizmo.cpp"
+				"ThirdParty/ImGuizmo/src/ImGuizmo.cpp",
+				"ThirdParty/ufbx/ufbx.h",
+				"ThirdParty/ufbx/ufbx.c",
+				"ThirdParty/miniaudio/miniaudio.h"
 			}
 
 			includedirs
@@ -75,7 +78,9 @@ workspace "DarkFire"
 				"%{wks.location}/ThirdParty/tinyobjloader/include",
 				"%{wks.location}/ThirdParty/backward-cpp",
 				"%{wks.location}/ThirdParty/DirectXTK/Inc",
-				"%{wks.location}/ThirdParty/DirectXTex/DirectXTex"
+				"%{wks.location}/ThirdParty/DirectXTex/DirectXTex",
+				"%{wks.location}/ThirdParty/ufbx",
+				"%{wks.location}/ThirdParty/miniaudio"
 			}
 
 			links
@@ -428,6 +433,72 @@ workspace "DarkFire"
 			{
 				"Templates/Empty3D/Source/**.h",
 				"Templates/Empty3D/Source/**.cpp"
+			}
+
+			includedirs
+			{
+				"%{wks.location}",
+				"%{wks.location}/ThirdParty/entt/src",
+				"%{wks.location}/ThirdParty/json/include"
+			}
+
+			links
+			{
+				"DarkFire"
+			}
+
+			warnings "Extra"
+			buildoptions { "/WX", "/MP", "/utf-8", "/permissive-", "/Zc:preprocessor", "/Zc:__cplusplus", "/fp:precise", "/wd4100", "/wd4251" }
+
+			defines
+			{
+				"ENTT_API_IMPORT",
+				"DF_MODULE_EXPORT"
+			}
+
+			filter "configurations:not Dist"
+				kind "SharedLib"
+
+			filter "configurations:Dist"
+				kind "StaticLib"
+				staticruntime "on"
+
+			filter "configurations:Debug"
+				defines { "DEBUG", "_DEBUG", "DF_DEBUG" }
+				runtime "Debug"
+				symbols "On"
+
+			filter "configurations:Debug-ASan"
+				defines { "DEBUG", "_DEBUG", "DF_DEBUG", "DF_ASAN" }
+				runtime "Debug"
+				symbols "On"
+				buildoptions { "/fsanitize=address" }
+				links { "clang_rt.asan_dynamic-x86_64.lib", "clang_rt.asan_dynamic_runtime_thunk-x86_64.lib" }
+
+			filter "configurations:Release"
+				defines { "NDEBUG", "RELEASE", "DF_RELEASE" }
+				runtime "Release"
+				optimize "On"
+				symbols "On"
+
+			filter "configurations:Dist"
+				defines { "NDEBUG", "DIST", "DF_DIST" }
+				runtime "Release"
+				optimize "On"
+				symbols "Off"
+
+		project "GraphicsTest3D"
+			location "Templates/GraphicsTest3D"
+			language "C++"
+			cppdialect "C++20"
+
+			targetdir ("bin/" .. OutputDir .. "/Templates/%{prj.name}")
+			objdir ("bin-int/" .. OutputDir .. "/%{prj.name}")
+
+			files
+			{
+				"Templates/GraphicsTest3D/Source/**.h",
+				"Templates/GraphicsTest3D/Source/**.cpp"
 			}
 
 			includedirs

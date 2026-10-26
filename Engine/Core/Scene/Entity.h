@@ -53,6 +53,9 @@ namespace Core
 
 		void destroy();
 
+		bool isActive() const;
+		void setActive(bool active);
+
 		bool isValid() const noexcept;
 		operator bool() const noexcept { return isValid(); }
 		operator entt::entity() const noexcept { return m_handle; }

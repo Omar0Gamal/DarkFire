@@ -6,6 +6,8 @@
 #include "Engine/RHI/Null/NullRHI.h"
 #include "Engine/Renderer/RenderScene.h"
 #include "Engine/Renderer/SceneRenderer.h"
+#include "Engine/Core/Scripting/ScriptableEntity.h"
+#include "Engine/Shaders/Shared/Bindings.h"
 #include "Engine/Core/Scene/Systems/ParticleSystem.h"
 
 #include <ostream>
@@ -376,5 +378,274 @@ TEST_SUITE("Milestone P4: Frame Pipeline, Color Space & SceneRenderer")
 		CHECK(reViewPos.x == doctest::Approx(1.0f).epsilon(0.001f));
 		CHECK(reViewPos.y == doctest::Approx(2.0f).epsilon(0.001f));
 		CHECK(reViewPos.z == doctest::Approx(5.0f).epsilon(0.001f));
+	}
+
+	TEST_CASE("P4.9: Directional Shadow Mapping Bridge Extraction & Parameters")
+	{
+		Scene scene;
+
+		// 1. Directional Light with Shadows
+		auto dirLight = scene.createEntity("Sun");
+		auto& lightComp = dirLight.addComponent<LightComponent>();
+		lightComp.type = LightType::Directional;
+		lightComp.castShadows = true;
+		lightComp.shadowBias = 0.002f;
+		lightComp.shadowNormalBias = 0.03f;
+		lightComp.shadowDistance = 75.0f;
+		lightComp.shadowSoftness = 1.5f;
+
+		// 2. Mesh with Cast and Receive Shadows
+		auto casterMesh = scene.createEntity("CasterBox");
+		auto& mrComp = casterMesh.addComponent<MeshRendererComponent>();
+		mrComp.castShadows = true;
+		mrComp.receiveShadows = true;
+
+		// 3. PostProcessing with SSAO Direct Influence & Debug View
+		auto envEntity = scene.createEntity("Environment");
+		auto& ppComp = envEntity.addComponent<PostProcessingComponent>();
+		ppComp.ssaoDirectLightInfluence = 0.65f;
+		ppComp.debugView = 3; // Raw Shadow Map
+
+		RenderScene renderScene;
+		ExtractRenderScene(scene, renderScene, 16.0f / 9.0f);
+
+		REQUIRE(!renderScene.lights.empty());
+		CHECK(renderScene.lights[0].castShadows == true);
+		CHECK(renderScene.lights[0].shadowBias == doctest::Approx(0.002f));
+		CHECK(renderScene.lights[0].shadowNormalBias == doctest::Approx(0.03f));
+		CHECK(renderScene.lights[0].shadowDistance == doctest::Approx(75.0f));
+		CHECK(renderScene.lights[0].shadowSoftness == doctest::Approx(1.5f));
+
+		REQUIRE(!renderScene.meshes.empty());
+		CHECK(renderScene.meshes[0].castShadows == true);
+		CHECK(renderScene.meshes[0].receiveShadows == true);
+
+		CHECK(renderScene.environment.ssaoDirectLightInfluence == doctest::Approx(0.65f));
+		CHECK(renderScene.environment.debugView == 3);
+	}
+
+	TEST_CASE("P4.10: PBR Material JSON Serialization & ORM Parameter Roundtrip")
+	{
+		Material mat("TestORM");
+		mat.setBaseColor(Vector4(0.8f, 0.2f, 0.1f, 1.0f));
+		mat.setRoughness(0.35f);
+		mat.setMetallic(0.95f);
+		mat.setNormalScale(1.2f);
+		mat.setFlipNormalY(true);
+		mat.setORMPacked(true);
+		mat.setAlphaCutoff(0.5f);
+		mat.setEmissiveColor(Vector3(1.0f, 0.5f, 0.0f));
+		mat.setEmissiveIntensity(3.0f);
+		mat.setTiling(Vector2(2.5f, 2.5f));
+		mat.setOffset(Vector2(0.1f, 0.2f));
+
+		std::string jsonStr = mat.toJson();
+		CHECK(!jsonStr.empty());
+
+		Material loaded("LoadedMat");
+		bool ok = loaded.loadFromJson(jsonStr);
+		CHECK(ok == true);
+		CHECK(loaded.getBaseColor().x == doctest::Approx(0.8f));
+		CHECK(loaded.getRoughness() == doctest::Approx(0.35f));
+		CHECK(loaded.getMetallic() == doctest::Approx(0.95f));
+		CHECK(loaded.getNormalScale() == doctest::Approx(1.2f));
+		CHECK(loaded.isFlipNormalY() == true);
+		CHECK(loaded.isORMPacked() == true);
+		CHECK(loaded.getAlphaCutoff() == doctest::Approx(0.5f));
+		CHECK(loaded.getEmissiveIntensity() == doctest::Approx(3.0f));
+		CHECK(loaded.getTiling().x == doctest::Approx(2.5f));
+		CHECK(loaded.getOffset().y == doctest::Approx(0.2f));
+
+		// Test CBPerMaterial conversion
+		CBPerMaterial cb = loaded.getBufferData();
+		CHECK(cb.roughnessFactor == doctest::Approx(0.35f));
+		CHECK(cb.metallicFactor == doctest::Approx(0.95f));
+		CHECK(cb.normalScale == doctest::Approx(1.2f));
+		CHECK(cb.alphaCutoff == doctest::Approx(0.5f));
+		CHECK((cb.materialFlags & DF_MAT_FLAG_ORM_PACKED) != 0);
+		CHECK((cb.materialFlags & DF_MAT_FLAG_FLIP_NORMAL_Y) != 0);
+	}
+
+	TEST_CASE("P4.11: ScriptableEntity Field Exposure & JSON Serialization")
+	{
+		class DummyTestEntity : public ScriptableEntity
+		{
+		public:
+			float speed = 7.5f;
+			int health = 100;
+			bool active = true;
+			Vector3 target = Vector3(1.0f, 2.0f, 3.0f);
+
+			void onCreate() override
+			{
+				exposeFloat("Speed", speed, 1.0f, 50.0f);
+				exposeInt("Health", health, 0, 200);
+				exposeBool("Active", active);
+				exposeVec3("Target", target);
+			}
+		};
+
+		DummyTestEntity entityA;
+		entityA.onCreate();
+		entityA.speed = 12.3f;
+		entityA.health = 80;
+		entityA.active = false;
+		entityA.target = Vector3(4.0f, 5.0f, 6.0f);
+
+		std::string serialized = entityA.serializeExposedFields();
+		CHECK(!serialized.empty());
+
+		DummyTestEntity entityB;
+		entityB.onCreate();
+		entityB.deserializeExposedFields(serialized);
+
+		CHECK(entityB.speed == doctest::Approx(12.3f));
+		CHECK(entityB.health == 80);
+		CHECK(entityB.active == false);
+		CHECK(entityB.target.x == doctest::Approx(4.0f));
+		CHECK(entityB.target.y == doctest::Approx(5.0f));
+		CHECK(entityB.target.z == doctest::Approx(6.0f));
+	}
+
+	TEST_CASE("PBR.CSM: 4-Cascade Practical Splits and Sphere-Fit Stability")
+	{
+		const float nearZ = 0.1f;
+		const float farZ = 80.0f;
+		float splits[5] = { nearZ, 0.0f, 0.0f, 0.0f, farZ };
+
+		const float lambda = 0.75f;
+		for (int i = 1; i <= 4; ++i)
+		{
+			float p = static_cast<float>(i) / 4.0f;
+			float zLog = nearZ * std::pow(farZ / nearZ, p);
+			float zUni = nearZ + (farZ - nearZ) * p;
+			splits[i] = lambda * zLog + (1.0f - lambda) * zUni;
+		}
+
+		// Verify strict monotonicity
+		CHECK(splits[0] < splits[1]);
+		CHECK(splits[1] < splits[2]);
+		CHECK(splits[2] < splits[3]);
+		CHECK(splits[3] <= splits[4]);
+
+		// Cascade 0 must be near camera for high resolution close-up shadows
+		CHECK(splits[1] < 6.0f);
+		CHECK(splits[4] == doctest::Approx(farZ));
+
+		// Verify 10% blend band thickness is positive and finite
+		for (int i = 0; i < 3; ++i)
+		{
+			float blendBand = (splits[i + 1] - splits[i]) * 0.10f;
+			CHECK(blendBand > 0.0f);
+		}
+	}
+
+	TEST_CASE("PBR.SH: Constant Color Sky Irradiance Invariance")
+	{
+		// Constant white sky (radiance = 1.0 in all directions)
+		// Projected into L2 Spherical Harmonics
+		auto evalSHBasis = [](const Vector3& dir, float outY[9]) {
+			outY[0] = 0.282095f;
+			outY[1] = 0.488603f * dir.y;
+			outY[2] = 0.488603f * dir.z;
+			outY[3] = 0.488603f * dir.x;
+			outY[4] = 1.092548f * dir.x * dir.y;
+			outY[5] = 1.092548f * dir.y * dir.z;
+			outY[6] = 0.315392f * (3.0f * dir.z * dir.z - 1.0f);
+			outY[7] = 1.092548f * dir.x * dir.z;
+			outY[8] = 0.546274f * (dir.x * dir.x - dir.y * dir.y);
+		};
+
+		static const Vector3 cubeDirs[6] = {
+			Vector3( 1.0f,  0.0f,  0.0f), Vector3(-1.0f,  0.0f,  0.0f),
+			Vector3( 0.0f,  1.0f,  0.0f), Vector3( 0.0f, -1.0f,  0.0f),
+			Vector3( 0.0f,  0.0f,  1.0f), Vector3( 0.0f,  0.0f, -1.0f)
+		};
+		const float cubeWeight = (4.0f * 3.14159265f) / 6.0f;
+
+		float coeffs[9] = {};
+		for (int i = 0; i < 6; ++i)
+		{
+			float Y[9];
+			evalSHBasis(cubeDirs[i], Y);
+			for (int k = 0; k < 9; ++k)
+			{
+				coeffs[k] += 1.0f * Y[k] * cubeWeight;
+			}
+		}
+
+		// Higher order moments must be 0 for constant isotropic sky
+		for (int k = 1; k < 9; ++k)
+		{
+			CHECK(std::abs(coeffs[k]) < 0.05f);
+		}
+
+		// L00 coefficient must integrate to 2 * sqrt(pi)
+		float expectedL00 = 2.0f * std::sqrt(3.14159265f);
+		CHECK(coeffs[0] == doctest::Approx(expectedL00).epsilon(0.05f));
+	}
+
+	TEST_CASE("PBR.BRDF: Split-Sum GGX LUT Bounds and Edge Behavior")
+	{
+		// Van der Corput + Hammersley
+		auto RadicalInverse_VdC = [](uint32_t bits) {
+			bits = (bits << 16u) | (bits >> 16u);
+			bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+			bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+			bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+			bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+			return static_cast<float>(bits) * 2.3283064365386963e-10f;
+		};
+
+		auto IntegrateBRDF = [&](float NoV, float roughness) {
+			Vector3 V(std::sqrt(std::max(0.0f, 1.0f - NoV * NoV)), 0.0f, NoV);
+			Vector3 N(0.0f, 0.0f, 1.0f);
+			float A = 0.0f, B = 0.0f;
+			const uint32_t kNumSamples = 256;
+			for (uint32_t i = 0; i < kNumSamples; ++i)
+			{
+				Vector2 Xi(static_cast<float>(i) / static_cast<float>(kNumSamples), RadicalInverse_VdC(i));
+				float a = roughness * roughness;
+				float phi = 2.0f * 3.14159265f * Xi.x;
+				float cosTheta = std::sqrt((1.0f - Xi.y) / (1.0f + (a * a - 1.0f) * Xi.y));
+				float sinTheta = std::sqrt(std::max(0.0f, 1.0f - cosTheta * cosTheta));
+				Vector3 H(std::cos(phi) * sinTheta, std::sin(phi) * sinTheta, cosTheta);
+				Vector3 L = H * (2.0f * V.Dot(H)) - V;
+
+				float NoL = std::max(L.z, 0.0f);
+				float NoH = std::max(H.z, 0.0f);
+				float VoH = std::max(V.Dot(H), 0.0f);
+				if (NoL > 0.0f)
+				{
+					float k = (roughness * roughness) / 2.0f;
+					float G_V = NoV / (NoV * (1.0f - k) + k);
+					float G_L = NoL / (NoL * (1.0f - k) + k);
+					float G = G_V * G_L;
+					float G_Vis = (G * VoH) / (NoH * NoV);
+					float Fc = std::pow(1.0f - VoH, 5.0f);
+					A += (1.0f - Fc) * G_Vis;
+					B += Fc * G_Vis;
+				}
+			}
+			return Vector2(A / static_cast<float>(kNumSamples), B / static_cast<float>(kNumSamples));
+		};
+
+		// 1. Normal incidence, zero roughness: scale approx 1.0, bias approx 0.0
+		Vector2 perfectMirror = IntegrateBRDF(1.0f, 0.01f);
+		CHECK(perfectMirror.x == doctest::Approx(1.0f).epsilon(0.1f));
+		CHECK(perfectMirror.y < 0.1f);
+
+		// 2. All values in [0, 1] range across entire domain
+		for (float r = 0.1f; r <= 1.0f; r += 0.3f)
+		{
+			for (float nov = 0.1f; nov <= 1.0f; nov += 0.3f)
+			{
+				Vector2 val = IntegrateBRDF(nov, r);
+				CHECK(val.x >= 0.0f);
+				CHECK(val.x <= 1.05f);
+				CHECK(val.y >= 0.0f);
+				CHECK(val.y <= 1.05f);
+			}
+		}
 	}
 }

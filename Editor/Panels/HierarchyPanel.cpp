@@ -1,10 +1,13 @@
 #include "Editor/Panels/HierarchyPanel.h"
 #include "Editor/Clipboard.h"
 #include "Editor/Commands/EntityCommands.h"
+#include "Editor/FileDialogs.h"
 #include "Editor/UI/EditorIcons.h"
 #include "Editor/UI/DockLayout.h"
 #include "Engine/Core/Scene/Components.h"
 #include <imgui.h>
+#include <nlohmann/json.hpp>
+#include <fstream>
 #include <cstring>
 #include <algorithm>
 
@@ -132,7 +135,29 @@ namespace Editor
 			flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
 		}
 
+		bool isPrefab = entity.hasComponent<Core::PrefabInstanceComponent>();
+		if (isPrefab)
+		{
+			// Unity/Unreal Prefab Cyan-Blue (#4CC2FF)
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.3f, 0.76f, 1.0f, 1.0f));
+		}
+
 		bool opened = ImGui::TreeNodeEx((void*)(uint64_t)entity.getUUID().value(), flags, "%s", name.c_str());
+
+		if (isPrefab)
+		{
+			ImGui::PopStyleColor();
+		}
+
+		// Outliner Type Badge on the right
+		const char* typeName = getEntityTypeName(entity);
+		float typeWidth = ImGui::CalcTextSize(typeName).x + 16.0f;
+		float availX = ImGui::GetContentRegionAvail().x;
+		if (availX > typeWidth + 30.0f)
+		{
+			ImGui::SameLine(ImGui::GetWindowWidth() - typeWidth - 25.0f);
+			ImGui::TextDisabled("[%s]", typeName);
+		}
 
 		if (ImGui::IsItemClicked())
 		{
@@ -236,6 +261,40 @@ namespace Editor
 				entity.destroy();
 			}
 		}
+
+		ImGui::Separator();
+
+		if (entity.hasComponent<Core::PrefabInstanceComponent>())
+		{
+			if (ImGui::MenuItem("Unpack Prefab"))
+			{
+				entity.removeComponent<Core::PrefabInstanceComponent>();
+			}
+		}
+		else
+		{
+			if (ImGui::MenuItem("Save as Prefab..."))
+			{
+				std::string savePath = FileDialogs::SaveFile("DarkFire Prefab (*.prefab)\0*.prefab\0\0");
+				if (!savePath.empty())
+				{
+					if (savePath.find(".prefab") == std::string::npos) savePath += ".prefab";
+					auto& pComp = entity.addComponent<Core::PrefabInstanceComponent>();
+					pComp.prefabGuid = entity.getUUID().value();
+					pComp.prefabPath = savePath;
+
+					nlohmann::ordered_json pj;
+					pj["prefab_version"] = 1;
+					pj["name"] = entity.getName();
+					pj["guid"] = pComp.prefabGuid;
+					std::ofstream out(savePath);
+					if (out.is_open())
+					{
+						out << pj.dump(4);
+					}
+				}
+			}
+		}
 	}
 
 	void HierarchyPanel::drawPanelContextMenu()
@@ -253,14 +312,14 @@ namespace Editor
 
 		if (ImGui::MenuItem("Create Empty Entity"))
 		{
-			registerNewEntity(m_scene->createEntity("Empty Entity"));
+			registerNewEntity(m_scene->createEntity(generateUniqueName("Empty Entity")));
 		}
 
 		ImGui::Separator();
 
 		if (ImGui::MenuItem("Camera"))
 		{
-			auto ent = m_scene->createEntity("Main Camera");
+			auto ent = m_scene->createEntity(generateUniqueName("Main Camera"));
 			ent.getComponent<Core::TransformComponent>().position = Core::Vector3(0.0f, 2.0f, -5.0f);
 			auto& cam = ent.addComponent<Core::CameraComponent>();
 			cam.isPrimary = true;
@@ -271,18 +330,19 @@ namespace Editor
 		{
 			if (ImGui::MenuItem("Directional Light"))
 			{
-				auto ent = m_scene->createEntity("Directional Light");
+				auto ent = m_scene->createEntity(generateUniqueName("Directional Light"));
 				ent.getComponent<Core::TransformComponent>().position = Core::Vector3(0.0f, 10.0f, 0.0f);
 				ent.getComponent<Core::TransformComponent>().setEulerDegrees(Core::Vector3(45.0f, 0.0f, 0.0f));
 				auto& l = ent.addComponent<Core::LightComponent>();
 				l.type = Core::LightType::Directional;
 				l.color = Core::Color(1.0f, 0.95f, 0.8f, 1.0f);
 				l.intensity = 1.0f;
+				l.castShadows = true;
 				registerNewEntity(ent);
 			}
 			if (ImGui::MenuItem("Point Light"))
 			{
-				auto ent = m_scene->createEntity("Point Light");
+				auto ent = m_scene->createEntity(generateUniqueName("Point Light"));
 				ent.getComponent<Core::TransformComponent>().position = Core::Vector3(0.0f, 3.0f, 0.0f);
 				auto& l = ent.addComponent<Core::LightComponent>();
 				l.type = Core::LightType::Point;
@@ -298,11 +358,13 @@ namespace Editor
 		{
 			if (ImGui::MenuItem("Cube"))
 			{
-				auto ent = m_scene->createEntity("Cube");
+				auto ent = m_scene->createEntity(generateUniqueName("Cube"));
 				ent.getComponent<Core::TransformComponent>().position = Core::Vector3(0.0f, 0.5f, 0.0f);
 				auto& mesh = ent.addComponent<Core::MeshRendererComponent>();
 				mesh.meshPath = "builtin:cube";
 				mesh.materialPath = "/engine/Content/Default.mat";
+				mesh.castShadows = true;
+				mesh.receiveShadows = true;
 				auto& col = ent.addComponent<Core::ColliderComponent>();
 				col.shape = Core::ColliderShape::Box;
 				col.size = Core::Vector3(1.0f, 1.0f, 1.0f);
@@ -311,11 +373,13 @@ namespace Editor
 
 			if (ImGui::MenuItem("Sphere"))
 			{
-				auto ent = m_scene->createEntity("Sphere");
+				auto ent = m_scene->createEntity(generateUniqueName("Sphere"));
 				ent.getComponent<Core::TransformComponent>().position = Core::Vector3(0.0f, 0.5f, 0.0f);
 				auto& mesh = ent.addComponent<Core::MeshRendererComponent>();
 				mesh.meshPath = "builtin:sphere";
 				mesh.materialPath = "/engine/Content/Default.mat";
+				mesh.castShadows = true;
+				mesh.receiveShadows = true;
 				auto& col = ent.addComponent<Core::ColliderComponent>();
 				col.shape = Core::ColliderShape::Sphere;
 				col.radius = 0.5f;
@@ -324,12 +388,14 @@ namespace Editor
 
 			if (ImGui::MenuItem("Plane"))
 			{
-				auto ent = m_scene->createEntity("Plane");
+				auto ent = m_scene->createEntity(generateUniqueName("Plane"));
 				ent.getComponent<Core::TransformComponent>().position = Core::Vector3(0.0f, 0.0f, 0.0f);
 				ent.getComponent<Core::TransformComponent>().scale = Core::Vector3(10.0f, 1.0f, 10.0f);
 				auto& mesh = ent.addComponent<Core::MeshRendererComponent>();
 				mesh.meshPath = "builtin:plane";
 				mesh.materialPath = "/engine/Content/Default.mat";
+				mesh.castShadows = false;
+				mesh.receiveShadows = true;
 				auto& col = ent.addComponent<Core::ColliderComponent>();
 				col.shape = Core::ColliderShape::Box;
 				col.size = Core::Vector3(10.0f, 0.1f, 10.0f);
@@ -337,6 +403,89 @@ namespace Editor
 			}
 			ImGui::EndMenu();
 		}
+
+		if (ImGui::BeginMenu("Environment & Nature"))
+		{
+			if (ImGui::MenuItem("Procedural Island Terrain"))
+			{
+				auto ent = m_scene->createEntity(generateUniqueName("Island Terrain"));
+				ent.getComponent<Core::TransformComponent>().position = Core::Vector3(0.0f, 0.0f, 0.0f);
+				auto& tc = ent.addComponent<Core::TerrainComponent>();
+				tc.isIsland = true;
+				registerNewEntity(ent);
+			}
+
+			if (ImGui::MenuItem("Ocean / Water Body"))
+			{
+				auto ent = m_scene->createEntity(generateUniqueName("Ocean Water"));
+				ent.getComponent<Core::TransformComponent>().position = Core::Vector3(0.0f, 0.0f, 0.0f);
+				auto& wc = ent.addComponent<Core::WaterComponent>();
+				wc.waterLevel = 0.0f;
+				registerNewEntity(ent);
+			}
+
+			if (ImGui::MenuItem("Instanced Grass Field"))
+			{
+				auto ent = m_scene->createEntity(generateUniqueName("Instanced Grass Field"));
+				ent.getComponent<Core::TransformComponent>().position = Core::Vector3(0.0f, 0.0f, 0.0f);
+				auto& fc = ent.addComponent<Core::FoliageComponent>();
+				fc.snapToTerrain = true;
+				registerNewEntity(ent);
+			}
+
+			if (ImGui::MenuItem("3D Audio Source"))
+			{
+				auto ent = m_scene->createEntity(generateUniqueName("3D Audio Source"));
+				ent.getComponent<Core::TransformComponent>().position = Core::Vector3(0.0f, 1.5f, 0.0f);
+				auto& ac = ent.addComponent<Core::AudioSourceComponent>();
+				ac.spatialize3D = true;
+				ac.clipPath = "builtin:ocean_waves";
+				registerNewEntity(ent);
+			}
+			ImGui::EndMenu();
+		}
+	}
+
+	std::string HierarchyPanel::generateUniqueName(const std::string& baseName)
+	{
+		if (!m_scene) return baseName;
+		std::string testName = baseName;
+		int counter = 1;
+		bool exists = true;
+		while (exists)
+		{
+			exists = false;
+			auto view = m_scene->view<Core::IdentityComponent>();
+			for (auto h : view)
+			{
+				if (view.get<Core::IdentityComponent>(h).name == testName)
+				{
+					exists = true;
+					testName = baseName + " (" + std::to_string(counter++) + ")";
+					break;
+				}
+			}
+		}
+		return testName;
+	}
+
+	const char* HierarchyPanel::getEntityTypeName(Core::Entity entity)
+	{
+		if (entity.hasComponent<Core::PrefabInstanceComponent>()) return "Prefab";
+		if (entity.hasComponent<Core::MeshRendererComponent>()) return "Mesh";
+		if (entity.hasComponent<Core::LightComponent>()) return "Light";
+		if (entity.hasComponent<Core::CameraComponent>()) return "Camera";
+		if (entity.hasComponent<Core::TerrainComponent>()) return "Terrain";
+		if (entity.hasComponent<Core::WaterComponent>()) return "Water";
+		if (entity.hasComponent<Core::FoliageComponent>()) return "Foliage";
+		if (entity.hasComponent<Core::AudioSourceComponent>()) return "Audio";
+		if (entity.hasComponent<Core::AudioListenerComponent>()) return "Listener";
+		if (entity.hasComponent<Core::HUDTelemetryComponent>()) return "HUD";
+		if (entity.hasComponent<Core::EnvironmentComponent>()) return "World";
+		if (entity.hasComponent<Core::PostProcessingComponent>()) return "PostProcess";
+		if (entity.hasComponent<Core::ParticleEmitterComponent>()) return "Particles";
+		if (entity.hasComponent<Core::RigidbodyComponent>()) return "Physics";
+		return "Actor";
 	}
 
 	void HierarchyPanel::drawAddNodeModal()
@@ -372,7 +521,11 @@ namespace Editor
 				{ "RigidBody3D", "Physics", "Physics rigid body with gravity & restitution" },
 				{ "BoxCollider3D", "Physics", "Box collision shape" },
 				{ "SphereCollider3D", "Physics", "Sphere collision shape" },
-				{ "ScriptableNode3D", "Scripting", "Node with game script component" }
+				{ "ScriptableNode3D", "Scripting", "Node with game script component" },
+				{ "Procedural Island Terrain", "Nature", "Procedural island heightfield terrain" },
+				{ "Ocean / Water Body", "Nature", "Dynamic FFT / Gerstner water plane" },
+				{ "Instanced Grass Field", "Nature", "Instanced foliage grass blades" },
+				{ "3D Audio Source", "Audio", "Spatialized 3D audio emitter" }
 			};
 
 			ImGui::BeginChild("NodeListChild", ImVec2(350.0f, 220.0f), true);
@@ -489,6 +642,22 @@ namespace Editor
 				case 11: // ScriptableNode3D
 					newEnt = m_scene->createEntity("ScriptNode");
 					newEnt.addComponent<Core::ScriptsComponent>();
+					break;
+				case 12: // Procedural Island Terrain
+					newEnt = m_scene->createEntity("IslandTerrain");
+					newEnt.addComponent<Core::TerrainComponent>();
+					break;
+				case 13: // Ocean / Water Body
+					newEnt = m_scene->createEntity("OceanWater");
+					newEnt.addComponent<Core::WaterComponent>();
+					break;
+				case 14: // Instanced Grass Field
+					newEnt = m_scene->createEntity("GrassField");
+					newEnt.addComponent<Core::FoliageComponent>();
+					break;
+				case 15: // 3D Audio Source
+					newEnt = m_scene->createEntity("AudioSource3D");
+					newEnt.addComponent<Core::AudioSourceComponent>();
 					break;
 				default:
 					newEnt = m_scene->createEntity("Node3D");

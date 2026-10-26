@@ -28,7 +28,7 @@ set SLN_FILE="%ROOT_DIR%\DarkFire.slnx"
 if not exist %SLN_FILE% set SLN_FILE="%ROOT_DIR%\DarkFire.sln"
 
 echo [DarkFire] Building !SLN_FILE! (%CONFIG% ^| x64)...
-"!MSBUILD!" !SLN_FILE! /p:Configuration=%CONFIG% /p:Platform=x64 /m /v:m
+"!MSBUILD!" !SLN_FILE! /p:Configuration=%CONFIG% /p:Platform=x64 /p:PlatformToolset=v145 /m /v:m
 
 set BUILD_RESULT=%ERRORLEVEL%
 if %BUILD_RESULT% neq 0 (

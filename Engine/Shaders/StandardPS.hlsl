@@ -1,58 +1,45 @@
-#include "Lighting.hlsli"
+#include "Surface.hlsli"
 
 struct PSOutput
 {
-	float4 color    : SV_Target0;
-	uint   entityId : SV_Target1;
+	float4 color           : SV_Target0;
+	uint   entityId        : SV_Target1;
+	float4 normalRoughness : SV_Target2;
+	float4 albedoMetallic  : SV_Target3;
+	float2 velocity        : SV_Target4;
 };
 
-PSOutput main(PSInput input)
+PSOutput main(PSInput input, bool isFrontFace : SV_IsFrontFace)
 {
-	float4 albedoTex = g_TextureAlbedo.Sample(g_SamplerLinearWrap, input.texcoord);
-	float4 albedo = albedoTex * g_Material.baseColorFactor * input.color;
-
-	// Alpha test / discard for transparent cutouts
-	if (albedo.a < 0.01f)
-	{
-		discard;
-	}
-
-	float3 N = normalize(input.normalWS);
-	if (length(input.tangentWS.xyz) > 0.1f)
-	{
-		N = computePerturbedNormal(N, input.tangentWS, input.texcoord);
-	}
+	SurfaceData s = evaluateSurface(input, isFrontFace);
 
 	float3 V = normalize(g_View.cameraPosition - input.positionWS);
-
-	float4 mrSample = g_TextureMetallicRoughness.Sample(g_SamplerLinearWrap, input.texcoord);
-	float metallic = clamp(mrSample.b * g_Material.metallicFactor, 0.0f, 1.0f);
-	float roughness = clamp(mrSample.g * g_Material.roughnessFactor, 0.04f, 1.0f);
-
-	float3 F0 = float3(0.04f, 0.04f, 0.04f);
-	F0 = lerp(F0, albedo.rgb, metallic);
-
 	float2 screenUV = input.positionCS.xy * g_View.invViewportSize;
 	float ssao = g_TextureSSAO.SampleLevel(g_SamplerLinearClamp, screenUV, 0).r;
-	float matOcclusion = g_TextureOcclusion.Sample(g_SamplerLinearWrap, input.texcoord).r;
-	float ao = min(ssao, matOcclusion);
+	float ao = ssao * s.matAO;
 
 	float3 directLighting = evaluateDirectLighting(
-		N,
+		s.normalWS,
 		V,
 		input.positionWS,
-		albedo.rgb,
-		roughness,
-		metallic,
-		F0,
+		input.positionCS.xy,
+		s.albedo.rgb,
+		s.roughness,
+		s.metallic,
+		s.F0,
 		ao);
 
-	float4 emissiveTex = g_TextureEmissive.Sample(g_SamplerLinearWrap, input.texcoord);
-	float3 emissive = emissiveTex.rgb * g_Material.emissiveFactor.rgb;
-
 	PSOutput output;
-	output.color = float4(directLighting + emissive, albedo.a);
+	float3 litColor = applyAtmosphericFog(directLighting + s.emissive, input.positionWS, g_View.cameraPosition);
+	output.color = float4(litColor, s.albedo.a);
 	output.entityId = input.entityId;
+	output.normalRoughness = float4(s.normalWS * 0.5f + 0.5f, s.roughness);
+	output.albedoMetallic = float4(s.albedo.rgb, s.metallic);
+
+	// Screen-space velocity vector (UV space: +X right, +Y down, pure object & camera motion without subpixel jitter)
+	float2 curPosNDC = input.curPositionCS.xy / max(input.curPositionCS.w, 0.0001f);
+	float2 prevPosNDC = input.prevPositionCS.xy / max(input.prevPositionCS.w, 0.0001f);
+	output.velocity = (curPosNDC - prevPosNDC) * float2(0.5f, -0.5f) - (g_View.jitterOffset.xy - g_View.prevJitterOffset.xy);
 
 	return output;
 }

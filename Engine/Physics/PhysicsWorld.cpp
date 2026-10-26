@@ -1,119 +1,26 @@
 #include "Engine/Physics/PhysicsWorld.h"
+#include "Engine/Physics/PhysicsCollisionNarrowphase.h"
 #include "Engine/Core/Scene/Scene.h"
 #include "Engine/Core/Scene/Components.h"
 #include "Engine/Core/Scripting/ScriptableEntity.h"
 #include "Engine/Core/Math/Math.h"
+#include "Engine/Renderer/TerrainGenerator.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <unordered_map>
+
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
 
 namespace Physics
 {
 	using Core::Matrix;
 	using Core::Quaternion;
-
-	namespace
-	{
-		struct OBB
-		{
-			Vector3 center;
-			Vector3 axes[3];   // Local X, Y, Z unit vectors in world space
-			Vector3 extents;   // Half-sizes along axes
-		};
-
-		inline OBB MakeOBB(const Core::TransformComponent& trans, const Core::ColliderComponent& col)
-		{
-			OBB obb{};
-			obb.center = trans.position;
-			obb.extents = col.size * 0.5f;
-			obb.axes[0] = trans.getRight();
-			obb.axes[1] = trans.getUp();
-			obb.axes[2] = trans.getForward();
-			return obb;
-		}
-
-		inline bool TestOBBOBB(const OBB& a, const OBB& b, Vector3& outNormal, float& outPenetration)
-		{
-			Vector3 D = b.center - a.center;
-
-			float minOverlap = (std::numeric_limits<float>::max)();
-			Vector3 bestAxis(0.0f, 1.0f, 0.0f);
-
-			// Helper to test a single candidate axis L
-			auto testAxis = [&](Vector3 L, float bias = 1.0f) -> bool
-			{
-				float lenSq = L.LengthSquared();
-				if (lenSq < 0.0001f) return true; // Degenerate cross product (parallel edges)
-
-				L /= std::sqrt(lenSq);
-
-				float rA = a.extents.x * std::abs(a.axes[0].Dot(L))
-				         + a.extents.y * std::abs(a.axes[1].Dot(L))
-				         + a.extents.z * std::abs(a.axes[2].Dot(L));
-
-				float rB = b.extents.x * std::abs(b.axes[0].Dot(L))
-				         + b.extents.y * std::abs(b.axes[1].Dot(L))
-				         + b.extents.z * std::abs(b.axes[2].Dot(L));
-
-				float s = std::abs(D.Dot(L));
-				float overlap = (rA + rB) - s;
-
-				if (overlap <= 0.0f)
-				{
-					return false; // Separating axis found!
-				}
-
-				if (overlap * bias < minOverlap)
-				{
-					minOverlap = overlap * bias;
-					bestAxis = L;
-				}
-				return true;
-			};
-
-			// 1. Box A face normals (3) - priority
-			if (!testAxis(a.axes[0], 1.0f)) return false;
-			if (!testAxis(a.axes[1], 1.0f)) return false;
-			if (!testAxis(a.axes[2], 1.0f)) return false;
-
-			// 2. Box B face normals (3) - priority
-			if (!testAxis(b.axes[0], 1.0f)) return false;
-			if (!testAxis(b.axes[1], 1.0f)) return false;
-			if (!testAxis(b.axes[2], 1.0f)) return false;
-
-			// 3. Edge cross products (3 x 3 = 9) - slight bias to prevent jittering on flat faces
-			for (int i = 0; i < 3; ++i)
-			{
-				for (int j = 0; j < 3; ++j)
-				{
-					Vector3 axis = a.axes[i].Cross(b.axes[j]);
-					if (!testAxis(axis, 1.05f)) return false;
-				}
-			}
-
-			// Ensure normal points from A to B
-			if (D.Dot(bestAxis) < 0.0f)
-			{
-				bestAxis = -bestAxis;
-			}
-			else if (std::abs(D.Dot(bestAxis)) < 0.00001f)
-			{
-				Vector3 diff = b.center - a.center;
-				if (diff.LengthSquared() > 0.0001f)
-				{
-					diff.Normalize();
-					if (diff.Dot(bestAxis) < 0.0f)
-					{
-						bestAxis = -bestAxis;
-					}
-				}
-			}
-
-			outNormal = bestAxis;
-			outPenetration = minOverlap;
-			return true;
-		}
-	}
 
 	PhysicsWorld::PhysicsWorld()
 	{
@@ -156,6 +63,30 @@ namespace Physics
 					state.linearVelocity += m_gravity * fixedTimeStep;
 				}
 
+				// Water Archimedes Buoyancy & Fluid Drag
+				float colliderRadius = 0.5f;
+				auto* col = reg.try_get<Core::ColliderComponent>(entity);
+				if (col)
+				{
+					if (col->shape == Core::ColliderShape::Sphere) colliderRadius = col->radius;
+					else if (col->shape == Core::ColliderShape::Box) colliderRadius = col->size.y * 0.5f;
+					else if (col->shape == Core::ColliderShape::Capsule) colliderRadius = col->height * 0.5f;
+				}
+
+				auto waterView = reg.view<Core::WaterComponent>();
+				for (auto waterEntity : waterView)
+				{
+					const auto& water = waterView.get<Core::WaterComponent>(waterEntity);
+					float surfaceY = water.waterLevel + std::sin(transform.position.x * water.waveFrequency) * water.waveAmplitude * 0.5f;
+
+					if (transform.position.y < surfaceY + colliderRadius)
+					{
+						float submerged = std::clamp((surfaceY + colliderRadius - transform.position.y) / (2.0f * colliderRadius), 0.0f, 1.0f);
+						state.linearVelocity.y += (9.81f * water.buoyancyDensity * submerged) * fixedTimeStep;
+						state.linearVelocity *= std::max(0.0f, 1.0f - water.fluidDrag * submerged * fixedTimeStep);
+					}
+				}
+
 				state.linearVelocity *= std::max(0.0f, 1.0f - rb.drag * fixedTimeStep);
 				state.angularVelocity *= std::max(0.0f, 1.0f - rb.angularDrag * fixedTimeStep);
 
@@ -163,7 +94,7 @@ namespace Physics
 			}
 		}
 
-		// 2. Collision detection & resolution (Multi-iteration constraint solver)
+		// 2. Collision detection & resolution (Multi-iteration constraint solver with 3D Spatial-Hash Grid Broadphase)
 		std::vector<entt::entity> colliderEntities;
 		auto colView = reg.view<Core::ColliderComponent, Core::TransformComponent>();
 		for (auto entity : colView)
@@ -174,241 +105,241 @@ namespace Physics
 		std::set<std::pair<entt::entity, entt::entity>> currentCollisions;
 		std::set<std::pair<entt::entity, entt::entity>> currentTriggers;
 
-		constexpr int kSolverIterations = 4;
 		size_t numColliders = colliderEntities.size();
-
-		for (int iter = 0; iter < kSolverIterations; ++iter)
+		if (numColliders > 0)
 		{
+			// 3D Spatial-Hash Grid Broadphase
+			constexpr float cellSize = 4.0f;
+			constexpr float invCellSize = 1.0f / cellSize;
+			constexpr int kMaxSpan = 8;
+
+			std::unordered_map<uint64_t, std::vector<size_t>> grid;
 			for (size_t i = 0; i < numColliders; ++i)
 			{
-				auto entA = colliderEntities[i];
-				const auto& colA = reg.get<Core::ColliderComponent>(entA);
-				auto& transA = reg.get<Core::TransformComponent>(entA);
+				auto ent = colliderEntities[i];
+				const auto& col = reg.get<Core::ColliderComponent>(ent);
+				const auto& trans = reg.get<Core::TransformComponent>(ent);
 
-				for (size_t j = i + 1; j < numColliders; ++j)
+				Vector3 minPt, maxPt;
+				ComputeColliderWorldAABB(col, trans, minPt, maxPt);
+
+				int minX = static_cast<int>(std::floor(minPt.x * invCellSize));
+				int minY = static_cast<int>(std::floor(minPt.y * invCellSize));
+				int minZ = static_cast<int>(std::floor(minPt.z * invCellSize));
+				int maxX = static_cast<int>(std::floor(maxPt.x * invCellSize));
+				int maxY = static_cast<int>(std::floor(maxPt.y * invCellSize));
+				int maxZ = static_cast<int>(std::floor(maxPt.z * invCellSize));
+
+				// Clamp cell span per object to at most 8 cells per axis so giant floor boxes don't flood the hash table
+				maxX = std::min(maxX, minX + kMaxSpan - 1);
+				maxY = std::min(maxY, minY + kMaxSpan - 1);
+				maxZ = std::min(maxZ, minZ + kMaxSpan - 1);
+
+				for (int z = minZ; z <= maxZ; ++z)
 				{
+					for (int y = minY; y <= maxY; ++y)
+					{
+						for (int x = minX; x <= maxX; ++x)
+						{
+							constexpr uint64_t p1 = 73856093ULL;
+							constexpr uint64_t p2 = 19349663ULL;
+							constexpr uint64_t p3 = 83492791ULL;
+							uint64_t cellHash = (static_cast<uint64_t>(x) * p1) ^ (static_cast<uint64_t>(y) * p2) ^ (static_cast<uint64_t>(z) * p3);
+							grid[cellHash].push_back(i);
+						}
+					}
+				}
+			}
+
+			// Collect unique candidate index pairs (i < j)
+			std::vector<std::pair<size_t, size_t>> candidatePairs;
+			for (const auto& [cellHash, indices] : grid)
+			{
+				size_t count = indices.size();
+				for (size_t a = 0; a < count; ++a)
+				{
+					for (size_t b = a + 1; b < count; ++b)
+					{
+						size_t idxA = indices[a];
+						size_t idxB = indices[b];
+						if (idxA > idxB) std::swap(idxA, idxB);
+						else if (idxA == idxB) continue;
+						candidatePairs.emplace_back(idxA, idxB);
+					}
+				}
+			}
+			std::sort(candidatePairs.begin(), candidatePairs.end());
+			candidatePairs.erase(std::unique(candidatePairs.begin(), candidatePairs.end()), candidatePairs.end());
+
+			// Filter by collision layer matrix
+			candidatePairs.erase(
+				std::remove_if(candidatePairs.begin(), candidatePairs.end(), [&](const std::pair<size_t, size_t>& pair) {
+					const auto& colA = reg.get<Core::ColliderComponent>(colliderEntities[pair.first]);
+					const auto& colB = reg.get<Core::ColliderComponent>(colliderEntities[pair.second]);
+					return !canCollide(colA.layer, colB.layer);
+				}),
+				candidatePairs.end()
+			);
+
+			constexpr int kSolverIterations = 4;
+			for (int iter = 0; iter < kSolverIterations; ++iter)
+			{
+				for (const auto& [i, j] : candidatePairs)
+				{
+					auto entA = colliderEntities[i];
 					auto entB = colliderEntities[j];
+					const auto& colA = reg.get<Core::ColliderComponent>(entA);
+					auto& transA = reg.get<Core::TransformComponent>(entA);
 					const auto& colB = reg.get<Core::ColliderComponent>(entB);
 					auto& transB = reg.get<Core::TransformComponent>(entB);
 
-					if (!canCollide(colA.layer, colB.layer))
-					{
-						continue;
-					}
-
 					Vector3 normal(0.0f, 1.0f, 0.0f);
 					float penetration = 0.0f;
-					bool isColliding = false;
 
-				// Collision shapes
-				if (colA.shape == Core::ColliderShape::Sphere && colB.shape == Core::ColliderShape::Sphere)
-				{
-					Vector3 delta = transB.position - transA.position;
-					float distSq = delta.LengthSquared();
-					float radiusSum = colA.radius + colB.radius;
-					if (distSq < radiusSum * radiusSum)
+					if (TestColliderPair(colA, transA, colB, transB, normal, penetration))
 					{
-						float dist = std::sqrt(distSq);
-						normal = (dist > 0.0001f) ? (delta / dist) : Vector3(0.0f, 1.0f, 0.0f);
-						penetration = radiusSum - dist;
-						isColliding = true;
-					}
-				}
-				else if (colA.shape == Core::ColliderShape::Box && colB.shape == Core::ColliderShape::Box)
-				{
-					// Full 3D Oriented Bounding Box (OBB) collision via Separating Axis Theorem (SAT)
-					OBB obbA = MakeOBB(transA, colA);
-					OBB obbB = MakeOBB(transB, colB);
-					if (TestOBBOBB(obbA, obbB, normal, penetration))
-					{
-						isColliding = true;
-					}
-				}
-				else if (colA.shape == Core::ColliderShape::Box && colB.shape == Core::ColliderShape::Sphere)
-				{
-					// Rotated Box A vs Sphere B: evaluate in Box A's local space
-					Vector3 halfA = colA.size * 0.5f;
-					Quaternion invRotA;
-					transA.rotation.Inverse(invRotA);
-					Vector3 localSpherePos = Vector3::Transform(transB.position - transA.position, invRotA);
+						auto pairKey = (entA < entB) ? std::make_pair(entA, entB) : std::make_pair(entB, entA);
 
-					Vector3 localClamped = Vector3(
-						std::clamp(localSpherePos.x, -halfA.x, halfA.x),
-						std::clamp(localSpherePos.y, -halfA.y, halfA.y),
-						std::clamp(localSpherePos.z, -halfA.z, halfA.z)
-					);
-					Vector3 localDelta = localSpherePos - localClamped;
-					float distSq = localDelta.LengthSquared();
-
-					if (distSq > 0.000001f)
-					{
-						if (distSq < colB.radius * colB.radius)
+						if (colA.isTrigger || colB.isTrigger)
 						{
-							float dist = std::sqrt(distSq);
-							Vector3 localNorm = localDelta / dist;
-							normal = Vector3::Transform(localNorm, transA.rotation);
-							penetration = colB.radius - dist;
-							isColliding = true;
-						}
-					}
-					else
-					{
-						// Sphere center is inside Box A: resolve along closest exit face in local space
-						float distPosX = halfA.x - localSpherePos.x;
-						float distNegX = localSpherePos.x - (-halfA.x);
-						float distPosY = halfA.y - localSpherePos.y;
-						float distNegY = localSpherePos.y - (-halfA.y);
-						float distPosZ = halfA.z - localSpherePos.z;
-						float distNegZ = localSpherePos.z - (-halfA.z);
-
-						float minDist = distPosY;
-						Vector3 localNorm = Vector3(0.0f, 1.0f, 0.0f);
-
-						if (distPosX < minDist) { minDist = distPosX; localNorm = Vector3(1.0f, 0.0f, 0.0f); }
-						if (distNegX < minDist) { minDist = distNegX; localNorm = Vector3(-1.0f, 0.0f, 0.0f); }
-						if (distPosY < minDist) { minDist = distPosY; localNorm = Vector3(0.0f, 1.0f, 0.0f); }
-						if (distNegY < minDist) { minDist = distNegY; localNorm = Vector3(0.0f, -1.0f, 0.0f); }
-						if (distPosZ < minDist) { minDist = distPosZ; localNorm = Vector3(0.0f, 0.0f, 1.0f); }
-						if (distNegZ < minDist) { minDist = distNegZ; localNorm = Vector3(0.0f, 0.0f, -1.0f); }
-
-						normal = Vector3::Transform(localNorm, transA.rotation);
-						penetration = colB.radius + minDist;
-						isColliding = true;
-					}
-				}
-				else if (colA.shape == Core::ColliderShape::Sphere && colB.shape == Core::ColliderShape::Box)
-				{
-					// Sphere A vs Rotated Box B: evaluate in Box B's local space
-					Vector3 halfB = colB.size * 0.5f;
-					Quaternion invRotB;
-					transB.rotation.Inverse(invRotB);
-					Vector3 localSpherePos = Vector3::Transform(transA.position - transB.position, invRotB);
-
-					Vector3 localClamped = Vector3(
-						std::clamp(localSpherePos.x, -halfB.x, halfB.x),
-						std::clamp(localSpherePos.y, -halfB.y, halfB.y),
-						std::clamp(localSpherePos.z, -halfB.z, halfB.z)
-					);
-					Vector3 localDelta = localSpherePos - localClamped;
-					float distSq = localDelta.LengthSquared();
-
-					if (distSq > 0.000001f)
-					{
-						if (distSq < colA.radius * colA.radius)
-						{
-							float dist = std::sqrt(distSq);
-							Vector3 localNorm = -localDelta / dist;
-							normal = Vector3::Transform(localNorm, transB.rotation);
-							penetration = colA.radius - dist;
-							isColliding = true;
-						}
-					}
-					else
-					{
-						// Sphere center is inside Box B: resolve along closest exit face in local space
-						float distPosX = halfB.x - localSpherePos.x;
-						float distNegX = localSpherePos.x - (-halfB.x);
-						float distPosY = halfB.y - localSpherePos.y;
-						float distNegY = localSpherePos.y - (-halfB.y);
-						float distPosZ = halfB.z - localSpherePos.z;
-						float distNegZ = localSpherePos.z - (-halfB.z);
-
-						float minDist = distPosY;
-						Vector3 exitNormal = Vector3(0.0f, 1.0f, 0.0f);
-
-						if (distPosX < minDist) { minDist = distPosX; exitNormal = Vector3(1.0f, 0.0f, 0.0f); }
-						if (distNegX < minDist) { minDist = distNegX; exitNormal = Vector3(-1.0f, 0.0f, 0.0f); }
-						if (distPosY < minDist) { minDist = distPosY; exitNormal = Vector3(0.0f, 1.0f, 0.0f); }
-						if (distNegY < minDist) { minDist = distNegY; exitNormal = Vector3(0.0f, -1.0f, 0.0f); }
-						if (distPosZ < minDist) { minDist = distPosZ; exitNormal = Vector3(0.0f, 0.0f, 1.0f); }
-						if (distNegZ < minDist) { minDist = distNegZ; exitNormal = Vector3(0.0f, 0.0f, -1.0f); }
-
-						normal = -Vector3::Transform(exitNormal, transB.rotation);
-						penetration = colA.radius + minDist;
-						isColliding = true;
-					}
-				}
-
-				if (isColliding)
-				{
-					auto pairKey = (entA < entB) ? std::make_pair(entA, entB) : std::make_pair(entB, entA);
-
-					if (colA.isTrigger || colB.isTrigger)
-					{
-						if (iter == 0)
-						{
-							currentTriggers.insert(pairKey);
-						}
-					}
-					else
-					{
-						if (iter == 0)
-						{
-							currentCollisions.insert(pairKey);
-						}
-
-						// Physical response
-						auto* rbA = reg.try_get<Core::RigidbodyComponent>(entA);
-						auto* rbB = reg.try_get<Core::RigidbodyComponent>(entB);
-
-						float invMassA = (rbA && !rbA->isKinematic && rbA->mass > 0.0f) ? (1.0f / rbA->mass) : 0.0f;
-						float invMassB = (rbB && !rbB->isKinematic && rbB->mass > 0.0f) ? (1.0f / rbB->mass) : 0.0f;
-						float totalInvMass = invMassA + invMassB;
-
-						if (totalInvMass > 0.0f)
-						{
-							// Positional correction
-							transA.position -= normal * (penetration * (invMassA / totalInvMass));
-							transB.position += normal * (penetration * (invMassB / totalInvMass));
-
-							// Velocity impulse
-							auto* stateA = reg.try_get<Core::RigidbodyRuntimeState>(entA);
-							auto* stateB = reg.try_get<Core::RigidbodyRuntimeState>(entB);
-
-							Vector3 velA = stateA ? stateA->linearVelocity : Vector3(0.0f, 0.0f, 0.0f);
-							Vector3 velB = stateB ? stateB->linearVelocity : Vector3(0.0f, 0.0f, 0.0f);
-							Vector3 relVel = velB - velA;
-							float normVel = relVel.Dot(normal);
-
-							if (normVel < 0.0f)
+							if (iter == 0)
 							{
-								float restA = rbA ? rbA->restitution : 0.0f;
-								float restB = rbB ? rbB->restitution : 0.0f;
-								float restitution = std::max(restA, restB);
+								currentTriggers.insert(pairKey);
+							}
+						}
+						else
+						{
+							if (iter == 0)
+							{
+								currentCollisions.insert(pairKey);
+							}
 
-								float impulseMag = -(1.0f + restitution) * normVel / totalInvMass;
-								Vector3 impulse = normal * impulseMag;
+							// Physical response
+							auto* rbA = reg.try_get<Core::RigidbodyComponent>(entA);
+							auto* rbB = reg.try_get<Core::RigidbodyComponent>(entB);
 
-								if (invMassA > 0.0f && stateA)
+							float invMassA = (rbA && !rbA->isKinematic && rbA->mass > 0.0f) ? (1.0f / rbA->mass) : 0.0f;
+							float invMassB = (rbB && !rbB->isKinematic && rbB->mass > 0.0f) ? (1.0f / rbB->mass) : 0.0f;
+							float totalInvMass = invMassA + invMassB;
+
+							if (totalInvMass > 0.0f)
+							{
+								// Positional correction
+								transA.position -= normal * (penetration * (invMassA / totalInvMass));
+								transB.position += normal * (penetration * (invMassB / totalInvMass));
+
+								// Velocity impulse
+								auto* stateA = reg.try_get<Core::RigidbodyRuntimeState>(entA);
+								auto* stateB = reg.try_get<Core::RigidbodyRuntimeState>(entB);
+
+								Vector3 velA = stateA ? stateA->linearVelocity : Vector3(0.0f, 0.0f, 0.0f);
+								Vector3 velB = stateB ? stateB->linearVelocity : Vector3(0.0f, 0.0f, 0.0f);
+								Vector3 relVel = velB - velA;
+								float normVel = relVel.Dot(normal);
+
+								if (normVel < 0.0f)
 								{
-									stateA->linearVelocity -= impulse * invMassA;
+									float restA = rbA ? rbA->restitution : 0.0f;
+									float restB = rbB ? rbB->restitution : 0.0f;
+									float restitution = std::max(restA, restB);
+
+									float impulseMag = -(1.0f + restitution) * normVel / totalInvMass;
+									Vector3 impulse = normal * impulseMag;
+
+									if (invMassA > 0.0f && stateA)
+									{
+										stateA->linearVelocity -= impulse * invMassA;
+									}
+									if (invMassB > 0.0f && stateB)
+									{
+										stateB->linearVelocity += impulse * invMassB;
+									}
+
+									// Friction impulse (Coulomb friction model)
+									Vector3 tangentVel = relVel - normal * normVel;
+									float tangentSpeed = tangentVel.Length();
+									if (tangentSpeed > 0.0001f)
+									{
+										Vector3 tangent = tangentVel / tangentSpeed;
+										float fA = rbA ? rbA->friction : 0.5f;
+										float fB = rbB ? rbB->friction : 0.5f;
+										float friction = std::sqrt(fA * fB);
+										float maxFrictionImpulse = friction * impulseMag;
+										float dynamicFrictionImpulse = std::min(maxFrictionImpulse, tangentSpeed / totalInvMass);
+										Vector3 fImpulse = tangent * dynamicFrictionImpulse;
+
+										if (invMassA > 0.0f && stateA)
+										{
+											stateA->linearVelocity += fImpulse * invMassA;
+										}
+										if (invMassB > 0.0f && stateB)
+										{
+											stateB->linearVelocity -= fImpulse * invMassB;
+										}
+									}
 								}
-								if (invMassB > 0.0f && stateB)
+							}
+						}
+					}
+				}
+
+				// Heightfield Terrain Collision
+				auto terrainView = reg.view<Core::TerrainComponent, Core::TransformComponent>();
+				for (auto rbEntity : colliderEntities)
+				{
+					auto* rb = reg.try_get<Core::RigidbodyComponent>(rbEntity);
+					if (!rb || rb->isKinematic) continue;
+
+					const auto& col = reg.get<Core::ColliderComponent>(rbEntity);
+					auto& trans = reg.get<Core::TransformComponent>(rbEntity);
+					auto& state = reg.get_or_emplace<Core::RigidbodyRuntimeState>(rbEntity);
+
+					float bottomOffset = col.radius;
+					if (col.shape == Core::ColliderShape::Box) bottomOffset = col.size.y * 0.5f;
+					else if (col.shape == Core::ColliderShape::Capsule) bottomOffset = col.height * 0.5f;
+
+					float bottomY = trans.position.y - bottomOffset;
+
+					for (auto terrainEntity : terrainView)
+					{
+						const auto& terrainComp = terrainView.get<Core::TerrainComponent>(terrainEntity);
+						const auto& terrainTrans = terrainView.get<Core::TransformComponent>(terrainEntity);
+
+						float localX = trans.position.x - terrainTrans.position.x;
+						float localZ = trans.position.z - terrainTrans.position.z;
+
+						float terrainHeight = Core::Renderer::TerrainGenerator::sampleHeight(terrainComp, localX, localZ) + terrainTrans.position.y;
+						Vector3 terrainNormal = Core::Renderer::TerrainGenerator::sampleNormal(terrainComp, localX, localZ);
+
+						if (bottomY < terrainHeight)
+						{
+							float penetration = terrainHeight - bottomY;
+							trans.position += terrainNormal * penetration;
+
+							auto pairKey = (rbEntity < terrainEntity) ? std::make_pair(rbEntity, terrainEntity) : std::make_pair(terrainEntity, rbEntity);
+							if (iter == 0)
+							{
+								currentCollisions.insert(pairKey);
+							}
+
+							float normVel = state.linearVelocity.Dot(terrainNormal);
+							if (iter == 0 && normVel < 0.0f)
+							{
+								float impulseMag = -(1.0f + rb->restitution) * normVel;
+								state.linearVelocity += terrainNormal * impulseMag;
+
+								if (rb->restitution == 0.0f && state.linearVelocity.y > 0.0f)
 								{
-									stateB->linearVelocity += impulse * invMassB;
+									state.linearVelocity.y = 0.0f;
 								}
 
-								// Friction impulse (Coulomb friction model)
-								Vector3 tangentVel = relVel - normal * normVel;
+								Vector3 tangentVel = state.linearVelocity - terrainNormal * state.linearVelocity.Dot(terrainNormal);
 								float tangentSpeed = tangentVel.Length();
 								if (tangentSpeed > 0.0001f)
 								{
 									Vector3 tangent = tangentVel / tangentSpeed;
-									float fA = rbA ? rbA->friction : 0.5f;
-									float fB = rbB ? rbB->friction : 0.5f;
-									float friction = std::sqrt(fA * fB);
-									float maxFrictionImpulse = friction * impulseMag;
-									float dynamicFrictionImpulse = std::min(maxFrictionImpulse, tangentSpeed / totalInvMass);
-									Vector3 fImpulse = tangent * dynamicFrictionImpulse;
-
-									if (invMassA > 0.0f && stateA)
-									{
-										stateA->linearVelocity += fImpulse * invMassA;
-									}
-									if (invMassB > 0.0f && stateB)
-									{
-										stateB->linearVelocity -= fImpulse * invMassB;
-									}
+									float frictionImpulse = std::min(rb->friction * impulseMag, tangentSpeed);
+									state.linearVelocity -= tangent * frictionImpulse;
 								}
 							}
 						}
@@ -416,7 +347,6 @@ namespace Physics
 				}
 			}
 		}
-	}
 
 		// 3. Dispatch trigger and collision events
 		dispatchEvents(scene, currentCollisions, currentTriggers);
@@ -531,100 +461,101 @@ namespace Physics
 				continue;
 			}
 
-			if (col.shape == Core::ColliderShape::Sphere)
+			float hitT = 0.0f;
+			Vector3 hitNormal;
+			if (RaycastCollider(col, trans, origin, normalizedDir, outHit.distance, hitT, hitNormal))
 			{
-				Vector3 m = origin - trans.position;
-				float b = m.Dot(normalizedDir);
-				float c = m.Dot(m) - col.radius * col.radius;
-
-				if (c > 0.0f && b > 0.0f)
-				{
-					continue;
-				}
-
-				float discr = b * b - c;
-				if (discr < 0.0f)
-				{
-					continue;
-				}
-
-				float t = -b - std::sqrt(discr);
-				if (t < 0.0f)
-				{
-					t = 0.0f;
-				}
-
-				if (t < outHit.distance)
+				if (hitT < outHit.distance)
 				{
 					outHit.hasHit = true;
-					outHit.distance = t;
-					outHit.point = origin + normalizedDir * t;
-					outHit.normal = (outHit.point - trans.position);
-					outHit.normal.Normalize();
+					outHit.distance = hitT;
+					outHit.point = origin + normalizedDir * hitT;
+					outHit.normal = hitNormal;
 					outHit.entity = Core::Entity(entity, &scene);
 				}
 			}
-			else if (col.shape == Core::ColliderShape::Box)
+		}
+
+		// Raycast against TerrainComponent heightfields via ray-marching
+		auto terrainView = reg.view<Core::TerrainComponent, Core::TransformComponent>();
+		for (auto entity : terrainView)
+		{
+			const auto& terrain = terrainView.get<Core::TerrainComponent>(entity);
+			const auto& trans = terrainView.get<Core::TransformComponent>(entity);
+
+			float halfSize = terrain.worldSize * 0.5f;
+			Vector3 minBox = trans.position + Vector3(-halfSize, terrain.seaFloorDepth - 10.0f, -halfSize);
+			Vector3 maxBox = trans.position + Vector3(halfSize, terrain.maxHeight + 10.0f, halfSize);
+
+			float tBoxMin = 0.0f;
+			float tBoxMax = std::min(maxDist, outHit.distance);
+			bool hitsBox = true;
+			for (int i = 0; i < 3; ++i)
 			{
-				Vector3 minPt = trans.position - col.size * 0.5f;
-				Vector3 maxPt = trans.position + col.size * 0.5f;
+				float origComp = (i == 0) ? origin.x : (i == 1 ? origin.y : origin.z);
+				float dirComp = (i == 0) ? normalizedDir.x : (i == 1 ? normalizedDir.y : normalizedDir.z);
+				float minComp = (i == 0) ? minBox.x : (i == 1 ? minBox.y : minBox.z);
+				float maxComp = (i == 0) ? maxBox.x : (i == 1 ? maxBox.y : maxBox.z);
 
-				float tmin = 0.0f;
-				float tmax = outHit.distance;
-				Vector3 hitNorm(0.0f, 1.0f, 0.0f);
-
-				bool intersects = true;
-				for (int i = 0; i < 3; ++i)
+				if (std::abs(dirComp) < 0.00001f)
 				{
-					float origComp = (i == 0) ? origin.x : (i == 1 ? origin.y : origin.z);
-					float dirComp = (i == 0) ? normalizedDir.x : (i == 1 ? normalizedDir.y : normalizedDir.z);
-					float minComp = (i == 0) ? minPt.x : (i == 1 ? minPt.y : minPt.z);
-					float maxComp = (i == 0) ? maxPt.x : (i == 1 ? maxPt.y : maxPt.z);
+					if (origComp < minComp || origComp > maxComp) { hitsBox = false; break; }
+				}
+				else
+				{
+					float ood = 1.0f / dirComp;
+					float t1 = (minComp - origComp) * ood;
+					float t2 = (maxComp - origComp) * ood;
+					if (t1 > t2) std::swap(t1, t2);
+					tBoxMin = std::max(tBoxMin, t1);
+					tBoxMax = std::min(tBoxMax, t2);
+					if (tBoxMin > tBoxMax) { hitsBox = false; break; }
+				}
+			}
 
-					if (std::abs(dirComp) < 0.00001f)
+			if (!hitsBox) continue;
+
+			float stepSize = std::clamp(terrain.worldSize / static_cast<float>(terrain.resolution), 0.25f, 2.0f);
+			float prevT = tBoxMin;
+
+			for (float t = tBoxMin + stepSize; t <= tBoxMax; t += stepSize)
+			{
+				Vector3 pos = origin + normalizedDir * t;
+				float h = Core::Renderer::TerrainGenerator::sampleHeight(terrain, pos.x - trans.position.x, pos.z - trans.position.z) + trans.position.y;
+				float diff = pos.y - h;
+
+				if (diff <= 0.0f)
+				{
+					float tLo = prevT;
+					float tHi = t;
+					for (int iter = 0; iter < 6; ++iter)
 					{
-						if (origComp < minComp || origComp > maxComp)
+						float tMid = (tLo + tHi) * 0.5f;
+						Vector3 midPos = origin + normalizedDir * tMid;
+						float midH = Core::Renderer::TerrainGenerator::sampleHeight(terrain, midPos.x - trans.position.x, midPos.z - trans.position.z) + trans.position.y;
+						if (midPos.y <= midH)
 						{
-							intersects = false;
-							break;
+							tHi = tMid;
+						}
+						else
+						{
+							tLo = tMid;
 						}
 					}
-					else
+
+					float hitT = (tLo + tHi) * 0.5f;
+					if (hitT < outHit.distance)
 					{
-						float ood = 1.0f / dirComp;
-						float t1 = (minComp - origComp) * ood;
-						float t2 = (maxComp - origComp) * ood;
-						Vector3 n1 = (i == 0) ? Vector3(-1, 0, 0) : (i == 1 ? Vector3(0, -1, 0) : Vector3(0, 0, -1));
-
-						if (t1 > t2)
-						{
-							std::swap(t1, t2);
-							n1 = -n1;
-						}
-
-						if (t1 > tmin)
-						{
-							tmin = t1;
-							hitNorm = n1;
-						}
-						tmax = std::min(tmax, t2);
-
-						if (tmin > tmax)
-						{
-							intersects = false;
-							break;
-						}
+						outHit.hasHit = true;
+						outHit.distance = hitT;
+						outHit.point = origin + normalizedDir * hitT;
+						outHit.normal = Core::Renderer::TerrainGenerator::sampleNormal(terrain, outHit.point.x - trans.position.x, outHit.point.z - trans.position.z);
+						outHit.entity = Core::Entity(entity, &scene);
 					}
+					break;
 				}
 
-				if (intersects && tmin < outHit.distance)
-				{
-					outHit.hasHit = true;
-					outHit.distance = tmin;
-					outHit.point = origin + normalizedDir * tmin;
-					outHit.normal = hitNorm;
-					outHit.entity = Core::Entity(entity, &scene);
-				}
+				prevT = t;
 			}
 		}
 

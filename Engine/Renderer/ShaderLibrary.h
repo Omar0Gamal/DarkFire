@@ -4,6 +4,7 @@
 #include "Engine/Core/Result.h"
 #include "Engine/RHI/IRHI.h"
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -41,6 +42,28 @@ namespace Core::Renderer
 			const std::string& entryPoint = "main",
 			const std::vector<std::string>& keywords = {});
 
+		Result<std::shared_ptr<RHI::IHullShader>, std::string> getOrCreateHullShader(
+			const std::string& shaderName,
+			const std::string& entryPoint = "main",
+			const std::vector<std::string>& keywords = {});
+
+		Result<std::shared_ptr<RHI::IDomainShader>, std::string> getOrCreateDomainShader(
+			const std::string& shaderName,
+			const std::string& entryPoint = "main",
+			const std::vector<std::string>& keywords = {});
+
+		Result<std::shared_ptr<RHI::IComputeShader>, std::string> loadComputeShader(
+			const std::string& name,
+			const std::filesystem::path& path,
+			const std::string& entryPoint = "main");
+
+		[[nodiscard]] std::shared_ptr<RHI::IComputeShader> getComputeShader(const std::string& name) const;
+
+		Result<std::shared_ptr<RHI::IComputeShader>, std::string> getOrCreateComputeShader(
+			const std::string& shaderName,
+			const std::string& entryPoint = "main",
+			const std::vector<std::string>& keywords = {});
+
 		Result<std::vector<uint8_t>, std::string> compileSource(
 			const std::string& source,
 			const std::string& sourceName,
@@ -61,6 +84,9 @@ namespace Core::Renderer
 
 		std::unordered_map<std::string, std::shared_ptr<RHI::IVertexShader>> m_vertexShaders;
 		std::unordered_map<std::string, std::shared_ptr<RHI::IPixelShader>> m_pixelShaders;
+		std::unordered_map<std::string, std::shared_ptr<RHI::IHullShader>> m_hullShaders;
+		std::unordered_map<std::string, std::shared_ptr<RHI::IDomainShader>> m_domainShaders;
+		std::unordered_map<std::string, std::shared_ptr<RHI::IComputeShader>> m_computeShaders;
 		std::unordered_map<std::string, std::vector<uint8_t>> m_bytecodeCache;
 
 		void initializeFallbackShaders();

@@ -1,0 +1,462 @@
+{
+  "scene_version": 1,
+  "entities": [
+    {
+      "uuid": 20000,
+      "name": "World Environment",
+      "tag": "Environment",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "EnvironmentComponent": {
+          "skyType": 0,
+          "skyColor": [0.12, 0.45, 0.85, 1.0],
+          "horizonColor": [0.55, 0.78, 0.95, 1.0],
+          "groundColor": [0.20, 0.28, 0.22, 1.0],
+          "sunColor": [1.0, 0.95, 0.82, 1.0],
+          "ambientColor": [0.38, 0.32, 0.28, 1.0],
+          "ambientEnergy": 0.90,
+          "skyboxTexturePath": "",
+          "enableFog": false,
+          "fogColor": [0.55, 0.68, 0.82, 1.0],
+          "fogDensity": 0.0045,
+          "fogHeightFalloff": 0.06,
+          "fogSunScattering": 0.50,
+          "bloomThreshold": 1.6,
+          "exposure": 0.9
+        },
+        "PostProcessingComponent": {
+          "enableShadows": true,
+          "enableTonemapping": true,
+          "tonemapper": 0,
+          "exposure": 0.9,
+          "gamma": 2.2,
+          "enableTAA": true,
+          "enableClusteredLighting": true,
+          "enableGpuCulling": true,
+          "enableFXAA": true,
+          "fxaaSubpix": 0.85,
+          "fxaaEdgeThreshold": 0.10,
+          "fxaaEdgeThresholdMin": 0.0416,
+          "enableSSAO": false,
+          "ssaoRadius": 0.80,
+          "ssaoBias": 0.025,
+          "ssaoIntensity": 1.30,
+          "ssaoDirectLightInfluence": 0.60,
+          "enableBloom": false,
+          "bloomThreshold": 1.6,
+          "bloomIntensity": 0.06,
+          "enableSSR": false,
+          "ssrMaxDistance": 120.0,
+          "ssrThickness": 0.3,
+          "ssrRoughnessCutoff": 0.85,
+          "ssrIntensity": 1.1,
+          "enableGI": false,
+          "giIntensity": 1.0,
+          "ssgiRadius": 10.0,
+          "enableSHProbes": false
+        },
+        "HUDTelemetryComponent": {
+          "showOverlay": true,
+          "showHotkeys": true,
+          "customBannerText": "Scene 2/2: Tropical Island & Ocean (Procedural Terrain + 45k Grass + Gerstner Water)"
+        }
+      }
+    },
+    {
+      "uuid": 20001,
+      "name": "Main Camera",
+      "tag": "MainCamera",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 8.5, -52.0],
+          "rotation": [0.0697565, 0.0, 0.0, 0.997564],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [8.0, 0.0, 0.0]
+        },
+        "CameraComponent": {
+          "fov": 65.0,
+          "nearZ": 0.1,
+          "farZ": 1000.0,
+          "isPrimary": true,
+          "isOrthographic": false,
+          "orthoWidth": 10.0,
+          "orthoHeight": 10.0
+        },
+        "AudioListenerComponent": {
+          "active": true,
+          "masterVolume": 1.0
+        },
+        "ScriptsComponent": {
+          "scripts": [
+            {
+              "name": "BenchmarkController",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "uuid": 20002,
+      "name": "Golden Hour Sun",
+      "tag": "Light",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 50.0, 0.0],
+          "rotation": [0.317851, -0.204648, 0.070466, 0.923106],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [38.0, -25.0, 0.0]
+        },
+        "LightComponent": {
+          "type": 0,
+          "color": [1.0, 0.95, 0.82, 1.0],
+          "intensity": 2.0,
+          "range": 200.0,
+          "spotInnerAngle": 30.0,
+          "spotOuterAngle": 45.0,
+          "castShadows": true,
+          "shadowBias": 0.0012,
+          "shadowNormalBias": 0.02,
+          "shadowSoftness": 1.25,
+          "shadowDistance": 120.0
+        }
+      }
+    },
+    {
+      "uuid": 20003,
+      "name": "Procedural Volcanic Island",
+      "tag": "Terrain",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "TerrainComponent": {
+          "resolution": 160,
+          "worldSize": 220.0,
+          "maxHeight": 34.0,
+          "seed": 1337,
+          "octaves": 6,
+          "frequency": 0.015,
+          "persistence": 0.45,
+          "lacunarity": 2.1,
+          "ridgeWeight": 0.25,
+          "isIsland": true,
+          "islandRadius": 90.0,
+          "coastlineFalloff": 2.2,
+          "seaFloorDepth": -8.0,
+          "sandHeight": 2.6,
+          "cliffSlopeThreshold": 0.65,
+          "snowHeight": 23.0
+        }
+      }
+    },
+    {
+      "uuid": 20004,
+      "name": "Island Meadow Grass Field",
+      "tag": "Foliage",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "FoliageComponent": {
+          "bladeCount": 45000,
+          "patchDimensions": [140.0, 140.0],
+          "bladeHeightMin": 0.4,
+          "bladeHeightMax": 1.1,
+          "bladeWidth": 0.07,
+          "windSpeed": 2.4,
+          "windStrength": 0.32,
+          "windFrequency": 1.2,
+          "maxDrawDistance": 150.0,
+          "rootColor": [0.12, 0.32, 0.08, 1.0],
+          "tipColor": [0.42, 0.65, 0.18, 1.0],
+          "snapToTerrain": true,
+          "minAltitude": 2.4,
+          "maxAltitude": 20.0,
+          "maxSlope": 0.34
+        }
+      }
+    },
+    {
+      "uuid": 20005,
+      "name": "Tropical Gerstner Ocean",
+      "tag": "Water",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "WaterComponent": {
+          "waterLevel": 0.0,
+          "planeSize": 360.0,
+          "gridResolution": 160,
+          "waveAmplitude": 0.32,
+          "waveFrequency": 0.18,
+          "waveSpeed": 1.45,
+          "waveSteepness": 0.62,
+          "shallowColor": [0.06, 0.62, 0.66, 1.0],
+          "deepColor": [0.01, 0.09, 0.22, 1.0],
+          "foamColor": [0.92, 0.96, 0.98, 1.0],
+          "depthAbsorption": 0.15,
+          "foamDepthThreshold": 1.35,
+          "refractionStrength": 0.035,
+          "causticsIntensity": 0.50,
+          "buoyancyDensity": 2.6,
+          "fluidDrag": 1.8
+        }
+      }
+    },
+    {
+      "uuid": 20006,
+      "name": "Ocean Surf Audio",
+      "tag": "Audio",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 0.5, -40.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "AudioSourceComponent": {
+          "clipPath": "builtin:ocean_waves",
+          "volume": 0.85,
+          "pitch": 1.0,
+          "loop": true,
+          "spatialize3D": true,
+          "minDistance": 5.0,
+          "maxDistance": 80.0,
+          "playOnStart": true
+        }
+      }
+    },
+    {
+      "uuid": 20007,
+      "name": "Island Wind Audio",
+      "tag": "Audio",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 10.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "AudioSourceComponent": {
+          "clipPath": "builtin:wind",
+          "volume": 0.45,
+          "pitch": 1.0,
+          "loop": true,
+          "spatialize3D": false,
+          "minDistance": 1.0,
+          "maxDistance": 100.0,
+          "playOnStart": true
+        }
+      }
+    },
+    {
+      "uuid": 20008,
+      "name": "Buoyant Crate Alpha",
+      "tag": "Crate",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [-8.0, 1.5, -38.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.2, 1.2, 1.2],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "builtin:cube",
+          "materialPath": "Assets/Materials/BuoyantCrate.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        },
+        "RigidbodyComponent": {
+          "mass": 1.5,
+          "drag": 0.1,
+          "angularDrag": 0.2,
+          "isKinematic": false,
+          "useGravity": true,
+          "restitution": 0.2,
+          "friction": 0.6
+        },
+        "ColliderComponent": {
+          "shape": 0,
+          "size": [1.2, 1.2, 1.2],
+          "radius": 0.6,
+          "height": 1.2,
+          "isTrigger": false,
+          "layer": 0
+        }
+      }
+    },
+    {
+      "uuid": 20009,
+      "name": "Buoyant Crate Beta",
+      "tag": "Crate",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [4.0, 2.0, -40.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.4, 1.4, 1.4],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "builtin:cube",
+          "materialPath": "Assets/Materials/BuoyantCrate.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        },
+        "RigidbodyComponent": {
+          "mass": 2.0,
+          "drag": 0.1,
+          "angularDrag": 0.2,
+          "isKinematic": false,
+          "useGravity": true,
+          "restitution": 0.2,
+          "friction": 0.6
+        },
+        "ColliderComponent": {
+          "shape": 0,
+          "size": [1.4, 1.4, 1.4],
+          "radius": 0.7,
+          "height": 1.4,
+          "isTrigger": false,
+          "layer": 0
+        }
+      }
+    },
+    {
+      "uuid": 20010,
+      "name": "Buoyant Crate Gamma",
+      "tag": "Crate",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [12.0, 1.8, -35.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "builtin:cube",
+          "materialPath": "Assets/Materials/BuoyantCrate.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        },
+        "RigidbodyComponent": {
+          "mass": 1.2,
+          "drag": 0.1,
+          "angularDrag": 0.2,
+          "isKinematic": false,
+          "useGravity": true,
+          "restitution": 0.2,
+          "friction": 0.6
+        },
+        "ColliderComponent": {
+          "shape": 0,
+          "size": [1.0, 1.0, 1.0],
+          "radius": 0.5,
+          "height": 1.0,
+          "isTrigger": false,
+          "layer": 0
+        }
+      }
+    },
+    {
+      "uuid": 20011,
+      "name": "Rolling Chrome Sphere West",
+      "tag": "PhysicsSphere",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [-5.0, 15.0, -10.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "builtin:sphere",
+          "materialPath": "Assets/Materials/ChromeSphere.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        },
+        "RigidbodyComponent": {
+          "mass": 3.0,
+          "drag": 0.05,
+          "angularDrag": 0.1,
+          "isKinematic": false,
+          "useGravity": true,
+          "restitution": 0.6,
+          "friction": 0.4
+        },
+        "ColliderComponent": {
+          "shape": 1,
+          "size": [1.0, 1.0, 1.0],
+          "radius": 0.5,
+          "height": 1.0,
+          "isTrigger": false,
+          "layer": 0
+        }
+      }
+    },
+    {
+      "uuid": 20012,
+      "name": "Rolling Chrome Sphere East",
+      "tag": "PhysicsSphere",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [6.0, 18.0, -8.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.2, 1.2, 1.2],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "builtin:sphere",
+          "materialPath": "Assets/Materials/ChromeSphere.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        },
+        "RigidbodyComponent": {
+          "mass": 4.0,
+          "drag": 0.05,
+          "angularDrag": 0.1,
+          "isKinematic": false,
+          "useGravity": true,
+          "restitution": 0.6,
+          "friction": 0.4
+        },
+        "ColliderComponent": {
+          "shape": 1,
+          "size": [1.2, 1.2, 1.2],
+          "radius": 0.6,
+          "height": 1.2,
+          "isTrigger": false,
+          "layer": 0
+        }
+      }
+    }
+  ]
+}

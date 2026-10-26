@@ -15,12 +15,15 @@ Binaries/
 x64/
 Package/
 Cooked/
+*.cso
+*.asm
 
 # Crash dumps, logs & caches
 *.log
 *.dmp
 Cache/
 .tracy/
+.darkfire/
 
 # Configuration files (ignore by default, allow in Templates/ and Editor/Config/)
 *.ini

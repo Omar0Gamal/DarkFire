@@ -3,12 +3,10 @@
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Engine/Core/Log/Log.h"
 
-#if defined(DF_EDITOR)
 #include <imgui.h>
 #include <imgui_impl_win32.h>
 #include <imgui_impl_dx11.h>
 #include <ImGuizmo.h>
-#endif
 
 namespace Runtime
 {
@@ -23,12 +21,10 @@ namespace Runtime
 	Application::~Application()
 	{
 		onShutdown();
-#if defined(DF_EDITOR)
 		if (m_imguiInitialized)
 		{
 			shutdownImGui();
 		}
-#endif
 		m_layerStack.clear();
 		s_instance = nullptr;
 	}
@@ -99,12 +95,7 @@ namespace Runtime
 		m_physicsWorld->init(m_config.gravity, m_config.fixedTimeStep);
 		m_physicsWorld->setCollisionMatrix(m_config.collisionMatrix);
 
-#if defined(DF_EDITOR)
-		if (m_config.enableImGui)
-		{
-			initImGui();
-		}
-#endif
+		initImGui();
 
 		onInit();
 		Core::Log::Get().info("Runtime", "Application initialized successfully.");
@@ -152,7 +143,7 @@ namespace Runtime
 		m_running = false;
 	}
 
-	void Application::run()
+	void Application::run(int maxFrames)
 	{
 		m_running = true;
 		Core::Timer timer;
@@ -164,16 +155,27 @@ namespace Runtime
 		}
 
 		double lastTime = timer.getElapsedSeconds();
+		int frameCount = 0;
 
 		while (m_running && !m_window->shouldClose())
 		{
+			if (maxFrames > 0 && frameCount >= maxFrames)
+			{
+				break;
+			}
+			++frameCount;
+
 			m_window->pollEvents();
 
 			double currentTime = timer.getElapsedSeconds();
 			float frameTime = static_cast<float>(currentTime - lastTime);
 			lastTime = currentTime;
 
-			if (frameTime > 0.25f)
+			if (maxFrames > 0)
+			{
+				frameTime = fixedDeltaTime;
+			}
+			else if (frameTime > 0.25f)
 			{
 				frameTime = 0.25f; // Prevent spiral of death
 			}
@@ -199,25 +201,16 @@ namespace Runtime
 				layer->onUpdate(frameTime);
 			}
 
-#if defined(DF_EDITOR)
+			// ImGui Rendering (Editor DockSpace or In-Game HUD Overlay)
 			if (m_imguiInitialized)
 			{
 				beginImGuiFrame();
-			}
-#endif
-
-			// ImGui Rendering (if any)
-			for (auto& layer : m_layerStack)
-			{
-				layer->onImGuiRender();
-			}
-
-#if defined(DF_EDITOR)
-			if (m_imguiInitialized)
-			{
+				for (auto& layer : m_layerStack)
+				{
+					layer->onImGuiRender();
+				}
 				endImGuiFrame();
 			}
-#endif
 
 			// Present to display
 			if (m_swapChain)
@@ -231,10 +224,9 @@ namespace Runtime
 		Core::Log::Get().info("Runtime", "Application loop terminated.");
 	}
 
-#if defined(DF_EDITOR)
 	void Application::initImGui()
 	{
-		if (!m_window || !m_device)
+		if (!m_window || !m_device || !m_device->getNativeDevice() || !m_device->getNativeContext())
 		{
 			return;
 		}
@@ -243,8 +235,11 @@ namespace Runtime
 		ImGui::CreateContext();
 		ImGuiIO& io = ImGui::GetIO();
 		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-		io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-		io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+		if (m_config.enableImGui)
+		{
+			io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+			io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+		}
 
 		const float dpiScale = m_window ? m_window->getDpiScale() : 1.0f;
 		const float validDpi = (dpiScale > 0.5f) ? dpiScale : 1.0f;
@@ -353,7 +348,10 @@ namespace Runtime
 			{
 				std::shared_ptr<Core::RHI::IGpuTexture> rtvs[] = { backBuffer };
 				m_device->getImmediate()->setRenderTargets(rtvs, nullptr);
-				m_device->getImmediate()->clearRenderTarget(backBuffer, Core::Color(0.10f, 0.10f, 0.12f, 1.0f));
+				if (m_config.enableImGui)
+				{
+					m_device->getImmediate()->clearRenderTarget(backBuffer, Core::Color(0.10f, 0.10f, 0.12f, 1.0f));
+				}
 			}
 		}
 
@@ -367,5 +365,4 @@ namespace Runtime
 			ImGui::RenderPlatformWindowsDefault();
 		}
 	}
-#endif
 }

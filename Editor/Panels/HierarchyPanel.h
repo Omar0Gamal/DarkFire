@@ -39,6 +39,8 @@ namespace Editor
 		void drawContextMenu(Core::Entity entity);
 		void drawPanelContextMenu();
 		void drawAddNodeModal();
+		std::string generateUniqueName(const std::string& baseName);
+		static const char* getEntityTypeName(Core::Entity entity);
 
 		std::shared_ptr<Core::Scene> m_scene;
 		SelectionContext* m_selection = nullptr;

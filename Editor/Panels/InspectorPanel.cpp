@@ -1,10 +1,14 @@
 #include "Editor/Panels/InspectorPanel.h"
 #include "Editor/Commands/EntityCommands.h"
 #include "Editor/UI/DockLayout.h"
+#include "Editor/FileDialogs.h"
 #include "Editor/Inspector/FieldDrawers.h"
 #include "Engine/Core/Scene/Components.h"
 #include "Engine/Core/Reflection/Reflection.h"
 #include "Engine/Core/Scripting/ScriptRegistry.h"
+#include "Engine/Core/Scripting/ScriptableEntity.h"
+#include "Engine/Renderer/Material.h"
+#include "Engine/Renderer/PBRTextureImporter.h"
 #include <imgui.h>
 #include <string>
 #include <vector>
@@ -52,19 +56,17 @@ namespace Editor
 			// Find EnvironmentComponent entity in scene
 			Core::Entity envEntity{};
 			auto envView = m_scene->view<Core::EnvironmentComponent>();
-			for (auto handle : envView)
+			if (auto it = envView.begin(); it != envView.end())
 			{
-				envEntity = Core::Entity{ handle, m_scene.get() };
-				break;
+				envEntity = Core::Entity{ *it, m_scene.get() };
 			}
 
 			// Find PostProcessingComponent entity in scene
 			Core::Entity ppEntity{};
 			auto ppView = m_scene->view<Core::PostProcessingComponent>();
-			for (auto handle : ppView)
+			if (auto it = ppView.begin(); it != ppView.end())
 			{
-				ppEntity = Core::Entity{ handle, m_scene.get() };
-				break;
+				ppEntity = Core::Entity{ *it, m_scene.get() };
 			}
 
 			if (!envEntity.isValid() && !ppEntity.isValid())
@@ -333,13 +335,127 @@ namespace Editor
 
 						ImGui::Checkbox("##Enabled", &scr.isEnabled);
 						ImGui::SameLine();
-						ImGui::Text("%s", scr.scriptName.c_str());
+						ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "%s", scr.scriptName.c_str());
 						ImGui::SameLine();
 
 						if (ImGui::SmallButton("X"))
 						{
 							scriptToDelete = static_cast<int>(i);
 						}
+
+						// Lazily instantiate script in editor if needed to expose its properties
+						if (!scr.instance && !scr.scriptName.empty())
+						{
+							scr.instance = Core::ScriptRegistry::Get().instantiate(scr.scriptName);
+							if (scr.instance)
+							{
+								scr.instance->bind(entity, entity.getScene());
+								scr.instance->onCreate();
+								if (!scr.serializedFieldsJson.empty())
+								{
+									scr.instance->deserializeExposedFields(scr.serializedFieldsJson);
+								}
+							}
+						}
+
+						// Draw exposed script fields
+						if (scr.instance)
+						{
+							ImGui::Indent(16.0f);
+							auto& props = scr.instance->getExposedProperties();
+							bool changed = false;
+							for (auto& prop : props)
+							{
+								if (!prop.dataPtr) continue;
+								ImGui::PushID(prop.name.c_str());
+								switch (prop.type)
+								{
+								case Core::ScriptPropertyType::Float:
+								{
+									float* val = reinterpret_cast<float*>(prop.dataPtr);
+									if (ImGui::DragFloat(prop.name.c_str(), val, prop.speed, prop.minVal, prop.maxVal))
+									{
+										changed = true;
+									}
+									break;
+								}
+								case Core::ScriptPropertyType::Int:
+								{
+									int* val = reinterpret_cast<int*>(prop.dataPtr);
+									if (ImGui::DragInt(prop.name.c_str(), val, prop.speed, static_cast<int>(prop.minVal), static_cast<int>(prop.maxVal)))
+									{
+										changed = true;
+									}
+									break;
+								}
+								case Core::ScriptPropertyType::Bool:
+								{
+									bool* val = reinterpret_cast<bool*>(prop.dataPtr);
+									if (ImGui::Checkbox(prop.name.c_str(), val))
+									{
+										changed = true;
+									}
+									break;
+								}
+								case Core::ScriptPropertyType::Vec2:
+								{
+									auto* v = reinterpret_cast<Core::Vector2*>(prop.dataPtr);
+									float arr[2] = { v->x, v->y };
+									if (ImGui::DragFloat2(prop.name.c_str(), arr, prop.speed))
+									{
+										v->x = arr[0]; v->y = arr[1];
+										changed = true;
+									}
+									break;
+								}
+								case Core::ScriptPropertyType::Vec3:
+								{
+									auto* v = reinterpret_cast<Core::Vector3*>(prop.dataPtr);
+									float arr[3] = { v->x, v->y, v->z };
+									if (ImGui::DragFloat3(prop.name.c_str(), arr, prop.speed))
+									{
+										v->x = arr[0]; v->y = arr[1]; v->z = arr[2];
+										changed = true;
+									}
+									break;
+								}
+								case Core::ScriptPropertyType::Color:
+								{
+									auto* c = reinterpret_cast<Core::Color*>(prop.dataPtr);
+									float col[4] = { c->R(), c->G(), c->B(), c->A() };
+									if (ImGui::ColorEdit4(prop.name.c_str(), col))
+									{
+										*c = Core::Color(col[0], col[1], col[2], col[3]);
+										changed = true;
+									}
+									break;
+								}
+								case Core::ScriptPropertyType::String:
+								{
+									auto* str = reinterpret_cast<std::string*>(prop.dataPtr);
+									char buf[256];
+									memset(buf, 0, sizeof(buf));
+									strncpy_s(buf, str->c_str(), sizeof(buf) - 1);
+									if (ImGui::InputText(prop.name.c_str(), buf, sizeof(buf)))
+									{
+										*str = buf;
+										changed = true;
+									}
+									break;
+								}
+								default:
+									break;
+								}
+								ImGui::PopID();
+							}
+							if (changed)
+							{
+								scr.serializedFieldsJson = scr.instance->serializeExposedFields();
+								scr.instance->onValidate();
+							}
+							ImGui::Unindent(16.0f);
+						}
+
 						ImGui::PopID();
 					}
 
@@ -349,7 +465,7 @@ namespace Editor
 					}
 
 					// Add script popup
-					if (ImGui::Button("Add Script..."))
+					if (ImGui::Button("+ Add Script..."))
 					{
 						ImGui::OpenPopup("AddScriptPopup");
 					}
@@ -395,6 +511,40 @@ namespace Editor
 							if (ImGui::SmallButton("Sphere")) mr->meshPath = "builtin:sphere";
 							ImGui::SameLine();
 							if (ImGui::SmallButton("Plane")) mr->meshPath = "builtin:plane";
+
+							ImGui::Spacing();
+							if (ImGui::Button("Import PBR Texture Folder (Substance)..."))
+							{
+								std::string folder = FileDialogs::SelectFolder();
+								if (!folder.empty())
+								{
+									std::string matPath = folder + "/Material.mat";
+									auto mat = Core::Renderer::PBRTextureImporter::importFromDirectory(folder, matPath, true);
+									if (mat)
+									{
+										mr->materialPath = matPath;
+									}
+								}
+							}
+						}
+						else if (desc.name == "TerrainComponent")
+						{
+							auto* terrain = static_cast<Core::TerrainComponent*>(compData);
+							ImGui::Spacing();
+							if (ImGui::Button("Randomize Island Seed"))
+							{
+								terrain->seed = static_cast<uint32_t>(rand() % 99999 + 1);
+							}
+						}
+						else if (desc.name == "AudioSourceComponent")
+						{
+							auto* audio = static_cast<Core::AudioSourceComponent*>(compData);
+							ImGui::Spacing();
+							ImGui::TextDisabled("Builtin Presets:");
+							ImGui::SameLine();
+							if (ImGui::SmallButton("Ocean Waves")) audio->clipPath = "builtin:ocean_waves";
+							ImGui::SameLine();
+							if (ImGui::SmallButton("Wind Gusts")) audio->clipPath = "builtin:wind";
 						}
 					}
 				}

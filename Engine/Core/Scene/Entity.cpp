@@ -20,6 +20,18 @@ namespace Core
 		return getComponent<IdentityComponent>().name;
 	}
 
+	bool Entity::isActive() const
+	{
+		DF_ASSERT(isValid(), "Entity is invalid!");
+		return getComponent<IdentityComponent>().isActive;
+	}
+
+	void Entity::setActive(bool active)
+	{
+		DF_ASSERT(isValid(), "Entity is invalid!");
+		getComponent<IdentityComponent>().isActive = active;
+	}
+
 	TransformComponent& Entity::getTransform()
 	{
 		return getComponent<TransformComponent>();

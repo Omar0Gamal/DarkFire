@@ -15,17 +15,17 @@
         },
         "EnvironmentComponent": {
           "skyType": 0,
-          "skyColor": [0.12, 0.13, 0.16, 1.0],
-          "horizonColor": [0.35, 0.38, 0.44, 1.0],
-          "groundColor": [0.08, 0.08, 0.09, 1.0],
-          "ambientColor": [0.2, 0.22, 0.28, 1.0],
-          "ambientEnergy": 0.5,
+          "skyColor": [0.12, 0.15, 0.22, 1.0],
+          "horizonColor": [0.38, 0.42, 0.50, 1.0],
+          "groundColor": [0.08, 0.08, 0.10, 1.0],
+          "ambientColor": [0.22, 0.25, 0.32, 1.0],
+          "ambientEnergy": 0.6,
           "skyboxTexturePath": ""
         },
         "PostProcessingComponent": {
           "enableTonemapping": true,
           "tonemapper": 0,
-          "exposure": 1.0,
+          "exposure": 1.05,
           "gamma": 2.2,
           "enableFXAA": true,
           "fxaaSubpix": 0.75,
@@ -34,10 +34,11 @@
           "enableSSAO": true,
           "ssaoRadius": 0.5,
           "ssaoBias": 0.025,
-          "ssaoIntensity": 1.2,
+          "ssaoIntensity": 1.25,
+          "ssaoDirectLightInfluence": 0.65,
           "enableBloom": true,
           "bloomThreshold": 1.0,
-          "bloomIntensity": 0.04
+          "bloomIntensity": 0.05
         }
       }
     },
@@ -48,10 +49,10 @@
       "parent": 0,
       "components": {
         "TransformComponent": {
-          "position": [0.0, 4.5, -9.0],
-          "rotation": [0.1564345, 0.0, 0.0, 0.9876883],
+          "position": [0.0, 5.0, -10.0],
+          "rotation": [0.173648, 0.0, 0.0, 0.984808],
           "scale": [1.0, 1.0, 1.0],
-          "eulerDegrees": [18.0, 0.0, 0.0]
+          "eulerDegrees": [20.0, 0.0, 0.0]
         },
         "CameraComponent": {
           "fov": 60.0,
@@ -71,18 +72,23 @@
       "parent": 0,
       "components": {
         "TransformComponent": {
-          "position": [5.0, 15.0, -5.0],
+          "position": [8.0, 18.0, -8.0],
           "rotation": [0.4030582, -0.2725320, 0.1270838, 0.8643611],
           "scale": [1.0, 1.0, 1.0],
           "eulerDegrees": [50.0, -35.0, 0.0]
         },
         "LightComponent": {
           "type": 0,
-          "color": [1.0, 0.95, 0.85, 1.0],
-          "intensity": 1.25,
+          "color": [1.0, 0.97, 0.90, 1.0],
+          "intensity": 1.35,
           "range": 100.0,
           "spotInnerAngle": 30.0,
-          "spotOuterAngle": 45.0
+          "spotOuterAngle": 45.0,
+          "castShadows": true,
+          "shadowBias": 0.0015,
+          "shadowNormalBias": 0.02,
+          "shadowDistance": 60.0,
+          "shadowSoftness": 1.0
         }
       }
     },
@@ -99,8 +105,8 @@
           "eulerDegrees": [0.0, 0.0, 0.0]
         },
         "MeshRendererComponent": {
-          "meshPath": "/engine/Content/cube.obj",
-          "materialPath": "/engine/Content/Ground.mat",
+          "meshPath": "builtin:cube",
+          "materialPath": "Assets/Materials/Ground.mat",
           "castShadows": false,
           "receiveShadows": true
         },
@@ -121,22 +127,22 @@
       "parent": 0,
       "components": {
         "TransformComponent": {
-          "position": [0.0, 1.0, 0.0],
+          "position": [0.0, 0.75, 0.0],
           "rotation": [0.0, 0.0, 0.0, 1.0],
-          "scale": [1.0, 1.0, 1.0],
+          "scale": [1.0, 1.5, 1.0],
           "eulerDegrees": [0.0, 0.0, 0.0]
         },
         "MeshRendererComponent": {
-          "meshPath": "/engine/Content/cube.obj",
-          "materialPath": "/engine/Content/Player.mat",
+          "meshPath": "builtin:cube",
+          "materialPath": "Assets/Materials/Player.mat",
           "castShadows": true,
           "receiveShadows": true
         },
         "ColliderComponent": {
           "shape": 0,
-          "size": [1.0, 1.0, 1.0],
+          "size": [1.0, 1.5, 1.0],
           "radius": 0.5,
-          "height": 1.0,
+          "height": 1.5,
           "isTrigger": false,
           "layer": 0
         },
@@ -158,27 +164,27 @@
     },
     {
       "uuid": 1005,
-      "name": "Rotating Cube",
+      "name": "Rotating Sweeper",
       "tag": "Obstacle",
       "parent": 0,
       "components": {
         "TransformComponent": {
-          "position": [3.0, 0.5, 0.0],
+          "position": [3.5, 0.75, 0.0],
           "rotation": [0.0, 0.0, 0.0, 1.0],
-          "scale": [1.0, 1.0, 1.0],
+          "scale": [0.8, 1.5, 0.8],
           "eulerDegrees": [0.0, 0.0, 0.0]
         },
         "MeshRendererComponent": {
-          "meshPath": "/engine/Content/cube.obj",
-          "materialPath": "/engine/Content/Obstacle.mat",
+          "meshPath": "builtin:cube",
+          "materialPath": "Assets/Materials/Obstacle.mat",
           "castShadows": true,
           "receiveShadows": true
         },
         "ColliderComponent": {
           "shape": 0,
-          "size": [1.0, 1.0, 1.0],
+          "size": [0.8, 1.5, 0.8],
           "radius": 0.5,
-          "height": 1.0,
+          "height": 1.5,
           "isTrigger": false,
           "layer": 0
         },
@@ -196,15 +202,15 @@
       "parent": 0,
       "components": {
         "TransformComponent": {
-          "position": [-3.0, 1.0, 0.0],
+          "position": [-4.0, 1.0, 0.0],
           "rotation": [0.0, 0.0, 0.0, 1.0],
-          "scale": [2.0, 2.0, 2.0],
+          "scale": [2.5, 2.0, 2.5],
           "eulerDegrees": [0.0, 0.0, 0.0]
         },
         "ColliderComponent": {
           "shape": 0,
-          "size": [2.0, 2.0, 2.0],
-          "radius": 1.0,
+          "size": [2.5, 2.0, 2.5],
+          "radius": 1.25,
           "height": 2.0,
           "isTrigger": true,
           "layer": 0
@@ -218,19 +224,85 @@
     },
     {
       "uuid": 1007,
+      "name": "Floating Crystal",
+      "tag": "Pickup",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [-4.0, 1.2, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [0.7, 0.7, 0.7],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "builtin:sphere",
+          "materialPath": "Assets/Materials/Pickup.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        },
+        "ColliderComponent": {
+          "shape": 1,
+          "size": [0.7, 0.7, 0.7],
+          "radius": 0.35,
+          "height": 0.7,
+          "isTrigger": true,
+          "layer": 0
+        },
+        "ScriptsComponent": {
+          "scripts": [
+            { "name": "FloatingPickup", "enabled": true }
+          ]
+        }
+      }
+    },
+    {
+      "uuid": 1008,
+      "name": "Super Bouncer Pad",
+      "tag": "Bouncer",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 0.1, 4.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [2.0, 0.2, 2.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "builtin:cube",
+          "materialPath": "Assets/Materials/Bouncer.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        },
+        "ColliderComponent": {
+          "shape": 0,
+          "size": [2.0, 0.2, 2.0],
+          "radius": 1.0,
+          "height": 0.2,
+          "isTrigger": false,
+          "layer": 0
+        },
+        "ScriptsComponent": {
+          "scripts": [
+            { "name": "Bouncer", "enabled": true }
+          ]
+        }
+      }
+    },
+    {
+      "uuid": 1009,
       "name": "Bouncing Sphere",
       "tag": "PhysicsObject",
       "parent": 0,
       "components": {
         "TransformComponent": {
-          "position": [0.0, 6.0, 2.0],
+          "position": [0.0, 5.0, 4.0],
           "rotation": [0.0, 0.0, 0.0, 1.0],
           "scale": [1.0, 1.0, 1.0],
           "eulerDegrees": [0.0, 0.0, 0.0]
         },
         "MeshRendererComponent": {
-          "meshPath": "/engine/Content/sphere.obj",
-          "materialPath": "/engine/Content/Bouncer.mat",
+          "meshPath": "builtin:sphere",
+          "materialPath": "Assets/Materials/Obstacle.mat",
           "castShadows": true,
           "receiveShadows": true
         },
@@ -250,11 +322,228 @@
           "useGravity": true,
           "restitution": 0.85,
           "friction": 0.3
+        }
+      }
+    },
+    {
+      "uuid": 1010,
+      "name": "Domino Block 1",
+      "tag": "PhysicsObject",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [2.0, 0.5, -3.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [0.8, 1.0, 0.3],
+          "eulerDegrees": [0.0, 0.0, 0.0]
         },
-        "ScriptsComponent": {
-          "scripts": [
-            { "name": "Bouncer", "enabled": true }
-          ]
+        "MeshRendererComponent": {
+          "meshPath": "builtin:cube",
+          "materialPath": "Assets/Materials/PhysicsCube.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        },
+        "ColliderComponent": {
+          "shape": 0,
+          "size": [0.8, 1.0, 0.3],
+          "radius": 0.4,
+          "height": 1.0,
+          "isTrigger": false,
+          "layer": 0
+        },
+        "RigidbodyComponent": {
+          "mass": 0.75,
+          "drag": 0.05,
+          "angularDrag": 0.05,
+          "isKinematic": false,
+          "useGravity": true,
+          "restitution": 0.15,
+          "friction": 0.6
+        }
+      }
+    },
+    {
+      "uuid": 1011,
+      "name": "Domino Block 2",
+      "tag": "PhysicsObject",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [2.0, 0.5, -4.2],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [0.8, 1.0, 0.3],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "builtin:cube",
+          "materialPath": "Assets/Materials/PhysicsCube.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        },
+        "ColliderComponent": {
+          "shape": 0,
+          "size": [0.8, 1.0, 0.3],
+          "radius": 0.4,
+          "height": 1.0,
+          "isTrigger": false,
+          "layer": 0
+        },
+        "RigidbodyComponent": {
+          "mass": 0.75,
+          "drag": 0.05,
+          "angularDrag": 0.05,
+          "isKinematic": false,
+          "useGravity": true,
+          "restitution": 0.15,
+          "friction": 0.6
+        }
+      }
+    },
+    {
+      "uuid": 1012,
+      "name": "Domino Block 3",
+      "tag": "PhysicsObject",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [2.0, 0.5, -5.4],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [0.8, 1.0, 0.3],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "builtin:cube",
+          "materialPath": "Assets/Materials/PhysicsCube.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        },
+        "ColliderComponent": {
+          "shape": 0,
+          "size": [0.8, 1.0, 0.3],
+          "radius": 0.4,
+          "height": 1.0,
+          "isTrigger": false,
+          "layer": 0
+        },
+        "RigidbodyComponent": {
+          "mass": 0.75,
+          "drag": 0.05,
+          "angularDrag": 0.05,
+          "isKinematic": false,
+          "useGravity": true,
+          "restitution": 0.15,
+          "friction": 0.6
+        }
+      }
+    },
+    {
+      "uuid": 1013,
+      "name": "Physics Tower Base",
+      "tag": "PhysicsObject",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [-2.0, 0.4, -3.5],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [0.8, 0.8, 0.8],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "builtin:cube",
+          "materialPath": "Assets/Materials/PhysicsCube.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        },
+        "ColliderComponent": {
+          "shape": 0,
+          "size": [0.8, 0.8, 0.8],
+          "radius": 0.4,
+          "height": 0.8,
+          "isTrigger": false,
+          "layer": 0
+        },
+        "RigidbodyComponent": {
+          "mass": 1.0,
+          "drag": 0.05,
+          "angularDrag": 0.05,
+          "isKinematic": false,
+          "useGravity": true,
+          "restitution": 0.1,
+          "friction": 0.7
+        }
+      }
+    },
+    {
+      "uuid": 1014,
+      "name": "Physics Tower Mid",
+      "tag": "PhysicsObject",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [-2.0, 1.25, -3.5],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [0.8, 0.8, 0.8],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "builtin:cube",
+          "materialPath": "Assets/Materials/PhysicsCube.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        },
+        "ColliderComponent": {
+          "shape": 0,
+          "size": [0.8, 0.8, 0.8],
+          "radius": 0.4,
+          "height": 0.8,
+          "isTrigger": false,
+          "layer": 0
+        },
+        "RigidbodyComponent": {
+          "mass": 0.8,
+          "drag": 0.05,
+          "angularDrag": 0.05,
+          "isKinematic": false,
+          "useGravity": true,
+          "restitution": 0.1,
+          "friction": 0.7
+        }
+      }
+    },
+    {
+      "uuid": 1015,
+      "name": "Physics Tower Top",
+      "tag": "PhysicsObject",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [-2.0, 2.1, -3.5],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [0.8, 0.8, 0.8],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "builtin:cube",
+          "materialPath": "Assets/Materials/PhysicsCube.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        },
+        "ColliderComponent": {
+          "shape": 0,
+          "size": [0.8, 0.8, 0.8],
+          "radius": 0.4,
+          "height": 0.8,
+          "isTrigger": false,
+          "layer": 0
+        },
+        "RigidbodyComponent": {
+          "mass": 0.6,
+          "drag": 0.05,
+          "angularDrag": 0.05,
+          "isKinematic": false,
+          "useGravity": true,
+          "restitution": 0.1,
+          "friction": 0.7
         }
       }
     }

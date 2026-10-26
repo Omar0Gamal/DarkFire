@@ -67,6 +67,8 @@ namespace Core::RHI
 
 		void* getNativeHandle() const override { return const_cast<uint8_t*>(m_data.data()); }
 		const GpuBufferDesc& getDesc() const override { return m_desc; }
+		void* getShaderResourceView() const override { return const_cast<uint8_t*>(m_data.data()); }
+		void* getUnorderedAccessView() const override { return const_cast<uint8_t*>(m_data.data()); }
 		std::vector<uint8_t>& getData() { return m_data; }
 		const std::vector<uint8_t>& getData() const { return m_data; }
 
@@ -86,6 +88,7 @@ namespace Core::RHI
 		void* getShaderResourceView() const override { return const_cast<NullTexture*>(this); }
 		void* getRenderTargetView() const override { return const_cast<NullTexture*>(this); }
 		void* getDepthStencilView() const override { return const_cast<NullTexture*>(this); }
+		void* getUnorderedAccessView() const override { return const_cast<NullTexture*>(this); }
 
 		[[nodiscard]] bool isCleared() const noexcept { return m_isCleared; }
 		[[nodiscard]] const Color& getClearColor() const noexcept { return m_clearColor; }
@@ -129,6 +132,39 @@ namespace Core::RHI
 	{
 	public:
 		explicit NullPixelShader(std::span<const uint8_t> bytecode)
+			: m_bytecode(bytecode.begin(), bytecode.end()) {}
+		void* getNativeHandle() const override { return const_cast<uint8_t*>(m_bytecode.data()); }
+		const std::vector<uint8_t>& getBytecode() const override { return m_bytecode; }
+	private:
+		std::vector<uint8_t> m_bytecode;
+	};
+
+	class DF_API NullHullShader : public IHullShader
+	{
+	public:
+		explicit NullHullShader(std::span<const uint8_t> bytecode)
+			: m_bytecode(bytecode.begin(), bytecode.end()) {}
+		void* getNativeHandle() const override { return const_cast<uint8_t*>(m_bytecode.data()); }
+		const std::vector<uint8_t>& getBytecode() const override { return m_bytecode; }
+	private:
+		std::vector<uint8_t> m_bytecode;
+	};
+
+	class DF_API NullDomainShader : public IDomainShader
+	{
+	public:
+		explicit NullDomainShader(std::span<const uint8_t> bytecode)
+			: m_bytecode(bytecode.begin(), bytecode.end()) {}
+		void* getNativeHandle() const override { return const_cast<uint8_t*>(m_bytecode.data()); }
+		const std::vector<uint8_t>& getBytecode() const override { return m_bytecode; }
+	private:
+		std::vector<uint8_t> m_bytecode;
+	};
+
+	class DF_API NullComputeShader : public IComputeShader
+	{
+	public:
+		explicit NullComputeShader(std::span<const uint8_t> bytecode)
 			: m_bytecode(bytecode.begin(), bytecode.end()) {}
 		void* getNativeHandle() const override { return const_cast<uint8_t*>(m_bytecode.data()); }
 		const std::vector<uint8_t>& getBytecode() const override { return m_bytecode; }
@@ -226,17 +262,25 @@ namespace Core::RHI
 
 		void setVertexShader(const std::shared_ptr<IVertexShader>& vs) override { m_vertexShader = vs; }
 		void setPixelShader(const std::shared_ptr<IPixelShader>& ps) override { m_pixelShader = ps; }
+		void setComputeShader(IComputeShader* shader) override { m_computeShader = shader; }
 
 		void setConstantBufferVS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer) override;
 		void setConstantBufferPS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer) override;
+		void setConstantBufferCS(uint32_t slot, IGpuBuffer* buffer) override { (void)slot; (void)buffer; }
 		void setConstantBufferSubrangeVS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer, uint32_t firstConstant16, uint32_t numConstants16) override;
 		void setConstantBufferSubrangePS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer, uint32_t firstConstant16, uint32_t numConstants16) override;
 
 		void setShaderResourceVS(uint32_t slot, const std::shared_ptr<IGpuTexture>& texture) override;
+		void setShaderResourceBufferVS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer) override;
 		void setShaderResourcePS(uint32_t slot, const std::shared_ptr<IGpuTexture>& texture) override;
 		void setShaderResourceBufferPS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer) override;
+		void setShaderResourceCS(uint32_t slot, IGpuTexture* texture) override { (void)slot; (void)texture; }
+		void setShaderResourceBufferCS(uint32_t slot, IGpuBuffer* buffer) override { (void)slot; (void)buffer; }
+		void setUnorderedAccessViewCS(uint32_t slot, IGpuTexture* texture, uint32_t mipSlice = 0) override { (void)slot; (void)texture; (void)mipSlice; }
+		void setUnorderedAccessBufferCS(uint32_t slot, IGpuBuffer* buffer) override { (void)slot; (void)buffer; }
 		void setSamplerVS(uint32_t slot, const std::shared_ptr<ISamplerState>& sampler) override;
 		void setSamplerPS(uint32_t slot, const std::shared_ptr<ISamplerState>& sampler) override;
+		void setSamplerCS(uint32_t slot, IGpuSampler* sampler) override { (void)slot; (void)sampler; }
 
 		void setRasterizerState(const std::shared_ptr<IRasterizerState>& state) override { m_rasterizerState = state; }
 		void setDepthStencilState(const std::shared_ptr<IDepthStencilState>& state, uint32_t stencilRef = 0) override
@@ -258,6 +302,13 @@ namespace Core::RHI
 
 		void draw(uint32_t vertexCount, uint32_t startVertexLocation) override;
 		void drawIndexed(uint32_t indexCount, uint32_t startIndexLocation, int32_t baseVertexLocation) override;
+		void drawIndexedInstanced(uint32_t indexCountPerInstance, uint32_t instanceCount, uint32_t startIndexLocation, int32_t baseVertexLocation, uint32_t startInstanceLocation) override;
+		void drawIndexedInstancedIndirect(const std::shared_ptr<IGpuBuffer>& argumentBuffer, uint32_t offsetBytes) override;
+		void dispatch(uint32_t threadGroupCountX, uint32_t threadGroupCountY, uint32_t threadGroupCountZ) override
+		{
+			(void)threadGroupCountX; (void)threadGroupCountY; (void)threadGroupCountZ;
+			m_dispatchCallCount++;
+		}
 
 		Result<void*, std::string> map(const std::shared_ptr<IGpuBuffer>& buffer, bool discard) override;
 		void unmap(const std::shared_ptr<IGpuBuffer>& buffer) override;
@@ -265,6 +316,7 @@ namespace Core::RHI
 
 		[[nodiscard]] uint32_t getDrawCallCount() const noexcept { return m_drawCallCount; }
 		[[nodiscard]] uint32_t getDrawIndexedCallCount() const noexcept { return m_drawIndexedCallCount; }
+		[[nodiscard]] uint32_t getDispatchCallCount() const noexcept { return m_dispatchCallCount; }
 		[[nodiscard]] const Viewport& getViewport() const noexcept { return m_viewport; }
 
 	private:
@@ -275,6 +327,7 @@ namespace Core::RHI
 		std::shared_ptr<IInputLayout> m_inputLayout;
 		std::shared_ptr<IVertexShader> m_vertexShader;
 		std::shared_ptr<IPixelShader> m_pixelShader;
+		IComputeShader* m_computeShader = nullptr;
 		std::shared_ptr<IRasterizerState> m_rasterizerState;
 		std::shared_ptr<IDepthStencilState> m_depthStencilState;
 		std::shared_ptr<IBlendState> m_blendState;
@@ -282,6 +335,7 @@ namespace Core::RHI
 		uint32_t m_stencilRef = 0;
 		uint32_t m_drawCallCount = 0;
 		uint32_t m_drawIndexedCallCount = 0;
+		uint32_t m_dispatchCallCount = 0;
 	};
 
 	class DF_API NullRHIDevice : public IRHIDevice
@@ -298,6 +352,9 @@ namespace Core::RHI
 
 		Result<std::shared_ptr<IVertexShader>, std::string> createVertexShader(std::span<const uint8_t> bytecode) override;
 		Result<std::shared_ptr<IPixelShader>, std::string> createPixelShader(std::span<const uint8_t> bytecode) override;
+		Result<std::shared_ptr<IHullShader>, std::string> createHullShader(std::span<const uint8_t> bytecode) override;
+		Result<std::shared_ptr<IDomainShader>, std::string> createDomainShader(std::span<const uint8_t> bytecode) override;
+		Result<std::shared_ptr<IComputeShader>, std::string> createComputeShader(std::span<const uint8_t> bytecode) override;
 
 		Result<std::shared_ptr<IInputLayout>, std::string> createInputLayout(std::span<const InputElementDesc> elements, std::span<const uint8_t> vsBytecode) override;
 

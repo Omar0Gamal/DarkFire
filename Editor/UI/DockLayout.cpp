@@ -178,8 +178,9 @@ namespace Editor::UI
 			ImGui::DockBuilderDockWindow(PanelNames::Viewport3D, dockCenter);
 			ImGui::DockBuilderDockWindow(PanelNames::GameViewport, dockCenter);
 
-			// Right Inspector
+			// Right Inspector & World Settings
 			ImGui::DockBuilderDockWindow(PanelNames::Inspector, dockRight);
+			ImGui::DockBuilderDockWindow(PanelNames::WorldSettings, dockRight);
 
 			// Bottom Drawer: FileSystem + Console + Profiler tabbed
 			ImGui::DockBuilderDockWindow(PanelNames::FileSystem, dockBottom);

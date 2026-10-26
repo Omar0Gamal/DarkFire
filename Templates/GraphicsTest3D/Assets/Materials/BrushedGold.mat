@@ -1,0 +1,11 @@
+{
+  "name": "BrushedGold",
+  "baseColor": [1.0, 0.78, 0.34, 1.0],
+  "roughness": 0.18,
+  "metallic": 0.96,
+  "emissive": [0.0, 0.0, 0.0, 0.0],
+  "tiling": [1.0, 1.0],
+  "blendMode": 0,
+  "depthMode": 0,
+  "cullMode": 1
+}

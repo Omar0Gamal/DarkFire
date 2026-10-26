@@ -15,11 +15,11 @@
         },
         "EnvironmentComponent": {
           "skyType": 0,
-          "skyColor": [0.12, 0.13, 0.16, 1.0],
-          "horizonColor": [0.35, 0.38, 0.44, 1.0],
-          "groundColor": [0.08, 0.08, 0.09, 1.0],
-          "ambientColor": [0.2, 0.22, 0.28, 1.0],
-          "ambientEnergy": 0.5,
+          "skyColor": [0.14, 0.16, 0.22, 1.0],
+          "horizonColor": [0.38, 0.42, 0.50, 1.0],
+          "groundColor": [0.08, 0.08, 0.10, 1.0],
+          "ambientColor": [0.22, 0.25, 0.32, 1.0],
+          "ambientEnergy": 0.6,
           "skyboxTexturePath": ""
         },
         "PostProcessingComponent": {
@@ -35,6 +35,7 @@
           "ssaoRadius": 0.5,
           "ssaoBias": 0.025,
           "ssaoIntensity": 1.2,
+          "ssaoDirectLightInfluence": 0.65,
           "enableBloom": true,
           "bloomThreshold": 1.0,
           "bloomIntensity": 0.04
@@ -48,10 +49,10 @@
       "parent": 0,
       "components": {
         "TransformComponent": {
-          "position": [0.0, 2.0, -5.0],
-          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "position": [0.0, 3.0, -8.0],
+          "rotation": [0.130526, 0.0, 0.0, 0.991445],
           "scale": [1.0, 1.0, 1.0],
-          "eulerDegrees": [0.0, 0.0, 0.0]
+          "eulerDegrees": [15.0, 0.0, 0.0]
         },
         "CameraComponent": {
           "fov": 60.0,
@@ -71,18 +72,79 @@
       "parent": 0,
       "components": {
         "TransformComponent": {
-          "position": [0.0, 10.0, 0.0],
-          "rotation": [0.3826834, 0.0, 0.0, 0.9238795],
+          "position": [5.0, 15.0, -5.0],
+          "rotation": [0.4030582, -0.2725320, 0.1270838, 0.8643611],
           "scale": [1.0, 1.0, 1.0],
-          "eulerDegrees": [45.0, 0.0, 0.0]
+          "eulerDegrees": [50.0, -35.0, 0.0]
         },
         "LightComponent": {
           "type": 0,
-          "color": [1.0, 1.0, 1.0, 1.0],
-          "intensity": 1.0,
+          "color": [1.0, 0.98, 0.92, 1.0],
+          "intensity": 1.25,
           "range": 100.0,
           "spotInnerAngle": 30.0,
-          "spotOuterAngle": 45.0
+          "spotOuterAngle": 45.0,
+          "castShadows": true,
+          "shadowBias": 0.0015,
+          "shadowNormalBias": 0.02,
+          "shadowDistance": 60.0,
+          "shadowSoftness": 1.0
+        }
+      }
+    },
+    {
+      "uuid": 2003,
+      "name": "Ground Plane",
+      "tag": "Environment",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, -0.5, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [30.0, 1.0, 30.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "builtin:plane",
+          "materialPath": "Assets/Materials/Ground.mat",
+          "castShadows": false,
+          "receiveShadows": true
+        },
+        "ColliderComponent": {
+          "shape": 0,
+          "size": [30.0, 1.0, 30.0],
+          "radius": 0.5,
+          "height": 1.0,
+          "isTrigger": false,
+          "layer": 0
+        }
+      }
+    },
+    {
+      "uuid": 2004,
+      "name": "Starter Cube",
+      "tag": "Default",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 0.5, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "builtin:cube",
+          "materialPath": "Assets/Materials/Default.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        },
+        "ColliderComponent": {
+          "shape": 0,
+          "size": [1.0, 1.0, 1.0],
+          "radius": 0.5,
+          "height": 1.0,
+          "isTrigger": false,
+          "layer": 0
         }
       }
     }

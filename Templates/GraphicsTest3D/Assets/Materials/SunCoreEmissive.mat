@@ -1,0 +1,12 @@
+{
+  "name": "SunCoreEmissive",
+  "baseColor": [1.0, 0.85, 0.40, 1.0],
+  "roughness": 0.15,
+  "metallic": 0.0,
+  "emissive": [1.0, 0.72, 0.22, 1.0],
+  "emissiveIntensity": 1.5,
+  "tiling": [1.0, 1.0],
+  "blendMode": 0,
+  "depthMode": 0,
+  "cullMode": 1
+}

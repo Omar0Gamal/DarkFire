@@ -1,0 +1,297 @@
+{
+  "scene_version": 1,
+  "entities": [
+    {
+      "uuid": 1000,
+      "name": "World Environment",
+      "tag": "Environment",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "EnvironmentComponent": {
+          "skyType": 1,
+          "skyColor": [0.24, 0.44, 0.78, 1.0],
+          "horizonColor": [0.76, 0.82, 0.88, 1.0],
+          "groundColor": [0.42, 0.35, 0.26, 1.0],
+          "ambientColor": [0.18, 0.22, 0.28, 1.0],
+          "ambientEnergy": 0.20,
+          "skyboxTexturePath": "Assets/Textures/05-18_Day_D.hdr",
+          "enableFog": false,
+          "fogColor": [0.78, 0.82, 0.86, 1.0],
+          "fogDensity": 0.0015,
+          "fogHeightFalloff": 0.05,
+          "fogSunScattering": 0.65,
+          "bloomThreshold": 1.1,
+          "exposure": 0.98
+        },
+        "PostProcessingComponent": {
+          "enableShadows": true,
+          "enableTonemapping": true,
+          "tonemapper": 0,
+          "exposure": 0.98,
+          "gamma": 2.2,
+          "enableTAA": true,
+          "enableClusteredLighting": true,
+          "enableGpuCulling": true,
+          "enableAutoExposure": false,
+          "contrast": 1.05,
+          "saturation": 1.02,
+          "colorTemperature": 0.14,
+          "vignetteIntensity": 0.12,
+          "enableFXAA": false,
+          "fxaaSubpix": 0.85,
+          "fxaaEdgeThreshold": 0.125,
+          "fxaaEdgeThresholdMin": 0.04,
+          "casSharpening": 0.40,
+          "enablePCSS": true,
+          "enableContactShadows": true,
+          "enableSSAO": true,
+          "ssaoRadius": 0.55,
+          "ssaoBias": 0.015,
+          "ssaoIntensity": 0.65,
+          "ssaoDirectLightInfluence": 0.25,
+          "enableBloom": true,
+          "bloomThreshold": 1.1,
+          "bloomIntensity": 0.08,
+          "enableBoxProjectedIBL": true,
+          "iblBoxExtents": [14.5, 7.5, 6.5],
+          "iblBoxCenter": [0.0, 6.5, -0.35],
+          "enableSSR": true,
+          "ssrMaxDistance": 45.0,
+          "ssrThickness": 0.8,
+          "ssrRoughnessCutoff": 0.45,
+          "ssrIntensity": 1.0,
+          "enableGI": false,
+          "giIntensity": 0.65,
+          "ssgiRadius": 2.2,
+          "enableSHProbes": false
+        },
+        "DDGIProbeVolumeComponent": {
+          "enabled": false,
+          "origin": [0.0, 6.0, 0.0],
+          "probeCounts": [16.0, 8.0, 10.0],
+          "probeSpacing": 2.5,
+          "normalBias": 0.15,
+          "hysteresis": 0.95,
+          "intensity": 1.0,
+          "energyPreservation": 0.85
+        },
+        "HUDTelemetryComponent": {
+          "showOverlay": true,
+          "showHotkeys": true,
+          "customBannerText": "Scene 1/2: Crytek Sponza Atrium (Multi-Material FBX + SSR + Hybrid GI)"
+        }
+      }
+    },
+    {
+      "uuid": 1001,
+      "name": "Main Camera",
+      "tag": "MainCamera",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [-11.68, 0.75, 0.356],
+          "rotation": [-0.077287, 0.702870, 0.077287, 0.702870],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [-12.55, 90.0, 0.0]
+        },
+        "CameraComponent": {
+          "fov": 40.0,
+          "nearZ": 0.1,
+          "farZ": 500.0,
+          "isPrimary": true,
+          "isOrthographic": false,
+          "orthoWidth": 10.0,
+          "orthoHeight": 10.0
+        },
+        "AudioListenerComponent": {
+          "active": true,
+          "masterVolume": 1.0
+        },
+        "ScriptsComponent": {
+          "scripts": [
+            {
+              "name": "BenchmarkController",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "uuid": 1002,
+      "name": "Daylight Sun (5500K)",
+      "tag": "Light",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 3.0, 0.0],
+          "rotation": [0.488472, 0.370935, -0.240888, 0.752181],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [66.0, 52.5, 0.0]
+        },
+        "LightComponent": {
+          "type": 0,
+          "color": [1.0, 0.943137, 0.90, 1.0],
+          "intensity": 4.2,
+          "range": 100.0,
+          "spotInnerAngle": 30.0,
+          "spotOuterAngle": 45.0,
+          "castShadows": true,
+          "shadowBias": 0.0005,
+          "shadowNormalBias": 0.015,
+          "shadowSoftness": 1.35,
+          "shadowDistance": 60.0
+        }
+      }
+    },
+    {
+      "uuid": 1010,
+      "name": "Sponza Central Reflection Probe",
+      "tag": "ReflectionProbe",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 6.5, -0.35],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "ReflectionProbeComponent": {
+          "boxExtents": [14.5, 7.5, 6.5],
+          "intensity": 1.0,
+          "boxProjection": true,
+          "captureSceneGeometry": true,
+          "resolution": 128,
+          "bakedCubemapPath": "Assets/Textures/SponzaAtrium_BakedProbe.dds",
+          "isDirty": false
+        }
+      }
+    },
+    {
+      "uuid": 1007,
+      "name": "Sponza Atrium Architecture",
+      "tag": "Architecture",
+      "parent": 0,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "Assets/Models/Sponza/Sponza.fbx",
+          "materialPath": "",
+          "castShadows": true,
+          "receiveShadows": true
+        }
+      }
+    },
+    {
+      "uuid": 1008,
+      "name": "Central Reflecting Marble Basin",
+      "tag": "Basin",
+      "parent": 0,
+      "isActive": false,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 0.04, -0.3],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [14.0, 0.08, 4.5],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "builtin:cube",
+          "materialPath": "Assets/Materials/PolishedMarble.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        },
+        "ColliderComponent": {
+          "shape": 0,
+          "size": [14.0, 0.08, 4.5],
+          "radius": 0.5,
+          "height": 1.0,
+          "isTrigger": false,
+          "layer": 0
+        }
+      }
+    },
+    {
+      "uuid": 1009,
+      "name": "Kinetic Astrolabe Outer Ring",
+      "tag": "Astrolabe",
+      "parent": 0,
+      "isActive": false,
+      "components": {
+        "TransformComponent": {
+          "position": [0.0, 2.6, -0.3],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.8, 1.8, 0.08],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "builtin:cube",
+          "materialPath": "Assets/Materials/BrushedGold.mat",
+          "castShadows": false,
+          "receiveShadows": false
+        },
+        "ScriptsComponent": {
+          "scripts": [
+            {
+              "name": "AstrolabeRotator",
+              "enabled": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "uuid": 1012,
+      "name": "Chrome Calibration Sphere West",
+      "tag": "Calibration",
+      "parent": 0,
+      "isActive": false,
+      "components": {
+        "TransformComponent": {
+          "position": [-3.0, 0.8, -0.3],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [0.9, 0.9, 0.9],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "builtin:sphere",
+          "materialPath": "Assets/Materials/ChromeSphere.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        }
+      }
+    },
+    {
+      "uuid": 1013,
+      "name": "Chrome Calibration Sphere East",
+      "tag": "Calibration",
+      "parent": 0,
+      "isActive": false,
+      "components": {
+        "TransformComponent": {
+          "position": [3.0, 0.8, -0.3],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [0.9, 0.9, 0.9],
+          "eulerDegrees": [0.0, 0.0, 0.0]
+        },
+        "MeshRendererComponent": {
+          "meshPath": "builtin:sphere",
+          "materialPath": "Assets/Materials/ChromeSphere.mat",
+          "castShadows": true,
+          "receiveShadows": true
+        }
+      }
+    }
+  ]
+}

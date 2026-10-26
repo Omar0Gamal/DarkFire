@@ -2,9 +2,7 @@
 #include "Engine/Platform/Input.h"
 #include "Engine/Core/Log/Log.h"
 
-#if defined(DF_EDITOR)
 extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-#endif
 
 namespace Platform
 {
@@ -149,12 +147,10 @@ namespace Platform
 
 	LRESULT Window::HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	{
-#if defined(DF_EDITOR)
 		if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam))
 		{
 			return 1;
 		}
-#endif
 
 		switch (msg)
 		{

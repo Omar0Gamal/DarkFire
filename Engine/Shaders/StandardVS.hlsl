@@ -16,13 +16,29 @@ PSInput main(VSInput input)
 	output.positionWS = worldPos.xyz;
 	output.positionCS = mul(worldPos, g_View.viewProjMatrix);
 
-	// Transform normal and tangent to world space
-	output.normalWS = normalize(mul(input.normal, (float3x3)world));
+	// Transform normal using cofactor (inverse-transpose) to prevent distortion on non-uniformly scaled objects
+#ifdef DF_INSTANCING
+	float3 r0 = world[0].xyz;
+	float3 r1 = world[1].xyz;
+	float3 r2 = world[2].xyz;
+	float3x3 normalMatrix = float3x3(
+		cross(r1, r2),
+		cross(r2, r0),
+		cross(r0, r1)
+	);
+	output.normalWS = normalize(mul(input.normal, normalMatrix));
 	output.tangentWS = float4(normalize(mul(input.tangent.xyz, (float3x3)world)), input.tangent.w);
+#else
+	float3x3 normalMatrix = (float3x3)transpose(g_Object.invWorldMatrix);
+	output.normalWS = normalize(mul(input.normal, normalMatrix));
+	output.tangentWS = float4(normalize(mul(input.tangent.xyz, (float3x3)world)), input.tangent.w);
+#endif
 
-	output.texcoord = input.texcoord * g_Material.tilingOffset;
+	output.texcoord = input.texcoord * g_Material.tilingOffset.xy + g_Material.tilingOffset.zw;
 	output.color = input.color;
 	output.entityId = entityId;
+	output.curPositionCS = output.positionCS;
+	output.prevPositionCS = mul(worldPos, g_View.prevViewProjMatrix);
 
 	return output;
 }

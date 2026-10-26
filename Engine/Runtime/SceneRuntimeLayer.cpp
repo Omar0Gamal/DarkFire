@@ -6,12 +6,14 @@
 #include "Engine/Core/Log/Log.h"
 #include "Engine/Core/Math/Math.h"
 #include "Engine/Core/Scene/Systems/ParticleSystem.h"
+#include "Engine/Audio/AudioSystem.h"
 
 namespace Runtime
 {
 	SceneRuntimeLayer::SceneRuntimeLayer(std::shared_ptr<Core::Scene> scene)
 		: Layer("SceneRuntimeLayer")
 		, m_scene(std::move(scene))
+		, m_audioSystem(std::make_unique<Audio::AudioSystem>())
 	{
 		if (!m_scene)
 		{
@@ -26,10 +28,23 @@ namespace Runtime
 
 	void SceneRuntimeLayer::onAttach()
 	{
+		if (m_audioSystem)
+		{
+			m_audioSystem->init();
+		}
 		startPendingScripts();
 	}
 
 	void SceneRuntimeLayer::onDetach()
+	{
+		if (m_audioSystem)
+		{
+			m_audioSystem->shutdown();
+		}
+		stopActiveScripts();
+	}
+
+	void SceneRuntimeLayer::stopActiveScripts()
 	{
 		if (m_scene)
 		{
@@ -51,7 +66,7 @@ namespace Runtime
 
 	void SceneRuntimeLayer::setScene(std::shared_ptr<Core::Scene> scene)
 	{
-		onDetach();
+		stopActiveScripts();
 		m_scene = std::move(scene);
 		if (m_scene)
 		{
@@ -60,6 +75,16 @@ namespace Runtime
 	}
 
 	bool SceneRuntimeLayer::loadScene(const std::filesystem::path& scenePath)
+	{
+		if (m_isUpdatingScripts)
+		{
+			m_pendingScenePath = scenePath;
+			return true;
+		}
+		return loadSceneImmediate(scenePath);
+	}
+
+	bool SceneRuntimeLayer::loadSceneImmediate(const std::filesystem::path& scenePath)
 	{
 		auto newScene = std::make_shared<Core::Scene>();
 		Core::SceneSerializer serializer(newScene.get());
@@ -151,6 +176,7 @@ namespace Runtime
 		Application::Get().getPhysicsWorld().step(*m_scene, fixedDeltaTime);
 
 		// 2. FixedUpdate scripts
+		m_isUpdatingScripts = true;
 		auto view = m_scene->view<Core::ScriptsComponent>();
 		for (auto entityHandle : view)
 		{
@@ -163,6 +189,7 @@ namespace Runtime
 				}
 			}
 		}
+		m_isUpdatingScripts = false;
 	}
 
 	void SceneRuntimeLayer::onUpdate(float deltaTime)
@@ -172,9 +199,18 @@ namespace Runtime
 			return;
 		}
 
+		if (!m_pendingScenePath.empty())
+		{
+			std::filesystem::path nextScene = std::move(m_pendingScenePath);
+			m_pendingScenePath.clear();
+			loadSceneImmediate(nextScene);
+			return;
+		}
+
 		startPendingScripts();
 
 		// 1. Script onUpdate
+		m_isUpdatingScripts = true;
 		auto view = m_scene->view<Core::ScriptsComponent>();
 		for (auto entityHandle : view)
 		{
@@ -200,9 +236,14 @@ namespace Runtime
 				}
 			}
 		}
+		m_isUpdatingScripts = false;
 
-		// 3. Update transforms and particle simulation
+		// 3. Update transforms, audio, and particle simulation
 		m_scene->updateTransforms();
+		if (m_audioSystem)
+		{
+			m_audioSystem->update(*m_scene, deltaTime);
+		}
 		Core::Systems::ParticleSystem::Tick(*m_scene, deltaTime);
 
 		// 4. Render Snapshot & Extraction with window aspect

@@ -1,0 +1,11 @@
+{
+  "name": "BuoyantCrate",
+  "baseColor": [0.62, 0.40, 0.18, 1.0],
+  "roughness": 0.65,
+  "metallic": 0.05,
+  "emissive": [0.0, 0.0, 0.0, 0.0],
+  "tiling": [1.0, 1.0],
+  "blendMode": 0,
+  "depthMode": 0,
+  "cullMode": 1
+}

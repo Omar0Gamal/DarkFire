@@ -50,7 +50,12 @@ namespace Core
 			"Engine/Content/" + stripped,
 			"Engine/Content/" + std::filesystem::path(rawPath).filename().string(),
 			"Assets/" + rawPath,
-			"Templates/Playground3D/Assets/" + rawPath
+			"Templates/Playground3D/" + rawPath,
+			"Templates/Playground3D/Assets/" + rawPath,
+			"Templates/Empty3D/" + rawPath,
+			"Templates/Empty3D/Assets/" + rawPath,
+			"Templates/GraphicsTest3D/" + rawPath,
+			"Templates/GraphicsTest3D/Assets/" + rawPath
 		};
 
 		for (const auto& candidate : candidates)

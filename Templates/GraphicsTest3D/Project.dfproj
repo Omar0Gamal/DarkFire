@@ -1,0 +1,22 @@
+{
+  "Project": {
+    "Name": "GraphicsTest3D",
+    "Version": "1.0.0",
+    "EngineVersion": "2.0.0",
+    "AssetDirectory": "Assets",
+    "StartScene": "Scenes/SponzaAtrium.scene",
+    "Module": "bin/%CONFIG%-windows-x86_64/Templates/GraphicsTest3D/GraphicsTest3D.dll"
+  },
+  "Window": {
+    "Title": "DarkFire Engine 2.0 - GraphicsTest3D Benchmark [F1/F2: Scene | F12/T: TAA | L: Clustered Lights | 0-7: Debug Views | Tab: Menu]",
+    "Width": 1600,
+    "Height": 900,
+    "VSync": false,
+    "Fullscreen": false
+  },
+  "Physics": {
+    "Gravity": [0.0, -9.81, 0.0],
+    "FixedTimeStep": 0.0166666675,
+    "CollisionMatrix": [65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535]
+  }
+}

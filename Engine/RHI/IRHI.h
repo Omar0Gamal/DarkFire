@@ -21,6 +21,7 @@ namespace Core::RHI
 	public:
 		virtual const GpuBufferDesc& getDesc() const = 0;
 		virtual void* getShaderResourceView() const { return nullptr; }
+		virtual void* getUnorderedAccessView() const { return nullptr; }
 	};
 
 	class DF_API IGpuTexture : public IGpuResource
@@ -30,25 +31,35 @@ namespace Core::RHI
 		virtual void* getShaderResourceView() const = 0;
 		virtual void* getRenderTargetView() const = 0;
 		virtual void* getDepthStencilView() const = 0;
+		virtual void* getUnorderedAccessView() const { return nullptr; }
 	};
 
-	class DF_API IVertexShader : public IGpuResource
+	class DF_API IShader : public IGpuResource
 	{
 	public:
 		virtual const std::vector<uint8_t>& getBytecode() const = 0;
 	};
 
-	class DF_API IPixelShader : public IGpuResource
-	{
-	public:
-		virtual const std::vector<uint8_t>& getBytecode() const = 0;
-	};
+	class DF_API IVertexShader : public IShader {};
+	class DF_API IPixelShader : public IShader {};
+	class DF_API IHullShader : public IShader {};
+	class DF_API IDomainShader : public IShader {};
+	class DF_API IComputeShader : public IShader {};
 
 	class DF_API IInputLayout : public IGpuResource {};
 	class DF_API IRasterizerState : public IGpuResource {};
 	class DF_API IDepthStencilState : public IGpuResource {};
 	class DF_API IBlendState : public IGpuResource {};
 	class DF_API ISamplerState : public IGpuResource {};
+
+	using IGpuSampler = ISamplerState;
+	class IDeviceContext;
+	class IRHIDevice;
+	using IGpuContext = IDeviceContext;
+	using IGpuDevice = IRHIDevice;
+
+	template<typename T, typename E = std::string>
+	using Expected = Core::Result<T, E>;
 
 	struct GpuMemoryStats
 	{
@@ -95,17 +106,41 @@ namespace Core::RHI
 
 		virtual void setVertexShader(const std::shared_ptr<IVertexShader>& vs) = 0;
 		virtual void setPixelShader(const std::shared_ptr<IPixelShader>& ps) = 0;
+		virtual void setHullShader(const std::shared_ptr<IHullShader>& hs) { (void)hs; }
+		virtual void setDomainShader(const std::shared_ptr<IDomainShader>& ds) { (void)ds; }
+		virtual void setComputeShader(IComputeShader* shader) = 0;
 
 		virtual void setConstantBufferVS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer) = 0;
 		virtual void setConstantBufferPS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer) = 0;
+		virtual void setConstantBufferHS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer) { (void)slot; (void)buffer; }
+		virtual void setConstantBufferDS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer) { (void)slot; (void)buffer; }
+		virtual void setConstantBufferCS(uint32_t slot, IGpuBuffer* buffer) = 0;
 		virtual void setConstantBufferSubrangeVS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer, uint32_t firstConstant16, uint32_t numConstants16) = 0;
 		virtual void setConstantBufferSubrangePS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer, uint32_t firstConstant16, uint32_t numConstants16) = 0;
+		virtual void setConstantBufferSubrangeDS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer, uint32_t firstConstant16, uint32_t numConstants16) { (void)slot; (void)buffer; (void)firstConstant16; (void)numConstants16; }
 
 		virtual void setShaderResourceVS(uint32_t slot, const std::shared_ptr<IGpuTexture>& texture) = 0;
+		virtual void setShaderResourceBufferVS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer) = 0;
 		virtual void setShaderResourcePS(uint32_t slot, const std::shared_ptr<IGpuTexture>& texture) = 0;
 		virtual void setShaderResourceBufferPS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer) = 0;
+		virtual void setShaderResourceDS(uint32_t slot, const std::shared_ptr<IGpuTexture>& texture) { (void)slot; (void)texture; }
+		virtual void setShaderResourceCS(uint32_t slot, IGpuTexture* texture) = 0;
+		virtual void setShaderResourceBufferCS(uint32_t slot, IGpuBuffer* buffer) = 0;
+		virtual void setUnorderedAccessViewCS(uint32_t slot, IGpuTexture* texture, uint32_t mipSlice = 0) = 0;
+		virtual void setUnorderedAccessBufferCS(uint32_t slot, IGpuBuffer* buffer) = 0;
 		virtual void setSamplerVS(uint32_t slot, const std::shared_ptr<ISamplerState>& sampler) = 0;
 		virtual void setSamplerPS(uint32_t slot, const std::shared_ptr<ISamplerState>& sampler) = 0;
+		virtual void setSamplerDS(uint32_t slot, const std::shared_ptr<ISamplerState>& sampler) { (void)slot; (void)sampler; }
+		virtual void setSamplerCS(uint32_t slot, IGpuSampler* sampler) = 0;
+
+		// Convenience shared_ptr overloads
+		void setComputeShader(const std::shared_ptr<IComputeShader>& shader) { setComputeShader(shader.get()); }
+		void setConstantBufferCS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer) { setConstantBufferCS(slot, buffer.get()); }
+		void setShaderResourceCS(uint32_t slot, const std::shared_ptr<IGpuTexture>& texture) { setShaderResourceCS(slot, texture.get()); }
+		void setShaderResourceBufferCS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer) { setShaderResourceBufferCS(slot, buffer.get()); }
+		void setUnorderedAccessViewCS(uint32_t slot, const std::shared_ptr<IGpuTexture>& texture, uint32_t mipSlice = 0) { setUnorderedAccessViewCS(slot, texture.get(), mipSlice); }
+		void setUnorderedAccessBufferCS(uint32_t slot, const std::shared_ptr<IGpuBuffer>& buffer) { setUnorderedAccessBufferCS(slot, buffer.get()); }
+		void setSamplerCS(uint32_t slot, const std::shared_ptr<ISamplerState>& sampler) { setSamplerCS(slot, sampler.get()); }
 
 		virtual void setRasterizerState(const std::shared_ptr<IRasterizerState>& state) = 0;
 		virtual void setDepthStencilState(const std::shared_ptr<IDepthStencilState>& state, uint32_t stencilRef = 0) = 0;
@@ -113,6 +148,9 @@ namespace Core::RHI
 
 		virtual void draw(uint32_t vertexCount, uint32_t startVertexLocation) = 0;
 		virtual void drawIndexed(uint32_t indexCount, uint32_t startIndexLocation, int32_t baseVertexLocation) = 0;
+		virtual void drawIndexedInstanced(uint32_t indexCountPerInstance, uint32_t instanceCount, uint32_t startIndexLocation, int32_t baseVertexLocation, uint32_t startInstanceLocation) = 0;
+		virtual void drawIndexedInstancedIndirect(const std::shared_ptr<IGpuBuffer>& argumentBuffer, uint32_t offsetBytes) = 0;
+		virtual void dispatch(uint32_t threadGroupCountX, uint32_t threadGroupCountY, uint32_t threadGroupCountZ) = 0;
 
 		virtual Result<void*, std::string> map(const std::shared_ptr<IGpuBuffer>& buffer, bool discard) = 0;
 		virtual void unmap(const std::shared_ptr<IGpuBuffer>& buffer) = 0;
@@ -128,6 +166,8 @@ namespace Core::RHI
 		virtual ~IRHIDevice() = default;
 
 		virtual std::string_view getBackendName() const = 0;
+		virtual std::string getAdapterName() const { return "Default GPU"; }
+		virtual uint32_t getDedicatedVramMB() const { return 0; }
 		virtual std::shared_ptr<IDeviceContext> getImmediate() = 0;
 
 		virtual void* getNativeDevice() const { return nullptr; }
@@ -146,6 +186,17 @@ namespace Core::RHI
 
 		virtual Result<std::shared_ptr<IVertexShader>, std::string> createVertexShader(std::span<const uint8_t> bytecode) = 0;
 		virtual Result<std::shared_ptr<IPixelShader>, std::string> createPixelShader(std::span<const uint8_t> bytecode) = 0;
+		virtual Result<std::shared_ptr<IHullShader>, std::string> createHullShader(std::span<const uint8_t> bytecode) = 0;
+		virtual Result<std::shared_ptr<IDomainShader>, std::string> createDomainShader(std::span<const uint8_t> bytecode) = 0;
+		virtual Result<std::shared_ptr<IComputeShader>, std::string> createComputeShader(std::span<const uint8_t> bytecode) = 0;
+		virtual Result<std::shared_ptr<IComputeShader>, std::string> createComputeShader(const void* shaderBytecode, size_t bytecodeLength)
+		{
+			if (!shaderBytecode || bytecodeLength == 0)
+			{
+				return Result<std::shared_ptr<IComputeShader>, std::string>::error("Invalid shader bytecode or empty length");
+			}
+			return createComputeShader(std::span<const uint8_t>(static_cast<const uint8_t*>(shaderBytecode), bytecodeLength));
+		}
 
 		virtual Result<std::shared_ptr<IInputLayout>, std::string> createInputLayout(std::span<const InputElementDesc> elements, std::span<const uint8_t> vsBytecode) = 0;
 

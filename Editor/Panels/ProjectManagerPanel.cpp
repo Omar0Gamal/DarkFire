@@ -59,6 +59,14 @@ namespace Editor
 				p.dir = "Templates/Empty3D";
 				m_discoveredProjects.push_back(p);
 			}
+			if (std::filesystem::exists("Templates/GraphicsTest3D/Project.dfproj"))
+			{
+				ProjectItem p;
+				p.name = "GraphicsTest3D";
+				p.path = "Templates/GraphicsTest3D/Project.dfproj";
+				p.dir = "Templates/GraphicsTest3D";
+				m_discoveredProjects.push_back(p);
+			}
 		}
 	}
 
@@ -275,6 +283,7 @@ namespace Editor
 			ImGui::Text("Template:");
 			ImGui::RadioButton("Playground3D (Sample Physics & Scripts)", &m_newProjectTemplate, 0);
 			ImGui::RadioButton("Empty3D (Clean Blank Slate)", &m_newProjectTemplate, 1);
+			ImGui::RadioButton("GraphicsTest3D (AAA Sponza & Tropical Island Benchmark)", &m_newProjectTemplate, 2);
 
 			ImGui::Separator();
 
@@ -290,11 +299,12 @@ namespace Editor
 					std::ofstream f(dfproj);
 					if (f.is_open())
 					{
-						std::string tmplName = (m_newProjectTemplate == 0) ? "Playground3D" : "Empty3D";
+						std::string tmplName = (m_newProjectTemplate == 2) ? "GraphicsTest3D" : ((m_newProjectTemplate == 0) ? "Playground3D" : "Empty3D");
+						std::string startScene = (m_newProjectTemplate == 2) ? "Scenes/SponzaAtrium.scene" : "Scenes/Start.scene";
 						f << "{\n"
 						  << "  \"project_version\": 2,\n"
 						  << "  \"name\": \"" << m_newProjectName << "\",\n"
-						  << "  \"start_scene\": \"Scenes/Start.scene\",\n"
+						  << "  \"start_scene\": \"" << startScene << "\",\n"
 						  << "  \"module_path\": \"bin/%CONFIG%-windows-x86_64/Templates/" << tmplName << "/" << tmplName << ".dll\"\n"
 						  << "}\n";
 						f.flush();

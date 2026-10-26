@@ -31,22 +31,60 @@ cbuffer CBPass : register(b4)
 	CBPerPass g_Pass;
 };
 
+cbuffer CBShadowBuffer : register(b5)
+{
+	CBShadow g_Shadow;
+};
+
 // Texture Declarations
 Texture2D g_TextureAlbedo             : register(t0);
+#define g_TextureHDR g_TextureAlbedo
 Texture2D g_TextureNormal             : register(t1);
 Texture2D g_TextureMetallicRoughness  : register(t2);
 Texture2D g_TextureEmissive           : register(t3);
 Texture2D g_TextureOcclusion          : register(t4);
+Texture2D g_TextureCustom0            : register(t5);
+#define g_TextureDetail g_TextureCustom0
+Texture2D g_TextureCustom1            : register(t6);
+Texture2D g_TextureCustom2            : register(t7);
 StructuredBuffer<LightData> g_Lights  : register(t8);
 Texture2D g_TextureDepth              : register(t9);
 Texture2D g_TextureBloom              : register(t10);
 Texture2D g_TextureSSAO               : register(t11);
+Texture2D g_TextureSkyEquirect        : register(t12);
+Texture2D g_TextureShadowMap          : register(t13);
+Texture2D g_TextureGBufferEmissiveAO  : register(t14);
+Texture2D g_TextureNormalRoughness    : register(t15);
+Texture2D g_TextureAlbedoMetallic     : register(t16);
+Texture2D g_TextureSpecularIBL        : register(t17);
+Texture2D g_TextureIrradianceIBL      : register(t18);
+Texture2D g_TextureBRDFLUT            : register(t19);
+Texture3D g_TextureColorLUT           : register(t20);
+Texture2D g_TextureVelocity           : register(t21);
+StructuredBuffer<uint2> g_ClusterGrid : register(t22);
+StructuredBuffer<uint>  g_ClusterLightIndices : register(t23);
+Texture2D g_TextureSSR                : register(t24);
+Texture2D g_TextureHiZDepth           : register(t25);
+Texture2D g_TextureDDGIRadiance       : register(t26);
+Texture2D g_TextureDDGIDepth          : register(t27);
+Texture2D g_TextureSSS                : register(t28);
+
+cbuffer CBSSRBuffer : register(b7)
+{
+	CBSSR g_SSR;
+};
+
+cbuffer CBDDGIBuffer : register(b8)
+{
+	CBDDGI g_DDGI;
+};
 
 // Sampler Declarations
 SamplerState g_SamplerLinearWrap  : register(s0);
 SamplerState g_SamplerLinearClamp : register(s1);
 SamplerState g_SamplerPointClamp  : register(s2);
 SamplerState g_SamplerAnisoWrap   : register(s3);
+SamplerComparisonState g_SamplerShadow : register(s4);
 
 // Vertex Input Structure
 struct VSInput
@@ -73,6 +111,8 @@ struct PSInput
 	float4 tangentWS  : TANGENT;
 	float4 color      : COLOR;
 	nointerpolation uint entityId : ENTITY_ID;
+	float4 curPositionCS  : TEXCOORD1;
+	float4 prevPositionCS : TEXCOORD2;
 };
 
 // Math & Color Space Helpers

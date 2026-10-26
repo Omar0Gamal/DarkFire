@@ -191,6 +191,56 @@ float3 evaluateDirectLighting(
 	uint matFlags = (matFlagsOverride != 0xFFFFFFFFu) ? matFlagsOverride : g_Material.materialFlags;
 	float sheenVal = (sheenOverride >= 0.0f) ? sheenOverride : g_Material.sheenFactor;
 
+	// Loop-invariant geometric and material terms hoisted outside the light loop
+	float NoV = max(dot(N, V), 0.001f);
+	bool isCloth = (matFlags & DF_MAT_FLAG_CLOTH) != 0;
+	bool hasTransmission = (matFlags & DF_MAT_FLAG_TRANSMISSION) != 0;
+	bool isTwoSided = (matFlags & DF_MAT_FLAG_TWO_SIDED) != 0;
+	bool isThinSurface = isCloth || hasTransmission || isTwoSided;
+	bool hasClearCoat = (matFlags & DF_MAT_FLAG_CLEAR_COAT) != 0;
+	bool hasAnisotropy = (matFlags & DF_MAT_FLAG_ANISOTROPY) != 0;
+
+	float ccFactor = 0.0f;
+	float ccRoughness = 0.02f;
+	if (hasClearCoat)
+	{
+		ccFactor = saturate(g_Material.extraMaterialParams.x > 0.0001f ? g_Material.extraMaterialParams.x : g_Material.transmissionColor.w);
+		ccRoughness = max(g_Material.extraMaterialParams.y, 0.02f);
+	}
+
+	float at = 0.001f, ab = 0.001f;
+	float3 anisoT = float3(1.0f, 0.0f, 0.0f);
+	float3 anisoB = float3(0.0f, 1.0f, 0.0f);
+	if (hasAnisotropy)
+	{
+		float aniso = clamp(g_Material.extraMaterialParams.z, -0.99f, 0.99f);
+		at = max(roughness * roughness * (1.0f + aniso), 0.001f);
+		ab = max(roughness * roughness * (1.0f - aniso), 0.001f);
+		if (any(abs(tangentWS) > 0.001f))
+		{
+			anisoT = normalize(tangentWS - dot(tangentWS, N) * N);
+			anisoB = cross(N, anisoT);
+		}
+		else
+		{
+			float3 upVec = abs(N.z) < 0.999f ? float3(0.0f, 0.0f, 1.0f) : float3(1.0f, 0.0f, 0.0f);
+			anisoT = normalize(cross(upVec, N));
+			anisoB = cross(N, anisoT);
+		}
+		if (abs(g_Material.extraMaterialParams.w) > 0.001f)
+		{
+			float cosRot = cos(g_Material.extraMaterialParams.w);
+			float sinRot = sin(g_Material.extraMaterialParams.w);
+			float3 rotT = anisoT * cosRot + anisoB * sinRot;
+			float3 rotB = -anisoT * sinRot + anisoB * cosRot;
+			anisoT = rotT;
+			anisoB = rotB;
+		}
+	}
+
+	float alphaCloth = max(roughness * roughness, 0.002f);
+	float invAlpha = 1.0f / alphaCloth;
+
 	float3 Lo = float3(0.0f, 0.0f, 0.0f);
 	float directOcclusion = lerp(1.0f, ao, g_Shadow.shadowExtra.y);
 
@@ -204,6 +254,7 @@ float3 evaluateDirectLighting(
 	uint activeLightCount = clusterData.y;
 	uint totalIterations = min(activeLightCount, 64u);
 
+	[loop]
 	for (uint iter = 0; iter < totalIterations; ++iter)
 	{
 		uint i = g_ClusterLightIndices[clusterOffset + iter];
@@ -218,7 +269,7 @@ float3 evaluateDirectLighting(
 		{
 			L = normalize(-light.directionRange.xyz);
 			float NdotL_raw = dot(N, L);
-			bool needsShadow = (NdotL_raw > -0.05f) || (matFlags & (DF_MAT_FLAG_TRANSMISSION | DF_MAT_FLAG_TWO_SIDED | DF_MAT_FLAG_CLOTH));
+			bool needsShadow = (NdotL_raw > -0.05f) || isThinSurface;
 			if (needsShadow)
 			{
 				shadowFactor = evaluateDirectionalShadow(worldPos, N, L, screenPos);
@@ -263,6 +314,12 @@ float3 evaluateDirectLighting(
 			attenuation = spotAttenuation * (falloff * falloff) / (dist * dist + 0.01f);
 		}
 
+		float NdotL_raw = dot(N, L);
+		if (!isThinSurface && NdotL_raw <= 0.0f)
+		{
+			continue;
+		}
+
 		float3 H = safeNormalize(V + L);
 		float3 radiance = light.colorIntensity.rgb * light.colorIntensity.a * attenuation;
 
@@ -271,64 +328,58 @@ float3 evaluateDirectLighting(
 		float3 F = fresnelSchlick(max(dot(H, V), 0.0f), F0);
 
 		float3 numerator = NDF * G * F;
-		float denominator = 4.0f * max(dot(N, V), 0.0f) * max(dot(N, L), 0.0f) + 0.0001f;
+		float denominator = 4.0f * NoV * max(NdotL_raw, 0.0f) + 0.0001f;
 		float3 specular = numerator / denominator;
 
 		float3 kS = F;
-		float3 kD = float3(1.0f, 1.0f, 1.0f) - kS;
-		kD *= 1.0f - metallic;
+		float3 kD = (1.0f - kS) * (1.0f - metallic);
 
-		float NdotL = max(dot(N, L), 0.0f);
-		float microShadow = computeMicroShadow(dot(N, L), ao);
+		float NdotL = max(NdotL_raw, 0.0f);
+		float microShadow = computeMicroShadow(NdotL_raw, ao);
 		float3 directLightRadiance = radiance * (shadowFactor * directOcclusion * microShadow);
 
-		if (matFlags & DF_MAT_FLAG_CLOTH)
+		if (isCloth)
 		{
 			// Charlie Sheen NDF (Estevez & Kulla 2017) + Neubelt Visibility
-			float wrapNdotL = saturate((dot(N, L) + 0.35f) / 1.35f);
+			float wrapNdotL = saturate((NdotL_raw + 0.35f) / 1.35f);
 			float NdotH = saturate(dot(N, H));
 			float sinTheta = max(0.001f, sqrt(max(1.0f - NdotH * NdotH, 0.0001f)));
-			float alphaCloth = max(roughness * roughness, 0.002f);
-			float invAlpha = 1.0f / alphaCloth;
 			float sheenNDF = (2.0f + invAlpha) * pow(sinTheta, invAlpha) * (INV_PI * 0.5f);
 
-			float NdotV = max(dot(N, V), 0.001f);
-			float NdotL_raw = max(dot(N, L), 0.001f);
-			float sheenVis = 1.0f / (4.0f * (NdotL_raw + NdotV - NdotL_raw * NdotV));
+			float NdotL_pos = max(NdotL_raw, 0.001f);
+			float sheenVis = 1.0f / (4.0f * (NdotL_pos + NoV - NdotL_pos * NoV));
 
 			// Tinted cloth sheen (matches fabric weave color without white plastic rim)
 			float3 clothSheen = albedo * sheenVal * (sheenNDF * sheenVis);
 			float3 clothDiffuse = albedo * INV_PI * wrapNdotL * (1.0f - metallic);
 
-			float backNdotL = max(dot(-N, L), 0.0f);
+			float backNdotL = max(-NdotL_raw, 0.0f);
 			clothDiffuse += albedo * INV_PI * (backNdotL * 0.35f) * (1.0f - metallic);
 
-			float3 directSpecular = specular * NdotL_raw * metallic;
-			Lo += (clothDiffuse + clothSheen * NdotL_raw + directSpecular) * directLightRadiance;
+			float3 directSpecular = specular * NdotL_pos * metallic;
+			Lo += (clothDiffuse + clothSheen * NdotL_pos + directSpecular) * directLightRadiance;
 		}
 		else
 		{
 			float3 directDiffuse = kD * albedo * INV_PI * NdotL;
 
-			if (matFlags & DF_MAT_FLAG_TRANSMISSION)
+			if (hasTransmission)
 			{
-				float backNdotL = saturate(dot(-N, L));
+				float backNdotL = saturate(-NdotL_raw);
 				float3 transColor = albedo * g_Material.transmissionColor.rgb;
 				directDiffuse += transColor * INV_PI * backNdotL * g_Material.transmissionFactor;
 			}
-			else if (matFlags & DF_MAT_FLAG_TWO_SIDED)
+			else if (isTwoSided)
 			{
-				float backNdotL = max(dot(-N, L), 0.0f);
+				float backNdotL = max(-NdotL_raw, 0.0f);
 				directDiffuse += kD * albedo * INV_PI * (backNdotL * 0.5f);
 			}
 
 			// Clear-coat evaluation and energy conservation
 			float3 ccF = float3(0.0f, 0.0f, 0.0f);
 			float3 ccSpec = float3(0.0f, 0.0f, 0.0f);
-			if (matFlags & DF_MAT_FLAG_CLEAR_COAT)
+			if (hasClearCoat)
 			{
-				float ccFactor = saturate(g_Material.extraMaterialParams.x > 0.0001f ? g_Material.extraMaterialParams.x : g_Material.transmissionColor.w);
-				float ccRoughness = max(g_Material.extraMaterialParams.y, 0.02f);
 				float ccNDF = DistributionGGX(N, H, ccRoughness);
 				float ccG = GeometrySmith(N, V, L, ccRoughness);
 				ccF = fresnelSchlick(max(dot(H, V), 0.0f), float3(0.04f, 0.04f, 0.04f)) * ccFactor;
@@ -336,34 +387,10 @@ float3 evaluateDirectLighting(
 			}
 
 			// Anisotropic specular lobe (brushed metals & carbon fiber)
-			if (matFlags & DF_MAT_FLAG_ANISOTROPY)
+			if (hasAnisotropy)
 			{
-				float aniso = clamp(g_Material.extraMaterialParams.z, -0.99f, 0.99f);
-				float at = max(roughness * roughness * (1.0f + aniso), 0.001f);
-				float ab = max(roughness * roughness * (1.0f - aniso), 0.001f);
-				float3 T, B;
-				if (any(abs(tangentWS) > 0.001f))
-				{
-					T = normalize(tangentWS - dot(tangentWS, N) * N);
-					B = cross(N, T);
-				}
-				else
-				{
-					float3 upVec = abs(N.z) < 0.999f ? float3(0.0f, 0.0f, 1.0f) : float3(1.0f, 0.0f, 0.0f);
-					T = normalize(cross(upVec, N));
-					B = cross(N, T);
-				}
-				if (abs(g_Material.extraMaterialParams.w) > 0.001f)
-				{
-					float cosRot = cos(g_Material.extraMaterialParams.w);
-					float sinRot = sin(g_Material.extraMaterialParams.w);
-					float3 rotT = T * cosRot + B * sinRot;
-					float3 rotB = -T * sinRot + B * cosRot;
-					T = rotT;
-					B = rotB;
-				}
-				float anisoNDF = DistributionAnisotropicGGX(N, H, T, B, at, ab);
-				float anisoG = GeometrySmithAnisotropic(N, V, L, T, B, at, ab);
+				float anisoNDF = DistributionAnisotropicGGX(N, H, anisoT, anisoB, at, ab);
+				float anisoG = GeometrySmithAnisotropic(N, V, L, anisoT, anisoB, at, ab);
 				specular = (anisoNDF * anisoG * F);
 			}
 
@@ -466,7 +493,6 @@ float3 evaluateDirectLighting(
 		envRadiance = lerp(envRadiance, localRadiance, specProbeBlend);
 	}
 
-	float NoV = max(dot(N, V), 0.0f);
 	float2 envBRDF = envBRDFApprox(roughness, NoV);
 	// Frostbite directional specular occlusion (Lagarde & de Rousiers 2014)
 	float specOcclusion = computeSpecularOcclusion(NoV, ao, roughness);
@@ -497,10 +523,8 @@ float3 evaluateDirectLighting(
 		specularIBL = float3(0.0f, 0.0f, 0.0f);
 	}
 
-	if (matFlags & DF_MAT_FLAG_CLEAR_COAT)
+	if (hasClearCoat)
 	{
-		float ccFactor = saturate(g_Material.extraMaterialParams.x > 0.0001f ? g_Material.extraMaterialParams.x : g_Material.transmissionColor.w);
-		float ccRoughness = max(g_Material.extraMaterialParams.y, 0.02f);
 		float3 ccEnv = (g_Pass.ambientLightColor.a > 0.0001f)
 			? g_TextureSkyEquirect.SampleLevel(g_SamplerLinearWrap, eqUV, ccRoughness * 5.0f).rgb * g_Pass.ambientLightColor.a
 			: skyHemiSpec;

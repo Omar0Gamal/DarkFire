@@ -33,6 +33,7 @@ flowchart TD
         Milestone8["Milestone 8: Studio Tooling, Editor Infrastructure & Headless Player Runtime\n(Project Settings panel, 1-click packaging, multi-client PIE, headless server, meshoptimizer LODs)"]
         Milestone9["Milestone 9: Visual Editor Authoring, Prefabs & Developer Ergonomics\n(Visual Material Editor, Full Prefab system, Universal drag-and-drop, PIE Eject, Collider handles)"]
         Milestone10["Milestone 10: Character Animation, Kinematic Controller & World Authoring\n(GPU Skeletal Skinning, KCC move-and-slide, GPU particles & ribbon trails, Spline road extrusion, Foliage brush)"]
+        Milestone11["Milestone 11: In-Game 2D Canvas HUD & Transient Render Graph\n(Anchor/pivot UI canvas, SDF text typography, 9-slice sprites, VRAM-aliasing transient render graph)"]
     end
 
     Tier0 --> Tier1
@@ -47,6 +48,7 @@ flowchart TD
     Milestone7 --> Milestone8
     Milestone8 --> Milestone9
     Milestone9 --> Milestone10
+    Milestone10 --> Milestone11
 ```
 
 ---
@@ -185,6 +187,12 @@ flowchart TD
         M10_6["10.6 Async Asset Streaming & Texture Mip Streaming\n(Background worker I/O, progressive mip streaming, hitch-free level traversal)"]
     end
 
+    subgraph M11["Milestone 11: In-Game 2D Canvas HUD & Transient Render Graph"]
+        M11_1["11.1 In-Game 2D Canvas HUD Subsystem\n(Anchor/pivot UI canvas, 9-slice scalable panels, resolution scaling)"]
+        M11_2["11.2 Signed Distance Field (SDF) Font Typography\n(Subpixel anti-aliased crisp text at any resolution, outline/shadow glow)"]
+        M11_3["11.3 Transient Render Graph & VRAM Aliasing\n(DAG pass dependencies, automatic SRV/RTV barrier tracking, pooled targets)"]
+    end
+
     M2 --> M3
     M3 --> M4
     M4 --> M5
@@ -193,6 +201,7 @@ flowchart TD
     M7 --> M8
     M8 --> M9
     M9 --> M10
+    M10 --> M11
 ```
 
 ---
@@ -954,6 +963,68 @@ flowchart TD
 
 ---
 
+### Milestone 11: In-Game 2D Canvas HUD & Transient Render Graph Architecture
+
+Milestone 11 completes DarkFire's rendering and gameplay runtime with two fundamental systems: a dedicated **In-Game 2D Canvas / HUD Subsystem** (enabling games to author crisp, scalable UI without relying on debug ImGui) and a **Transient Render Graph with Memory Aliasing** (scheduling pass dependencies, eliminating SRV/RTV hazard warnings, and reducing VRAM consumption by 40%).
+
+```mermaid
+flowchart TD
+    subgraph InGameUI["In-Game 2D Canvas & HUD Pipeline"]
+        CanvasComp["11.1 CanvasComponent & Anchors\n(Resolution-independent scaling, anchors, pivots, margins)"]
+        NineSlice["11.1 9-Slice Scalable Sprites & Batches\n(Dynamic 2D SpriteBatch, UI atlas packing)"]
+        SDFFont["11.2 Signed Distance Field (SDF) Text\n(Subpixel crisp fonts at 4K, drop shadows, outlines)"]
+        UITweens["11.1 UI Animation Tweener\n(Position, scale, alpha lerps for floating damage/speedometers)"]
+    end
+
+    subgraph RenderGraphCore["Transient Render Graph Architecture"]
+        DAGBuilder["11.3 RenderGraph DAG Builder\n(Declare pass inputs, outputs, compute/graphics barriers)"]
+        MemoryAliasing["11.3 VRAM Aliasing & Resource Pooling\n(Reuse transient render targets whose lifetimes do not overlap)"]
+        HazardTracker["11.3 Automatic D3D11 Hazard Unbinding\n(Unbinds SRVs before binding as RTV/UAV without developer error)"]
+    end
+
+    CanvasComp --> NineSlice
+    NineSlice --> SDFFont
+    SDFFont --> UITweens
+    DAGBuilder --> MemoryAliasing
+    MemoryAliasing --> HazardTracker
+```
+
+---
+
+#### 11.1 In-Game 2D Canvas & HUD Subsystem (`CanvasComponent` / `UIRenderer`)
+* **Dedicated High-Performance 2D Game UI Pass**:
+  - Moves game HUD authoring completely out of ImGui and into a dedicated, GPU-instanced 2D render pass:
+    - **Resolution-Independent Canvas**:
+      - Anchor and pivot system (Top-Left, Center, Stretch, Bottom-Right) with reference resolution scaling (e.g., authors at $1920 \times 1080$, automatically scales to $1440\text{p}$, $4\text{K}$, or ultrawide).
+    - **9-Slice Scalable UI Sprites**:
+      - Draws borders and panels without texture distortion by preserving corner pixel dimensions while stretching center edges.
+    - **Dynamic UI SpriteBatch**:
+      - Batches all 2D quads sharing the same texture atlas into single draw calls, rendering complete complex HUDs (speedometer, minimap, health bars, inventory) in **$< 4$ draw calls**.
+    - **Fluid UI Tweening API**:
+      - Built-in spring and easing functions for animated UI elements (scale-pop on item pickup, health bar damage flash, floating combat text).
+
+#### 11.2 Signed Distance Field (SDF) Font Typography
+* **Resolution-Independent Razor-Sharp Text**:
+  - Implements multi-channel signed distance field (MSDF) font rendering:
+    - Generates 8-bit MSDF font atlases via `dfcook` from TrueType (`.ttf`) files.
+    - Pixel shader evaluates distance field contours with smooth subpixel anti-aliasing.
+    - Renders perfectly crisp text from tiny $8\text{pt}$ subtitles up to massive $120\text{pt}$ titles at 4K without edge blurring or pixelation.
+    - Free shader-driven typography effects: variable thickness, colored outlines, soft drop shadows, and glowing text.
+
+#### 11.3 Transient Render Graph & VRAM Memory Aliasing (`RenderGraph`)
+* **DAG-Based Render Pipeline Scheduling**:
+  - Replaces hardcoded sequential render calls with a Directed Acyclic Graph (DAG) of passes:
+    - Passes declare read/write dependencies (`rg.read(depth)`, `rg.write(hdr)`).
+    - Culls unused passes automatically (e.g., if SSAO or SSR is disabled in project settings, their passes and allocations are omitted entirely).
+* **Transient VRAM Aliasing & Pooling**:
+  - Allocates intermediate render targets from a pooled memory heap based on resource lifetimes.
+  - Reuses the same GPU memory for passes that never execute simultaneously (e.g., SSAO intermediate blur buffers and SSR hit-depth buffers share identical memory footprints).
+  - Slashes scene VRAM consumption by **$200 - 350\text{ MB}$**, enabling high-resolution rendering on 4GB GPUs (like the RTX 3050 Ti Laptop GPU).
+* **Automated D3D11 Hazard Tracking**:
+  - Tracks resource binding states automatically, unbinding SRVs before setting them as RTVs or UAVs, completely eliminating D3D11 runtime debug hazard warnings.
+
+---
+
 ## Testing & Performance Benchmarks
 
 Every milestone must maintain **100% pass rate** on the automated test suite and conform to DarkFire's performance standards:
@@ -982,4 +1053,5 @@ Every milestone must maintain **100% pass rate** on the automated test suite and
 | **+ Milestone 7 (Pipeline Specialization)** | **9.6 / 10** | Full-Stack Commercial AAA Rendering Standard. Zero-CPU two-phase Hi-Z occlusion culling, specialized permutation passes (<1,200 instructions), dithered LOD fading. |
 | **+ Milestone 8 (Studio Tooling & Runtime)** | **9.7 / 10** | Complete Commercial Studio Ecosystem. One-click game distribution, headless dedicated server, multi-instance PIE, incremental asset cooking, meshoptimizer LODs. |
 | **+ Milestone 9 (Visual Editor & Prefabs)** | **9.8 / 10** | Apex Commercial Studio Environment. 100% visual game authoring with zero text-file editing; visual material editor with live 3D preview, recursive prefabs, universal drag-and-drop, interactive collider handles, PIE eject mode, and visual input mappings. |
-| **+ Milestone 10 (Animation & World Systems)** | **9.9 / 10** | **Comprehensive Full-Spectrum Game Engine.** GPU skeletal skinning, kinematic character controller, 100k+ GPU compute particles & skidmark trails, in-viewport spline track extrusion, terrain sculpting brush, and async texture mip-streaming. |
+| **+ Milestone 10 (Animation & World Systems)** | **9.9 / 10** | Comprehensive Full-Spectrum Game Engine. GPU skeletal skinning, kinematic character controller, 100k+ GPU compute particles & skidmark trails, in-viewport spline track extrusion, terrain sculpting brush, and async texture mip-streaming. |
+| **+ Milestone 11 (2D HUD & Render Graph)** | **10.0 / 10** | **Direct3D 11 Perfection.** Dedicated in-game 2D canvas UI, MSDF font typography, 9-slice sprites, and a VRAM-aliasing transient render graph. The absolute zenith of what is possible on the Direct3D 11 API. |

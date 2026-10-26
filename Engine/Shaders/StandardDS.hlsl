@@ -33,7 +33,8 @@ PSInput main(
 	float3 c2 = projectOntoPlane(linearPos, patch[2].positionWS, patch[2].normalWS);
 	float3 phongPos = bary.x * c0 + bary.y * c1 + bary.z * c2;
 
-	float phongAlpha = clamp(g_Pass.shGridMin.w, 0.0f, 0.75f);
+	bool isThinSurface = (g_Material.alphaCutoff > 0.001f) || ((g_Material.materialFlags & (DF_MAT_FLAG_TWO_SIDED | DF_MAT_FLAG_CLOTH)) != 0);
+	float phongAlpha = isThinSurface ? 0.0f : clamp(g_Pass.shGridMin.w, 0.0f, 0.75f);
 	float3 finalPosWS = lerp(linearPos, phongPos, phongAlpha);
 
 	output.positionWS = finalPosWS;
@@ -43,6 +44,8 @@ PSInput main(
 	output.tangentWS  = tangentWS;
 	output.color      = color;
 	output.entityId   = patch[0].entityId;
+	output.curPositionCS = output.positionCS;
+	output.prevPositionCS = mul(float4(finalPosWS, 1.0f), g_View.prevViewProjMatrix);
 
 	return output;
 }

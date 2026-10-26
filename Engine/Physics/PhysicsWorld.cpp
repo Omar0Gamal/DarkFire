@@ -561,4 +561,224 @@ namespace Physics
 
 		return outHit.hasHit;
 	}
+
+	bool PhysicsWorld::sphereCast(
+		Core::Scene& scene,
+		const Vector3& origin,
+		float radius,
+		const Vector3& dir,
+		float maxDist,
+		SweepHit& outHit,
+		uint16_t layerMask
+	)
+	{
+		outHit.hasHit = false;
+		outHit.distance = maxDist;
+
+		Vector3 normalizedDir = dir;
+		if (normalizedDir.LengthSquared() < 1e-6f) return false;
+		normalizedDir.Normalize();
+
+		auto& reg = scene.getRegistry();
+		auto view = reg.view<Core::ColliderComponent, Core::TransformComponent>();
+
+		for (auto entity : view)
+		{
+			const auto& col = view.get<Core::ColliderComponent>(entity);
+			const auto& trans = view.get<Core::TransformComponent>(entity);
+
+			if ((layerMask & (1 << col.layer)) == 0) continue;
+
+			float hitT = maxDist + 1.0f;
+			Vector3 hitNormal;
+			Vector3 hitPoint;
+			bool entityHit = false;
+
+			if (col.shape == Core::ColliderShape::Sphere)
+			{
+				float rTotal = radius + col.radius;
+				Vector3 m = origin - trans.position;
+				float b = m.Dot(normalizedDir);
+				float c = m.Dot(m) - rTotal * rTotal;
+
+				if (c <= 0.0f)
+				{
+					hitT = 0.0f;
+					hitNormal = -normalizedDir;
+					hitPoint = origin;
+					entityHit = true;
+				}
+				else if (b <= 0.0f)
+				{
+					float discr = b * b - c;
+					if (discr >= 0.0f)
+					{
+						float t = -b - std::sqrt(discr);
+						if (t >= 0.0f && t <= outHit.distance)
+						{
+							hitT = t;
+							Vector3 sphereCenterAtT = origin + normalizedDir * t;
+							hitNormal = sphereCenterAtT - trans.position;
+							if (hitNormal.LengthSquared() > 1e-6f) hitNormal.Normalize();
+							hitPoint = sphereCenterAtT - hitNormal * radius;
+							entityHit = true;
+						}
+					}
+				}
+			}
+			else
+			{
+				Core::ColliderComponent sweepCol;
+				sweepCol.shape = Core::ColliderShape::Sphere;
+				sweepCol.radius = radius;
+
+				Core::TransformComponent sweepTrans;
+				sweepTrans.rotation = Core::Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
+				sweepTrans.scale = Vector3(1.0f, 1.0f, 1.0f);
+
+				float currentT = 0.0f;
+				float stepSize = std::max(0.05f, radius * 0.25f);
+
+				while (currentT <= outHit.distance)
+				{
+					sweepTrans.position = origin + normalizedDir * currentT;
+					Vector3 norm;
+					float pen = 0.0f;
+
+					if (TestColliderPair(sweepCol, sweepTrans, col, trans, norm, pen))
+					{
+						float tLo = std::max(0.0f, currentT - stepSize);
+						float tHi = currentT;
+						for (int iter = 0; iter < 8; ++iter)
+						{
+							float tMid = (tLo + tHi) * 0.5f;
+							sweepTrans.position = origin + normalizedDir * tMid;
+							Vector3 midNorm; float midPen = 0.0f;
+							if (TestColliderPair(sweepCol, sweepTrans, col, trans, midNorm, midPen))
+							{
+								tHi = tMid;
+								norm = midNorm;
+							}
+							else
+							{
+								tLo = tMid;
+							}
+						}
+						hitT = tHi;
+						if (norm.Dot(normalizedDir) > 0.0f) norm = -norm;
+						hitNormal = norm;
+						hitPoint = (origin + normalizedDir * hitT) - norm * radius;
+						entityHit = true;
+						break;
+					}
+
+					currentT += stepSize;
+				}
+			}
+
+			if (entityHit && hitT < outHit.distance)
+			{
+				outHit.hasHit = true;
+				outHit.distance = hitT;
+				outHit.normal = hitNormal;
+				outHit.point = hitPoint;
+				outHit.entity = Core::Entity(entity, &scene);
+			}
+		}
+
+		return outHit.hasHit;
+	}
+
+	bool PhysicsWorld::boxCast(
+		Core::Scene& scene,
+		const Vector3& origin,
+		const Vector3& halfExtents,
+		const Quaternion& orientation,
+		const Vector3& dir,
+		float maxDist,
+		SweepHit& outHit,
+		uint16_t layerMask
+	)
+	{
+		outHit.hasHit = false;
+		outHit.distance = maxDist;
+
+		Vector3 normalizedDir = dir;
+		if (normalizedDir.LengthSquared() < 1e-6f) return false;
+		normalizedDir.Normalize();
+
+		auto& reg = scene.getRegistry();
+		auto view = reg.view<Core::ColliderComponent, Core::TransformComponent>();
+
+		Core::ColliderComponent sweepCol;
+		sweepCol.shape = Core::ColliderShape::Box;
+		sweepCol.size = halfExtents * 2.0f;
+
+		Core::TransformComponent sweepTrans;
+		sweepTrans.rotation = orientation;
+		sweepTrans.scale = Vector3(1.0f, 1.0f, 1.0f);
+
+		for (auto entity : view)
+		{
+			const auto& col = view.get<Core::ColliderComponent>(entity);
+			const auto& trans = view.get<Core::TransformComponent>(entity);
+
+			if ((layerMask & (1 << col.layer)) == 0) continue;
+
+			float currentT = 0.0f;
+			float minExtent = std::min(halfExtents.x, std::min(halfExtents.y, halfExtents.z));
+			float stepSize = std::max(0.05f, minExtent * 0.25f);
+			bool entityHit = false;
+			float hitT = maxDist + 1.0f;
+			Vector3 hitNormal;
+			Vector3 hitPoint;
+
+			while (currentT <= outHit.distance)
+			{
+				sweepTrans.position = origin + normalizedDir * currentT;
+				Vector3 norm;
+				float pen = 0.0f;
+
+				if (TestColliderPair(sweepCol, sweepTrans, col, trans, norm, pen))
+				{
+					float tLo = std::max(0.0f, currentT - stepSize);
+					float tHi = currentT;
+					for (int iter = 0; iter < 8; ++iter)
+					{
+						float tMid = (tLo + tHi) * 0.5f;
+						sweepTrans.position = origin + normalizedDir * tMid;
+						Vector3 midNorm; float midPen = 0.0f;
+						if (TestColliderPair(sweepCol, sweepTrans, col, trans, midNorm, midPen))
+						{
+							tHi = tMid;
+							norm = midNorm;
+						}
+						else
+						{
+							tLo = tMid;
+						}
+					}
+					hitT = tHi;
+					if (norm.Dot(normalizedDir) > 0.0f) norm = -norm;
+					hitNormal = norm;
+					hitPoint = (origin + normalizedDir * hitT) - norm * minExtent;
+					entityHit = true;
+					break;
+				}
+
+				currentT += stepSize;
+			}
+
+			if (entityHit && hitT < outHit.distance)
+			{
+				outHit.hasHit = true;
+				outHit.distance = hitT;
+				outHit.normal = hitNormal;
+				outHit.point = hitPoint;
+				outHit.entity = Core::Entity(entity, &scene);
+			}
+		}
+
+		return outHit.hasHit;
+	}
 }

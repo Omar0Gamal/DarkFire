@@ -1,3 +1,9 @@
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 #include "Editor/PlaySession.h"
 #include "Engine/Runtime/Application.h"
 #include "Engine/Core/Scene/Components.h"
@@ -199,6 +205,88 @@ namespace Editor
 			}
 
 			Audio::AudioSystem::Get().update(*activeScene, deltaTime);
+		}
+	}
+
+
+	bool PlaySession::hasRunningInstances() const
+	{
+		for (void* h : m_spawnedProcessHandles)
+		{
+			DWORD exitCode = 0;
+			if (GetExitCodeProcess(static_cast<HANDLE>(h), &exitCode) && exitCode == STILL_ACTIVE)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	void PlaySession::stopMultiInstances()
+	{
+		for (void* h : m_spawnedProcessHandles)
+		{
+			HANDLE hProcess = static_cast<HANDLE>(h);
+			DWORD exitCode = 0;
+			if (GetExitCodeProcess(hProcess, &exitCode) && exitCode == STILL_ACTIVE)
+			{
+				TerminateProcess(hProcess, 0);
+			}
+			CloseHandle(hProcess);
+		}
+		m_spawnedProcessHandles.clear();
+		Core::Log::Get().info("Editor", "Stopped all multi-instance PIE sessions.");
+	}
+
+	void PlaySession::launchMultiInstance(const std::filesystem::path& projectPath, PIEMode mode)
+	{
+		stopMultiInstances();
+		if (mode == PIEMode::SinglePlayer) return;
+
+		std::string playerExe = "bin/Debug-windows-x86_64/Player/Player.exe";
+		if (!std::filesystem::exists(playerExe))
+		{
+			playerExe = "bin/Release-windows-x86_64/Player/Player.exe";
+		}
+		if (!std::filesystem::exists(playerExe))
+		{
+			Core::Log::Get().error("Editor", "Cannot launch PIE: Player.exe not found.");
+			return;
+		}
+
+		auto spawnProcess = [&](const std::string& extraArgs) -> HANDLE {
+			std::string cmd = "\"" + playerExe + "\" --project \"" + projectPath.string() + "\" " + extraArgs;
+			STARTUPINFOA si{};
+			si.cb = sizeof(si);
+			PROCESS_INFORMATION pi{};
+			if (CreateProcessA(nullptr, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi))
+			{
+				CloseHandle(pi.hThread);
+				return pi.hProcess;
+			}
+			return nullptr;
+		};
+
+		if (mode == PIEMode::ServerAnd1Client)
+		{
+			Core::Log::Get().info("Editor", "Spawning 1 Server + 1 Client PIE session...");
+			HANDLE hServer = spawnProcess("--server");
+			if (hServer) m_spawnedProcessHandles.push_back(hServer);
+
+			HANDLE hClient = spawnProcess("");
+			if (hClient) m_spawnedProcessHandles.push_back(hClient);
+		}
+		else if (mode == PIEMode::ServerAnd2Clients)
+		{
+			Core::Log::Get().info("Editor", "Spawning 1 Server + 2 Clients PIE session...");
+			HANDLE hServer = spawnProcess("--server");
+			if (hServer) m_spawnedProcessHandles.push_back(hServer);
+
+			HANDLE hClient1 = spawnProcess("");
+			if (hClient1) m_spawnedProcessHandles.push_back(hClient1);
+
+			HANDLE hClient2 = spawnProcess("");
+			if (hClient2) m_spawnedProcessHandles.push_back(hClient2);
 		}
 	}
 }

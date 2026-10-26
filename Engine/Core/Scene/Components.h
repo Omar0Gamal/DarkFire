@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+namespace Physics { class BVH; }
+
 namespace Core
 {
 	// ==========================================
@@ -37,16 +39,32 @@ namespace Core
 	struct DF_API TransformComponent
 	{
 		Vector3 position = Vector3(0.0f, 0.0f, 0.0f);
-		Quaternion rotation = Quaternion::Identity;
+		Quaternion rotation = Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
 		Vector3 scale = Vector3(1.0f, 1.0f, 1.0f);
 		Vector3 eulerDegrees = Vector3(0.0f, 0.0f, 0.0f); // Authoring & Inspector presentation
 
+		Vector3 prevPosition = Vector3(0.0f, 0.0f, 0.0f);
+		Quaternion prevRotation = Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
+
 		TransformComponent() = default;
 		TransformComponent(const Vector3& pos, const Quaternion& rot, const Vector3& scl)
-			: position(pos), rotation(rot), scale(scl)
+			: position(pos), rotation(rot), scale(scl), prevPosition(pos), prevRotation(rot)
 		{
 			Vector3 rads = rot.ToEuler();
 			eulerDegrees = Vector3(Math::toDegrees(rads.x), Math::toDegrees(rads.y), Math::toDegrees(rads.z));
+		}
+
+		void syncPreviousTransform() noexcept
+		{
+			prevPosition = position;
+			prevRotation = rotation;
+		}
+
+		Matrix getInterpolatedMatrix(float alpha) const noexcept
+		{
+			Vector3 p = Vector3::Lerp(prevPosition, position, alpha);
+			Quaternion q = Quaternion::Slerp(prevRotation, rotation, alpha);
+			return Math::createTransformTRS(p, q, scale);
 		}
 
 		Matrix getLocalMatrix() const noexcept
@@ -175,11 +193,31 @@ namespace Core
 		float friction = 0.5f;
 	};
 
+		struct DF_API CollisionTriangle
+	{
+		Vector3 v0 = Vector3(0.0f, 0.0f, 0.0f);
+		Vector3 v1 = Vector3(0.0f, 0.0f, 0.0f);
+		Vector3 v2 = Vector3(0.0f, 0.0f, 0.0f);
+		Vector3 normal = Vector3(0.0f, 1.0f, 0.0f);
+	};
+
+	struct DF_API CollisionMesh
+	{
+		std::vector<Vector3> vertices;
+		std::vector<uint32_t> indices;
+		std::vector<CollisionTriangle> triangles;
+		std::shared_ptr<Physics::BVH> bvh;
+		Vector3 boundsMin = Vector3(-0.5f, -0.5f, -0.5f);
+		Vector3 boundsMax = Vector3(0.5f, 0.5f, 0.5f);
+	};
+
 	enum class ColliderShape : uint8_t
 	{
 		Box = 0,
 		Sphere,
-		Capsule
+		Capsule,
+		TriangleMesh,
+		ConvexMesh
 	};
 
 	struct DF_API ColliderComponent
@@ -190,6 +228,8 @@ namespace Core
 		float height = 1.0f;
 		bool isTrigger = false;
 		uint8_t layer = 0; // Layer index 0..15 for collision filtering
+		std::string meshPath;
+		std::shared_ptr<CollisionMesh> collisionMesh;
 	};
 
 	enum class ParticleBlendMode : uint8_t
@@ -310,7 +350,8 @@ namespace Core
 		Reinhard,
 		Linear,
 		AgX,
-		Neutral
+		Neutral,
+		ReinhardJodie
 	};
 
 	struct DF_API PostProcessingComponent
@@ -337,6 +378,11 @@ namespace Core
 		float autoExposureMinEV = -1.5f;
 		float autoExposureMaxEV = 1.5f;
 		float autoExposureSpeed = 2.5f;
+		float autoExposureSpeedUp = 3.0f;
+		float autoExposureSpeedDown = 1.0f;
+		bool enableMotionBlur = false;
+		float motionBlurShutterAngle = 0.5f;
+		float motionBlurMaxRadius = 32.0f;
 		float contrast = 1.0f;
 		float saturation = 1.0f;
 		float vignetteIntensity = 0.0f;
@@ -490,11 +536,25 @@ namespace Core
 		float causticsIntensity = 0.45f;
 		float buoyancyDensity = 2.5f;
 		float fluidDrag = 1.8f;
+		float sssIntensity = 1.0f;
+		float jacobianThreshold = 0.35f;
+		Color sssColor = Color(0.05f, 0.65f, 0.55f, 1.0f);
+		float windAngle = 0.785f;
 	};
 
 	// ==========================================
 	// Audio & HUD Telemetry Components (Phase 8)
 	// ==========================================
+
+	enum class AudioBus : uint8_t
+	{
+		Master = 0,
+		SFX,
+		Ambient,
+		Engine,
+		Music,
+		Count
+	};
 
 	struct DF_API AudioSourceComponent
 	{
@@ -506,6 +566,28 @@ namespace Core
 		float minDistance = 2.0f;
 		float maxDistance = 80.0f;
 		bool playOnStart = true;
+		AudioBus bus = AudioBus::SFX;
+		float dopplerFactor = 1.0f;
+
+		// Parameter smoothing API
+		float targetVolume = 0.8f;
+		float volumeSlewRateHz = 10.0f;
+		float targetPitch = 1.0f;
+		float pitchSlewRateHz = 10.0f;
+
+		AudioSourceComponent& setVolumeSmooth(float target, float slewRate = 10.0f) noexcept
+		{
+			targetVolume = target;
+			volumeSlewRateHz = slewRate;
+			return *this;
+		}
+
+		AudioSourceComponent& setPitchSmooth(float target, float slewRate = 10.0f) noexcept
+		{
+			targetPitch = target;
+			pitchSlewRateHz = slewRate;
+			return *this;
+		}
 	};
 
 	struct DF_API AudioListenerComponent

@@ -13,7 +13,9 @@ struct LightData
 	float4 positionType;   // xyz = position, w = type (0 = Directional, 1 = Point, 2 = Spot)
 	float4 directionRange; // xyz = direction, w = range
 	float4 colorIntensity; // rgb = color, a = intensity
-	float4 spotAnglesPad;  // x = inner angle cos, y = outer angle cos, zw = padding
+	float4 spotAnglesPad;  // x = inner angle cos, y = outer angle cos, z = hasShadow, w = isPointParaboloid
+	float4x4 shadowViewProj;// 64B: Light View-Projection or Light View
+	float4 shadowAtlasRect;// 16B: xy = uv offset, zw = uv scale in atlas
 };
 
 cbuffer CBClusterAssign : register(b0)

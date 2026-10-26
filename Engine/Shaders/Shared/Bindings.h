@@ -49,11 +49,16 @@
 #define DF_SLOT_TEX_DDGI_IRRADIANCE   26
 #define DF_SLOT_TEX_DDGI_DEPTH        27
 #define DF_SLOT_TEX_SSS               28
+#define DF_SLOT_TEX_VOLUMETRIC_FOG    29
+#define DF_SLOT_TEX_TILE_MAX          30
+#define DF_SLOT_TEX_NEIGHBOR_MAX      31
 
 // Constant Buffer Slots (Extended)
 #define DF_SLOT_CB_SSR                7
+#define DF_SLOT_CB_MOTION_BLUR        7
 #define DF_SLOT_CB_DDGI               8
 #define DF_SLOT_CB_SSS                8
+#define DF_SLOT_CB_VOLUMETRIC_FOG     8
 
 // Sampler Slots
 #define DF_SLOT_SMP_LINEAR_WRAP  0
@@ -90,6 +95,7 @@ namespace Core::Renderer
 	using float2 = Math::Vector2;
 	using float4x4 = Math::Matrix;
 	using uint = uint32_t;
+	struct uint4 { uint32_t x = 0, y = 0, z = 0, w = 0; };
 #endif
 
 // PerFrame Buffer (b0)
@@ -205,7 +211,9 @@ struct LightData
 	float4 positionType;   // xyz = position, w = type (0 = Directional, 1 = Point, 2 = Spot)
 	float4 directionRange;  // xyz = direction, w = range
 	float4 colorIntensity; // rgb = color, a = intensity
-	float4 spotAnglesPad;  // x = inner angle cos, y = outer angle cos, zw = padding
+	float4 spotAnglesPad;  // x = inner angle cos, y = outer angle cos, z = hasShadow, w = isPointParaboloid
+	float4x4 shadowViewProj;// 64B: Light View-Projection or Light View
+	float4 shadowAtlasRect;// 16B: xy = uv offset, zw = uv scale in atlas
 };
 
 // PostProcess Buffer (b5 or b0 in post passes)
@@ -307,7 +315,54 @@ struct CBWater
 	float4 deepColor;
 	float4 foamColor;
 	float4 opticalParams; // x = depthAbsorption, y = foamDepthThreshold, z = refractionStrength, w = causticsIntensity
-	float4 waterExtra;    // x = waterLevel, y = planeSize, z = pad, w = pad
+	float4 waterExtra;    // x = waterLevel, y = planeSize, z = sssIntensity, w = jacobianThreshold
+	float4 sssColor;      // rgb = sssColor, w = windAngle
+};
+
+// Motion Blur Buffer
+struct CBMotionBlur
+{
+	float4 motionBlurParams; // x = shutterAngle (0-1), y = maxRadius (px), z = numSamples (12), w = enabled
+	float4 screenResolution; // xy = res, zw = invRes
+};
+
+// Volumetric Fog Buffer
+struct CBVolumetricFog
+{
+	float4 fogParams;        // x = density, y = heightFalloff, z = sunScattering, w = baseHeight
+	float4 fogDepths;        // x = nearZ, y = farZ, z = historyBlend (0.88), w = pad
+	float4 volumeGridSize;   // xyz = (160, 90, 64), w = 1.0 / 64.0
+	float4x4 prevViewProj;
+};
+
+// Volumetric Fog Integration Buffer
+struct CBVolumetricFogIntegrate
+{
+	float4 fogDepths;        // x = nearZ, y = farZ, zw = pad
+	float4 volumeGridSize;   // xyz = (160, 90, 64), w = 1.0 / 64.0
+};
+
+// Paraboloid Shadow Buffer
+struct CBParaboloidShadow
+{
+	float4x4 lightViewMatrix;
+	float4   paraboloidParams; // x = nearZ, y = farZ, z = isBackFacing (+1 front, -1 back), w = pad
+	float4   atlasViewport;    // xy = offset, zw = scale
+};
+
+// Luminance Histogram Buffer
+struct CBLuminanceHistogram
+{
+	uint4  dimensions; // x = width, y = height, zw = pad
+	float4 evRange;    // x = minEV (-10.0), y = maxEV (+10.0), z = invRange, w = pad
+};
+
+// Luminance Average & Adaptation Buffer
+struct CBLuminanceAverage
+{
+	float4 adaptationParams; // x = deltaTime, y = speedUp, z = speedDown, w = keyVal (0.18)
+	float4 evRange;          // x = minEV, y = maxEV, z = minExposure, w = maxExposure
+	uint4  pixelCount;       // x = totalPixels, yzw = pad
 };
 
 #ifdef __cplusplus

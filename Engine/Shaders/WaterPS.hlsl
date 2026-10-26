@@ -91,7 +91,9 @@ PSOutput main(PSInput input)
 	float foamThreshold = max(g_Water.opticalParams.y, 0.05f);
 	float shorelineFactor = saturate(1.0f - depthDelta / foamThreshold);
 	float waveHeight = input.positionWS.y - g_Water.waterExtra.x;
-	float waveCrestFactor = smoothstep(g_Water.waveParams.x * 0.85f, g_Water.waveParams.x * 1.10f, waveHeight);
+	float jacobian = input.color.r;
+	float jThresh = g_Water.waterExtra.w > 0.01f ? g_Water.waterExtra.w : 0.35f;
+	float waveCrestFactor = saturate((jThresh - jacobian) / max(jThresh, 0.001f));
 
 	float2 foamUV = input.positionWS.xz * 0.8f + float2(0.05f, 0.02f) * time;
 	float foamNoise = (sin(foamUV.x * 4.0f) * cos(foamUV.y * 4.0f) + sin(foamUV.x * 9.0f + time)) * 0.5f + 0.5f;
@@ -143,7 +145,20 @@ PSOutput main(PSInput input)
 	}
 
 	// Water surface emission/reflection composite (fogged at water surface distance)
-	float3 waterSurface = lerp(lerp(waterBodyColor, foamLinear, totalFoam), reflectionColor, fresnel.r) + sunSpecular;
+	float3 waveSSS = float3(0.0f, 0.0f, 0.0f);
+	if (g_Pass.lightCount > 0 && (int)g_Lights[0].positionType.w == 0)
+	{
+		float3 L = normalize(-g_Lights[0].directionRange.xyz);
+		float forwardScatter = pow(saturate(dot(V, -L)), 4.0f);
+		float waveElevation = max(input.color.g, 0.0f);
+		float sssTransmittance = saturate(waveElevation / max(g_Water.waveParams.x, 0.1f));
+		float shadowFactor = evaluateDirectionalShadow(input.positionWS, N, L, input.positionCS.xy);
+		float3 sssTint = any(g_Water.sssColor.rgb > 0.001f) ? g_Water.sssColor.rgb : float3(0.05f, 0.65f, 0.55f);
+		float sssStrength = g_Water.waterExtra.z > 0.001f ? g_Water.waterExtra.z : 1.0f;
+		waveSSS = g_Lights[0].colorIntensity.rgb * g_Lights[0].colorIntensity.a * sssTint * (forwardScatter * sssTransmittance * sssStrength * shadowFactor);
+	}
+
+	float3 waterSurface = lerp(lerp(waterBodyColor, foamLinear, totalFoam), reflectionColor, fresnel.r) + sunSpecular + waveSSS;
 	float3 foggedWater = applyAtmosphericFog(waterSurface, input.positionWS, g_View.cameraPosition, input.positionCS.xy);
 
 	// Transmitted seabed already contains atmospheric fog from opaque pass; avoid double-fogging

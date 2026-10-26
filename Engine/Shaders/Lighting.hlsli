@@ -89,7 +89,7 @@ float3 sampleDDGI(float3 worldPos, float3 N)
 				}
 
 				// Chebyshev depth visibility test: probe direction towards point
-				uint depthProbesPerRow = 16;
+				uint depthProbesPerRow = 32;
 				uint depthTileX = probeIndex % depthProbesPerRow;
 				uint depthTileY = probeIndex / depthProbesPerRow;
 				float2 octDirUV = octEncode(-dirToProbe);
@@ -254,10 +254,14 @@ float3 evaluateDirectLighting(
 	uint activeLightCount = clusterData.y;
 	uint totalIterations = min(activeLightCount, 64u);
 
+	// Fallback to primary directional sunlight if clustered grid returns zero lights (prevents missing direct light)
+	bool useDirectFallback = (totalIterations == 0 && g_Pass.lightCount > 0 && (int)g_Lights[0].positionType.w == 0);
+	uint loopCount = useDirectFallback ? 1u : totalIterations;
+
 	[loop]
-	for (uint iter = 0; iter < totalIterations; ++iter)
+	for (uint iter = 0; iter < loopCount; ++iter)
 	{
-		uint i = g_ClusterLightIndices[clusterOffset + iter];
+		uint i = useDirectFallback ? 0u : g_ClusterLightIndices[clusterOffset + iter];
 		LightData light = g_Lights[i];
 		int type = (int)light.positionType.w;
 
@@ -294,6 +298,10 @@ float3 evaluateDirectLighting(
 			float distOverRange = dist / max(range, 0.001f);
 			float falloff = saturate(1.0f - distOverRange * distOverRange * distOverRange * distOverRange);
 			attenuation = (falloff * falloff) / (dist * dist + 0.01f);
+			if (light.spotAnglesPad.z > 0.5f)
+			{
+				shadowFactor = evaluatePointShadow(light, worldPos, N, L, screenPos);
+			}
 		}
 		else if (type == 2) // Spot Light (meter-scale attenuation + smoothstep^2 cone)
 		{
@@ -312,6 +320,10 @@ float3 evaluateDirectLighting(
 			float distOverRange = dist / max(range, 0.001f);
 			float falloff = saturate(1.0f - distOverRange * distOverRange * distOverRange * distOverRange);
 			attenuation = spotAttenuation * (falloff * falloff) / (dist * dist + 0.01f);
+			if (light.spotAnglesPad.z > 0.5f)
+			{
+				shadowFactor = evaluateSpotShadow(light, worldPos, N, L, screenPos);
+			}
 		}
 
 		float NdotL_raw = dot(N, L);
@@ -407,14 +419,8 @@ float3 evaluateDirectLighting(
 	float primarySunVis = sampleVolumetricShadow(worldPos + N * 0.15f);
 	float skyShadowOcclusion = lerp(0.35f, 1.0f, primarySunVis);
 
-	// Bent-Normal Diffuse IBL: bias normal towards open courtyard sky in crevices and corners
+	// Surface normal for diffuse sampling; crevice occlusion is handled by diffuseAO and multi-bounce AO
 	float3 bentN = N;
-	if (ao < 0.99f)
-	{
-		float pullWeight = max(N.y, 0.0f) * (1.0f - ao) * 0.35f;
-		bentN = normalize(lerp(N, float3(0.0f, 1.0f, 0.0f), pullWeight));
-	}
-
 	float skyWeight = saturate(bentN.y * 0.5f + 0.5f);
 	float3 skyHemi = lerp(g_Pass.skyGroundColor.rgb, lerp(g_Pass.skyHorizonColor.rgb, g_Pass.skyZenithColor.rgb, saturate(bentN.y)), skyWeight);
 
@@ -441,29 +447,35 @@ float3 evaluateDirectLighting(
 	}
 
 	float3 diffuseIBL = skyDiffuse;
-	if (hasProbe)
-	{
-		float3 probeDiffuseSample = g_TextureIrradianceIBL.SampleLevel(g_SamplerLinearWrap, diffEqUV, 0.0f).rgb;
-		float probeIntensity = max(g_Pass.probeBoxExtents.w, 0.0f);
-		float3 probeDiffuse = probeDiffuseSample * (probeIntensity * 0.20f) * albedo * kD_env * diffuseAO;
-		if (matFlags & DF_MAT_FLAG_CLOTH)
-		{
-			probeDiffuse = probeDiffuseSample * (probeIntensity * 0.20f) * albedo * diffuseAO;
-		}
-		diffuseIBL = lerp(skyDiffuse, probeDiffuse, diffProbeBlend);
-	}
 
 	// Dynamic DDGI Irradiance Probe Volume Integration
+	// Primary source of indoor diffuse indirect illumination and spatial color bounce in AAA pipelines
 	if (g_DDGI.ddgiParams.w > 0.5f)
 	{
 		float3 ddgiIrradiance = sampleDDGI(worldPos, bentN);
 		if (any(ddgiIrradiance > 0.0001f))
 		{
 			float3 ddgiDiffuse = ddgiIrradiance * albedo * kD_env * diffuseAO;
-			// If a high-fidelity baked irradiance probe is active, preserve its authentic occlusion and blend DDGI softly as secondary bounce
-			float ddgiWeight = hasProbe ? saturate(g_DDGI.ddgiParams.x * 0.20f) : saturate(g_DDGI.ddgiParams.x);
-			diffuseIBL = lerp(diffuseIBL, ddgiDiffuse, ddgiWeight);
+			if (matFlags & DF_MAT_FLAG_CLOTH)
+			{
+				ddgiDiffuse = ddgiIrradiance * albedo * diffuseAO;
+			}
+			float ddgiIntensity = max(g_DDGI.ddgiParams.z, 0.0f);
+			// In interiors illuminated by DDGI, attenuate exterior sky ambient baseline and inject raytraced spatial GI
+			diffuseIBL = skyDiffuse * 0.15f + ddgiDiffuse * ddgiIntensity;
 		}
+	}
+	else if (hasProbe)
+	{
+		// Subtle ambient floor fallback when DDGI is disabled (5% scale, prevents flat ambient blowout)
+		float3 probeDiffuseSample = g_TextureIrradianceIBL.SampleLevel(g_SamplerLinearWrap, diffEqUV, 0.0f).rgb;
+		float probeIntensity = max(g_Pass.probeBoxExtents.w, 0.0f);
+		float3 probeDiffuse = probeDiffuseSample * (probeIntensity * 0.05f) * albedo * kD_env * diffuseAO;
+		if (matFlags & DF_MAT_FLAG_CLOTH)
+		{
+			probeDiffuse = probeDiffuseSample * (probeIntensity * 0.05f) * albedo * diffuseAO;
+		}
+		diffuseIBL = lerp(skyDiffuse, probeDiffuse, diffProbeBlend * 0.5f);
 	}
 
 	// 2. Pre-Filtered Specular IBL (Split-Sum with 6-level roughness mip chain)
@@ -493,6 +505,19 @@ float3 evaluateDirectLighting(
 		envRadiance = lerp(envRadiance, localRadiance, specProbeBlend);
 	}
 
+	// Physical rough specular convergence: for rough surfaces (roughness > 0.25), the specular lobe
+	// widens into a broad hemisphere where local irradiance (DDGI) accurately provides localized bounce
+	// rather than a distant reflection probe.
+	if (g_DDGI.ddgiParams.w > 0.5f)
+	{
+		float3 ddgiIrrad = sampleDDGI(worldPos, R_lookup);
+		if (any(ddgiIrrad > 0.0001f))
+		{
+			float roughBlend = smoothstep(0.25f, 0.70f, roughness);
+			envRadiance = lerp(envRadiance, ddgiIrrad * max(g_DDGI.ddgiParams.z, 0.0f), roughBlend);
+		}
+	}
+
 	float2 envBRDF = envBRDFApprox(roughness, NoV);
 	// Frostbite directional specular occlusion (Lagarde & de Rousiers 2014)
 	float specOcclusion = computeSpecularOcclusion(NoV, ao, roughness);
@@ -504,7 +529,9 @@ float3 evaluateDirectLighting(
 	float3 F_ms = F0 * (1.0f / max(Ess, 0.001f) - 1.0f);
 	float grazingFresnel = saturate(50.0f * F0.g) * pow(saturate(1.0f - roughness), 1.5f);
 	float3 singleScatter = F0 * envBRDF.x + grazingFresnel * envBRDF.y;
-	float3 specularIBL = envRadiance * singleScatter * (1.0f + F_ms) * (specOcclusion * horizOcclusion);
+	// Dielectric roughness attenuation: dry stone and matte plaster do not exhibit mirror-like sky reflections
+	float dielectricRoughFade = lerp(pow(saturate(1.0f - roughness), 1.5f), 1.0f, metallic);
+	float3 specularIBL = envRadiance * singleScatter * (1.0f + F_ms) * (specOcclusion * horizOcclusion) * dielectricRoughFade;
 
 	// Screen-Space Reflections (Hi-Z SSR) with Roughness Cutoff & Vignette Confidence
 	if (g_SSR.ssrExtra.x > 0.5f && roughness <= g_SSR.ssrParams.z)

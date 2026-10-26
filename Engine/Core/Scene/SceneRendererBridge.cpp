@@ -4,7 +4,7 @@
 
 namespace Core
 {
-	void ExtractRenderScene(const Scene& scene, Renderer::RenderScene& outRenderScene, float targetAspect)
+	void ExtractRenderScene(const Scene& scene, Renderer::RenderScene& outRenderScene, float targetAspect, float alpha)
 	{
 		outRenderScene.clear();
 
@@ -20,8 +20,18 @@ namespace Core
 
 			if (cam.isPrimary || !cameraFound)
 			{
-				outRenderScene.camera.position = Math::getTranslation(worldTransform.worldMatrix);
-				outRenderScene.camera.forward = Math::getForward(worldTransform.worldMatrix);
+				Matrix camWorld = worldTransform.worldMatrix;
+				if (alpha < 0.999f)
+				{
+					if (const auto* tc = registry.try_get<TransformComponent>(entity))
+					{
+						Vector3 p = Vector3::Lerp(tc->prevPosition, tc->position, alpha);
+						Quaternion q = Quaternion::Slerp(tc->prevRotation, tc->rotation, alpha);
+						camWorld = Math::createTransformTRS(p, q, tc->scale);
+					}
+				}
+				outRenderScene.camera.position = Math::getTranslation(camWorld);
+				outRenderScene.camera.forward = Math::getForward(camWorld);
 				outRenderScene.camera.nearZ = cam.nearZ;
 				outRenderScene.camera.farZ = cam.farZ;
 				outRenderScene.camera.fov = Math::toRadians(cam.fov);
@@ -29,7 +39,7 @@ namespace Core
 				outRenderScene.camera.isOrthographic = cam.isOrthographic;
 
 				// View Matrix is inverse of camera world transform
-				outRenderScene.camera.viewMatrix = Math::affineInverse(worldTransform.worldMatrix);
+				outRenderScene.camera.viewMatrix = Math::affineInverse(camWorld);
 				outRenderScene.camera.projMatrix = cam.getProjection(outRenderScene.camera.aspect);
 				outRenderScene.camera.viewProjMatrix = outRenderScene.camera.viewMatrix * outRenderScene.camera.projMatrix;
 				outRenderScene.camera.invViewMatrix = outRenderScene.camera.viewMatrix.Invert();
@@ -56,8 +66,17 @@ namespace Core
 			const auto& meshComp = meshView.get<MeshRendererComponent>(entity);
 			const auto& worldTransform = meshView.get<WorldTransform>(entity);
 
+			Matrix meshWorld = worldTransform.worldMatrix;
+			if (alpha < 0.999f)
+			{
+				if (const auto* tc = registry.try_get<TransformComponent>(entity))
+				{
+					meshWorld = tc->getInterpolatedMatrix(alpha);
+				}
+			}
+
 			Renderer::RenderMeshInstance meshInst{};
-			meshInst.world = worldTransform.worldMatrix;
+			meshInst.world = meshWorld;
 			meshInst.entityId = static_cast<uint32_t>(entity);
 			meshInst.meshPath = meshComp.meshPath;
 			meshInst.materialPath = meshComp.materialPath;
@@ -156,6 +175,11 @@ namespace Core
 			outRenderScene.environment.autoExposureMinEV = pp.autoExposureMinEV;
 			outRenderScene.environment.autoExposureMaxEV = pp.autoExposureMaxEV;
 			outRenderScene.environment.autoExposureSpeed = pp.autoExposureSpeed;
+			outRenderScene.environment.autoExposureSpeedUp = pp.autoExposureSpeedUp;
+			outRenderScene.environment.autoExposureSpeedDown = pp.autoExposureSpeedDown;
+			outRenderScene.environment.enableMotionBlur = pp.enableMotionBlur;
+			outRenderScene.environment.motionBlurShutterAngle = pp.motionBlurShutterAngle;
+			outRenderScene.environment.motionBlurMaxRadius = pp.motionBlurMaxRadius;
 			outRenderScene.environment.contrast = pp.contrast;
 			outRenderScene.environment.saturation = pp.saturation;
 			outRenderScene.environment.vignetteIntensity = pp.vignetteIntensity;

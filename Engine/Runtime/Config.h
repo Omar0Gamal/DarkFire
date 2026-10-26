@@ -26,6 +26,7 @@ namespace Runtime
 		bool vsync = true;
 		bool fullscreen = false;
 		bool enableImGui = false;
+		bool headless = false;
 
 		Vector3 gravity = Vector3(0.0f, -9.81f, 0.0f);
 		float fixedTimeStep = 1.0f / 60.0f;

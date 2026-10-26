@@ -29,8 +29,10 @@ namespace dfcook
 		ID3DBlob* codeBlob = nullptr;
 		ID3DBlob* errorBlob = nullptr;
 
+		std::wstring wpath = hlslPath.wstring();
+
 		HRESULT hr = D3DCompileFromFile(
-			hlslPath.c_str(),
+			wpath.c_str(),
 			nullptr,
 			D3D_COMPILE_STANDARD_FILE_INCLUDE,
 			entryPoint.c_str(),
@@ -42,7 +44,7 @@ namespace dfcook
 
 		if (FAILED(hr))
 		{
-			std::cerr << "[dfcook] Shader compilation error in " << hlslPath.filename().string() << ":" << std::endl;
+			std::cerr << "[dfcook] Failed compiling " << hlslPath.filename().string() << " (" << profile << "):" << std::endl;
 			if (errorBlob)
 			{
 				std::cerr << static_cast<const char*>(errorBlob->GetBufferPointer()) << std::endl;
@@ -71,7 +73,7 @@ namespace dfcook
 		return true;
 	}
 
-	bool CookShaders(const std::filesystem::path& shadersInDir, const std::filesystem::path& shadersOutDir)
+	bool CookShaders(const std::filesystem::path& shadersInDir, const std::filesystem::path& shadersOutDir, CookCache* cache)
 	{
 		std::cout << "[dfcook] Precompiling shaders from: " << shadersInDir.string() << std::endl;
 
@@ -118,10 +120,21 @@ namespace dfcook
 				continue; // Skip helper hlsl files
 			}
 
+			std::string vkey = "/Shaders/" + stem + ".cso";
 			std::filesystem::path outCso = shadersOutDir / (stem + ".cso");
+
+			if (cache && std::filesystem::exists(outCso) && cache->isUpToDate(entry.path(), vkey))
+			{
+				continue; // Up to date in cache
+			}
+
 			if (!CompileShader(entry.path(), "main", profile, outCso))
 			{
 				allSucceeded = false;
+			}
+			else if (cache)
+			{
+				cache->update(entry.path(), vkey);
 			}
 		}
 

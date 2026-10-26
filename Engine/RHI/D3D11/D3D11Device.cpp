@@ -385,8 +385,20 @@ namespace Core::RHI
 				m_device->CreateShaderResourceView(texture3D.Get(), &srvDesc, srv.GetAddressOf());
 			}
 
+			ComPtr<ID3D11UnorderedAccessView> uav;
+			if (hasFlag(desc.bindFlags, BufferBindFlags::UnorderedAccess))
+			{
+				D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc{};
+				uavDesc.Format = ToDXGIFormat(desc.format);
+				uavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE3D;
+				uavDesc.Texture3D.MipSlice = 0;
+				uavDesc.Texture3D.FirstWSlice = 0;
+				uavDesc.Texture3D.WSize = desc.depth;
+				m_device->CreateUnorderedAccessView(texture3D.Get(), &uavDesc, uav.GetAddressOf());
+			}
+
 			return Result<std::shared_ptr<IGpuTexture>, std::string>::ok(
-				std::make_shared<D3D11Texture>(desc, texture3D, srv, nullptr, nullptr)
+				std::make_shared<D3D11Texture>(desc, texture3D, srv, nullptr, nullptr, uav)
 			);
 		}
 
@@ -742,16 +754,29 @@ namespace Core::RHI
 		desc.Scaling = DXGI_SCALING_STRETCH;
 		desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 		desc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
-		desc.Flags = allowTearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
+		desc.Flags = (allowTearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0) | DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
 
 		ComPtr<IDXGISwapChain1> swapChain1;
-		const HRESULT hr = m_dxgiFactory->CreateSwapChainForHwnd(
+		HRESULT hr = m_dxgiFactory->CreateSwapChainForHwnd(
 			m_device.Get(),
 			hwnd,
 			&desc,
 			nullptr,
 			nullptr,
 			swapChain1.GetAddressOf());
+
+		if (FAILED(hr))
+		{
+			// Fallback without waitable object flag if unsupported
+			desc.Flags = allowTearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
+			hr = m_dxgiFactory->CreateSwapChainForHwnd(
+				m_device.Get(),
+				hwnd,
+				&desc,
+				nullptr,
+				nullptr,
+				swapChain1.GetAddressOf());
+		}
 
 		if (FAILED(hr))
 		{
@@ -776,9 +801,17 @@ namespace Core::RHI
 		tDesc.format = PixelFormat::R8G8B8A8_UNORM;
 		tDesc.bindFlags = BufferBindFlags::RenderTarget | BufferBindFlags::ShaderResource;
 
+		HANDLE waitableObject = nullptr;
+		ComPtr<IDXGISwapChain2> swapChain2;
+		if (SUCCEEDED(swapChain1.As(&swapChain2)))
+		{
+			swapChain2->SetMaximumFrameLatency(1);
+			waitableObject = swapChain2->GetFrameLatencyWaitableObject();
+		}
+
 		auto backBuffer = std::make_shared<D3D11Texture>(tDesc, backBufferTex, nullptr, rtv, nullptr);
 		return Result<std::unique_ptr<ISwapChain>, std::string>::ok(
-			std::make_unique<D3D11SwapChain>(swapChain1, backBuffer, hwnd, allowTearing != FALSE));
+			std::make_unique<D3D11SwapChain>(swapChain1, backBuffer, hwnd, allowTearing != FALSE, waitableObject));
 	}
 
 	GpuMemoryStats D3D11RHIDevice::queryMemoryStats() const

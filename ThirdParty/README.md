@@ -16,3 +16,6 @@ Licenses are preserved in `Docs/Licenses/`.
 | **cgltf** | `v1.14` | Git Submodule | MIT | Header-only (`CGLTF_IMPLEMENTATION`) |
 | **tinyobjloader** | `v2.0.0-rc.10` | Vendored | MIT | Header-only (`TINYOBJLOADER_IMPLEMENTATION`) |
 | **backward-cpp** | `v1.6` | Vendored | MIT | Header-only stack trace utility |
+| **miniaudio** | `0.11.21` | Vendored | MIT / Public Domain | Single-file audio playback & spatialization |
+| **ufbx** | `v0.14.3` | Vendored | MIT / Unlicense | Single-file fast FBX asset importer |
+| **Premake5** | `5.0.0` | Vendored Tool | BSD-3-Clause | `ThirdParty/Premake/Windows/premake5.exe` |

@@ -79,6 +79,7 @@ int main(int argc, char** argv)
 		int overrideDebugView = -1;
 
 		int maxFrames = -1;
+		bool isServerMode = false;
 
 		for (int i = 1; i < argc; ++i)
 		{
@@ -102,6 +103,10 @@ int main(int argc, char** argv)
 			else if (arg == "--debug-view" && i + 1 < argc)
 			{
 				overrideDebugView = std::stoi(argv[++i]);
+			}
+			else if (arg == "--server" || arg == "--headless")
+			{
+				isServerMode = true;
 			}
 		}
 
@@ -225,6 +230,12 @@ int main(int argc, char** argv)
 		{
 			ctx.log.error("Player", "No project file or pak configuration found.");
 			return 1;
+		}
+
+		if (isServerMode)
+		{
+			config.headless = true;
+			ctx.log.info("Player", "Running in Headless Dedicated Server mode (0 GPU allocations, <50 MB RAM)...");
 		}
 
 		// Fallback unpacked VFS mounts

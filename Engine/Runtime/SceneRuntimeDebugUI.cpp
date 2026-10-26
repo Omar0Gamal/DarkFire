@@ -107,355 +107,351 @@ namespace Runtime
 				ImGui::SetNextWindowSize(ImVec2(410.0f, 0.0f), ImGuiCond_FirstUseEver);
 				ImGui::SetNextWindowBgAlpha(0.85f);
 
-				if (ImGui::Begin("Graphics & Lighting Effects", &m_showEffectsMenu, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
+				if (ImGui::Begin("Graphics & Lighting Options", &m_showEffectsMenu, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
 				{
 					auto* m_renderer = &Application::Get().getRenderer();
 					ImGui::TextColored(ImVec4(0.35f, 0.85f, 1.0f, 1.0f), "Draw Calls: %u | Batches: %u | Instances: %u",
 						m_renderer->getDrawCallCount(), m_renderer->getBatchCount(), m_renderer->getInstanceCount());
 					ImGui::Separator();
 
-					// Prominent Top Screenshot & Lighting Buttons
-					if (ImGui::Button("Move Camera to Screenshot Pose [R]", ImVec2(195.0f, 28.0f)))
+					if (ImGui::BeginTabBar("GraphicsOptionsTabBar", ImGuiTabBarFlags_None))
 					{
-						auto camView = m_scene->view<Core::CameraComponent, Core::TransformComponent>();
-						for (auto ce : camView)
+						// =========================================================================
+						// TAB 1: Simplified Game Settings (Clean, curated, non-conflicting)
+						// =========================================================================
+						if (ImGui::BeginTabItem("Game Settings"))
 						{
-							auto& cc = camView.get<Core::CameraComponent>(ce);
-							if (cc.isPrimary)
+							ImGui::Spacing();
+							ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "Quality Presets:");
+							if (ImGui::Button("Low", ImVec2(90.0f, 26.0f)))
 							{
-								auto& tc = camView.get<Core::TransformComponent>(ce);
-								tc.position = Core::Vector3(-11.68f, 0.75f, 0.356f);
-								tc.setEulerDegrees(Core::Vector3(-12.55f, 90.0f, 0.0f));
-								cc.fov = 40.0f;
-								break;
-							}
-						}
-					}
-					ImGui::SameLine();
-					if (ImGui::Button("Apply Classic Sponza Settings", ImVec2(195.0f, 28.0f)))
-					{
-						if (pp)
-						{
-							pp->enableShadows = true;
-							pp->enablePCSS = true;
-							pp->enableContactShadows = true;
-							pp->enableSSAO = true;
-							pp->ssaoRadius = 0.55f;
-							pp->ssaoBias = 0.015f;
-							pp->ssaoIntensity = 0.65f;
-							pp->ssaoDirectLightInfluence = 0.25f;
-
-							pp->enableBloom = true;
-							pp->bloomThreshold = 1.1f;
-							pp->bloomIntensity = 0.08f;
-
-							pp->enableTonemapping = true;
-							pp->tonemapper = Core::TonemapperType::ACES;
-							pp->exposure = 1.10f;
-							pp->enableAutoExposure = false;
-							pp->contrast = 1.10f;
-							pp->saturation = 1.15f;
-							pp->colorTemperature = 0.14f;
-							pp->vignetteIntensity = 0.12f;
-
-							pp->enableFXAA = false;
-							pp->enableTAA = true;
-							pp->enableClusteredLighting = true;
-							pp->enableGpuCulling = true;
-							pp->fxaaSubpix = 0.85f;
-							pp->fxaaEdgeThreshold = 0.125f;
-							pp->fxaaEdgeThresholdMin = 0.04f;
-							pp->casSharpening = 0.40f;
-
-							pp->enableBoxProjectedIBL = true;
-							pp->iblBoxExtents = Core::Vector3(14.5f, 7.5f, 6.5f);
-							pp->iblBoxCenter = Core::Vector3(0.0f, 6.5f, -0.35f);
-						}
-						auto probeView = m_scene->view<Core::ReflectionProbeComponent>();
-						for (auto pe : probeView)
-						{
-							auto& pr = probeView.get<Core::ReflectionProbeComponent>(pe);
-							pr.bakedCubemapPath = "Assets/Textures/SponzaAtrium_BakedProbe.dds";
-							pr.boxExtents = Core::Vector3(14.5f, 7.5f, 6.5f);
-							pr.boxProjection = true;
-						}
-						if (env)
-						{
-							env->skyType = Core::SkyType::SkyboxTexture;
-							env->skyboxTexturePath = "Assets/Textures/05-18_Day_D.hdr";
-							env->skyColor = Core::Color(0.24f, 0.44f, 0.78f, 1.0f);
-							env->horizonColor = Core::Color(0.76f, 0.82f, 0.88f, 1.0f);
-							env->groundColor = Core::Color(0.42f, 0.35f, 0.26f, 1.0f);
-							env->ambientColor = Core::Color(0.18f, 0.22f, 0.28f, 1.0f);
-							env->ambientEnergy = 0.20f;
-							env->enableFog = false;
-							env->fogColor = Core::Color(0.78f, 0.82f, 0.86f, 1.0f);
-							env->fogDensity = 0.0015f;
-							env->fogHeightFalloff = 0.05f;
-							env->fogSunScattering = 0.65f;
-						}
-						auto lightView = m_scene->view<Core::LightComponent, Core::TransformComponent>();
-						for (auto le : lightView)
-						{
-							auto& lc = lightView.get<Core::LightComponent>(le);
-							if (lc.type == Core::LightType::Directional)
-							{
-								auto& tc = lightView.get<Core::TransformComponent>(le);
-								tc.position = Core::Vector3(0.0f, 3.0f, 0.0f);
-								tc.setEulerDegrees(Core::Vector3(66.0f, 52.5f, 0.0f));
-								lc.color = Core::Color(1.0f, 0.943137f, 0.90f, 1.0f);
-								lc.intensity = 4.2f;
-								lc.castShadows = true;
-								lc.shadowSoftness = 1.35f;
-								lc.shadowDistance = 60.0f;
-								break;
-							}
-						}
-					}
-
-					ImGui::Separator();
-
-					if (pp)
-					{
-						// Quick Preset Buttons
-						if (ImGui::Button("Enable All Effects", ImVec2(195.0f, 24.0f)))
-						{
-							pp->enableShadows = true;
-							pp->enablePCSS = true;
-							pp->enableContactShadows = true;
-							pp->enableSSAO = true;
-							if (env) env->enableFog = true;
-							pp->enableBloom = true;
-							pp->enableTonemapping = true;
-							pp->enableFXAA = true;
-							pp->enableTAA = true;
-							pp->enableClusteredLighting = true;
-							pp->enableGpuCulling = true;
-							pp->enableBoxProjectedIBL = true;
-							pp->enableAutoExposure = true;
-						}
-						ImGui::SameLine();
-						if (ImGui::Button("Disable All (Clean PBR)", ImVec2(195.0f, 24.0f)))
-						{
-							pp->enableShadows = false;
-							pp->enablePCSS = false;
-							pp->enableContactShadows = false;
-							pp->enableSSAO = false;
-							if (env) env->enableFog = false;
-							pp->enableBloom = false;
-							pp->enableTonemapping = false;
-							pp->enableFXAA = false;
-							pp->enableTAA = false;
-							pp->enableTessellation = false;
-							pp->enableBoxProjectedIBL = false;
-							pp->enableAutoExposure = false;
-						}
-						if (ImGui::Button("Baseline (Shadows + AA)", ImVec2(-1.0f, 26.0f)))
-						{
-							pp->enableShadows = true;
-							pp->enableFXAA = true;
-							pp->enableTonemapping = true;
-							pp->enableSSAO = false;
-							if (env) env->enableFog = false;
-							pp->enableBloom = false;
-							pp->enablePCSS = false;
-							pp->enableContactShadows = false;
-							pp->enableBoxProjectedIBL = false;
-							pp->enableAutoExposure = false;
-						}
-
-						ImGui::Separator();
-						ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "Render Pipeline & Geometry:");
-						int curPipeline = static_cast<int>(pp->renderPipeline);
-						if (ImGui::Combo("Render Pipeline", &curPipeline, "Forward+ (2-MRT Optimized)\0Deferred PBR (G-Buffer)\0\0"))
-						{
-							pp->renderPipeline = static_cast<uint8_t>(curPipeline);
-						}
-						ImGui::Combo("Mesh LOD Mode", &pp->meshLodBias, "Auto (Distance LOD0-LOD2)\0Force LOD0 (Full Detail)\0Force LOD1 (Medium ~50%)\0Force LOD2 (Coarse ~25%)\0\0");
-						ImGui::Checkbox("Hardware Tessellation (HS/DS PN-Triangles)", &pp->enableTessellation);
-						if (pp->enableTessellation)
-						{
-							ImGui::Indent();
-							ImGui::SliderFloat("Tessellation Factor", &pp->tessellationFactor, 1.0f, 12.0f, "%.1f");
-							ImGui::Unindent();
-						}
-
-						ImGui::Separator();
-						ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "Effect Toggles (Click Button or Checkbox):");
-
-						auto drawToggleButton = [](const char* label, bool& state, const char* hotkey) {
-							ImGui::PushID(label);
-							ImVec4 btnCol = state ? ImVec4(0.16f, 0.52f, 0.25f, 1.0f) : ImVec4(0.45f, 0.18f, 0.18f, 1.0f);
-							ImVec4 hoverCol = state ? ImVec4(0.22f, 0.65f, 0.32f, 1.0f) : ImVec4(0.58f, 0.24f, 0.24f, 1.0f);
-							ImGui::PushStyleColor(ImGuiCol_Button, btnCol);
-							ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hoverCol);
-							char btnText[128];
-							std::snprintf(btnText, sizeof(btnText), "%s: %s (%s)", label, state ? "ON" : "OFF", hotkey);
-							if (ImGui::Button(btnText, ImVec2(-1.0f, 24.0f)))
-							{
-								state = !state;
-							}
-							ImGui::PopStyleColor(2);
-							ImGui::PopID();
-						};
-
-						drawToggleButton("Shadows (4-Cascade CSM)", pp->enableShadows, "F3");
-						if (pp->enableShadows)
-						{
-							ImGui::Indent();
-							ImGui::Checkbox("PCSS Contact-Hardening Soft Shadows", &pp->enablePCSS);
-							ImGui::Checkbox("Micro Contact Shadows (Screen-Space)", &pp->enableContactShadows);
-							ImGui::Unindent();
-						}
-						drawToggleButton("SSAO (GTAO Occlusion)", pp->enableSSAO, "F4");
-						drawToggleButton("Bloom (HDR Pyramid)", pp->enableBloom, "F8");
-						drawToggleButton("SSR (Screen-Space Reflections)", pp->enableSSR, "F9");
-						if (pp->enableSSR)
-						{
-							ImGui::Indent();
-							ImGui::SliderFloat("SSR Max Distance", &pp->ssrMaxDistance, 5.0f, 150.0f, "%.1f m");
-							ImGui::SliderFloat("SSR Thickness", &pp->ssrThickness, 0.05f, 2.0f, "%.2f");
-							ImGui::SliderFloat("SSR Roughness Cutoff", &pp->ssrRoughnessCutoff, 0.1f, 1.0f, "%.2f");
-							ImGui::SliderFloat("SSR Intensity", &pp->ssrIntensity, 0.0f, 2.0f, "%.2f");
-							ImGui::Unindent();
-						}
-
-						auto ddgiView = m_scene->view<Core::DDGIProbeVolumeComponent>();
-						auto ddgiIt = ddgiView.begin();
-						if (ddgiIt != ddgiView.end())
-						{
-							auto& ddgi = ddgiView.get<Core::DDGIProbeVolumeComponent>(*ddgiIt);
-							drawToggleButton("DDGI Dynamic Probe Volume", ddgi.enabled, "P / I");
-							if (ddgi.enabled)
-							{
-								ImGui::Indent();
-								ImGui::SliderFloat("DDGI Intensity", &ddgi.intensity, 0.0f, 3.0f, "%.2f");
-								ImGui::SliderFloat("DDGI Normal Bias", &ddgi.normalBias, 0.01f, 0.5f, "%.2f");
-								ImGui::Unindent();
-							}
-						}
-
-						if (env)
-						{
-							drawToggleButton("Atmospheric Fog", env->enableFog, "Fog");
-							int skyMode = (env->skyType == Core::SkyType::SkyboxTexture) ? 1 : 0;
-							if (ImGui::Combo("Sky Mode", &skyMode, "Procedural Physical Sky\0HDRI Skybox (05-18_Day_D.hdr)\0\0"))
-							{
-								if (skyMode == 1)
+								if (pp)
 								{
-									env->skyType = Core::SkyType::SkyboxTexture;
-									env->skyboxTexturePath = "Assets/Textures/05-18_Day_D.hdr";
+									pp->enableShadows = true;
+									pp->enablePCSS = false;
+									pp->enableContactShadows = false;
+									pp->enableSSAO = false;
+									pp->enableSSR = false;
+									pp->enableBloom = false;
+									pp->enableMotionBlur = false;
+									pp->enableFXAA = true;
+									pp->enableTAA = false;
+									pp->enableTessellation = false;
 								}
-								else
-								{
-									env->skyType = Core::SkyType::ProceduralGradient;
-								}
+								if (env) env->enableFog = false;
+								auto ddgiView = m_scene->view<Core::DDGIProbeVolumeComponent>();
+								for (auto de : ddgiView) ddgiView.get<Core::DDGIProbeVolumeComponent>(de).enabled = false;
 							}
-						}
-						ImGui::Checkbox("Box-Projected Reflection Probe (Indoor Parallax IBL)", &pp->enableBoxProjectedIBL);
-						if (pp->enableBoxProjectedIBL)
-						{
-							ImGui::Indent();
-							ImGui::DragFloat3("Probe Box Extents", &pp->iblBoxExtents.x, 0.5f, 1.0f, 200.0f);
-							ImGui::DragFloat3("Probe Center", &pp->iblBoxCenter.x, 0.25f, -100.0f, 100.0f);
-
-							auto probeView = m_scene->view<Core::ReflectionProbeComponent>();
-							for (auto pe : probeView)
+							ImGui::SameLine();
+							if (ImGui::Button("Medium", ImVec2(90.0f, 26.0f)))
 							{
-								auto& pr = probeView.get<Core::ReflectionProbeComponent>(pe);
-								ImGui::SliderFloat("Probe Intensity", &pr.intensity, 0.0f, 5.0f, "%.2f");
-								bool hasBaked = !pr.bakedCubemapPath.empty();
-								if (hasBaked)
+								if (pp)
 								{
-									ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.5f, 1.0f), "Baked Probe: %s", pr.bakedCubemapPath.c_str());
-									if (ImGui::Button("Switch to Procedural Sky IBL", ImVec2(-1.0f, 22.0f)))
+									pp->enableShadows = true;
+									pp->enablePCSS = false;
+									pp->enableContactShadows = false;
+									pp->enableSSAO = true;
+									pp->ssaoIntensity = 0.5f;
+									pp->enableSSR = false;
+									pp->enableBloom = true;
+									pp->enableMotionBlur = true;
+									pp->enableFXAA = false;
+									pp->enableTAA = true;
+									pp->enableTessellation = false;
+								}
+								if (env) env->enableFog = false;
+								auto ddgiView = m_scene->view<Core::DDGIProbeVolumeComponent>();
+								for (auto de : ddgiView) ddgiView.get<Core::DDGIProbeVolumeComponent>(de).enabled = false;
+							}
+							ImGui::SameLine();
+							if (ImGui::Button("High", ImVec2(90.0f, 26.0f)))
+							{
+								if (pp)
+								{
+									pp->enableShadows = true;
+									pp->enablePCSS = true;
+									pp->enableContactShadows = false;
+									pp->enableSSAO = true;
+									pp->ssaoIntensity = 0.65f;
+									pp->enableSSR = true;
+									pp->enableBloom = true;
+									pp->enableMotionBlur = true;
+									pp->enableFXAA = false;
+									pp->enableTAA = true;
+									pp->enableTessellation = false;
+								}
+								if (env) { env->enableFog = true; env->fogDensity = 0.0015f; }
+								auto ddgiView = m_scene->view<Core::DDGIProbeVolumeComponent>();
+								for (auto de : ddgiView) { auto& d = ddgiView.get<Core::DDGIProbeVolumeComponent>(de); d.enabled = true; d.intensity = 1.0f; }
+							}
+							ImGui::SameLine();
+							if (ImGui::Button("Ultra", ImVec2(90.0f, 26.0f)))
+							{
+								if (pp)
+								{
+									pp->enableShadows = true;
+									pp->enablePCSS = true;
+									pp->enableContactShadows = true;
+									pp->enableSSAO = true;
+									pp->ssaoIntensity = 0.85f;
+									pp->enableSSR = true;
+									pp->enableBloom = true;
+									pp->enableMotionBlur = true;
+									pp->enableFXAA = false;
+									pp->enableTAA = true;
+									pp->enableTessellation = false;
+								}
+								if (env) { env->enableFog = true; env->fogDensity = 0.0020f; }
+								auto ddgiView = m_scene->view<Core::DDGIProbeVolumeComponent>();
+								for (auto de : ddgiView) { auto& d = ddgiView.get<Core::DDGIProbeVolumeComponent>(de); d.enabled = true; d.intensity = 1.25f; }
+							}
+
+							ImGui::Separator();
+							if (pp)
+							{
+								ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "Display & Pipeline:");
+								int curPipeline = static_cast<int>(pp->renderPipeline);
+								if (ImGui::Combo("Render Pipeline", &curPipeline, "Forward+ (High Framerate)\0Deferred PBR (G-Buffer Fidelity)\0\0"))
+								{
+									pp->renderPipeline = static_cast<uint8_t>(curPipeline);
+								}
+								bool vsync = Application::Get().isVSync();
+								if (ImGui::Checkbox("VSync (Vertical Sync)", &vsync))
+								{
+									Application::Get().setVSync(vsync);
+								}
+
+								ImGui::Separator();
+								ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "Anti-Aliasing:");
+								const char* aaModes[] = { "Disabled", "FXAA (Fast)", "TAA (Filmic Temporal)" };
+								int curAA = pp->enableTAA ? 2 : (pp->enableFXAA ? 1 : 0);
+								if (ImGui::Combo("Anti-Aliasing Mode", &curAA, aaModes, 3))
+								{
+									pp->enableFXAA = (curAA == 1);
+									pp->enableTAA = (curAA == 2);
+								}
+								if (pp->enableTAA || pp->enableFXAA)
+								{
+									ImGui::SliderFloat("Texture Sharpness (CAS)", &pp->casSharpening, 0.0f, 1.0f, "%.2f");
+								}
+
+								ImGui::Separator();
+								ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "Lighting & Visuals:");
+								const char* shadowModes[] = { "Disabled", "Standard (4-CSM)", "PCSS Soft Shadows", "Ultra (PCSS + Contact)" };
+								int curShadow = !pp->enableShadows ? 0 : (pp->enableContactShadows ? 3 : (pp->enablePCSS ? 2 : 1));
+								if (ImGui::Combo("Shadow Quality", &curShadow, shadowModes, 4))
+								{
+									pp->enableShadows = (curShadow > 0);
+									pp->enablePCSS = (curShadow >= 2);
+									pp->enableContactShadows = (curShadow == 3);
+								}
+
+								ImGui::Checkbox("Ambient Occlusion (SSAO)", &pp->enableSSAO);
+								ImGui::Checkbox("Screen-Space Reflections (SSR)", &pp->enableSSR);
+
+								auto probeView = m_scene->view<Core::ReflectionProbeComponent>();
+								for (auto pe : probeView)
+								{
+									auto& pr = probeView.get<Core::ReflectionProbeComponent>(pe);
+									bool hasProbe = !pr.bakedCubemapPath.empty();
+									if (ImGui::Checkbox("Baked Reflection Probe [B]", &hasProbe))
 									{
-										pr.bakedCubemapPath = "";
+										pr.bakedCubemapPath = hasProbe ? "Assets/Textures/SponzaAtrium_BakedProbe.dds" : "";
+										pr.boxProjection = hasProbe;
+									}
+									if (hasProbe)
+									{
+										ImGui::Indent();
+										ImGui::SliderFloat("Probe Specular Intensity", &pr.intensity, 0.0f, 2.0f, "%.2f");
+										ImGui::Unindent();
 									}
 								}
-								else
+
+								auto ddgiView = m_scene->view<Core::DDGIProbeVolumeComponent>();
+								for (auto de : ddgiView)
 								{
-									ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Mode: Procedural Gradient Sky IBL");
-									if (ImGui::Button("Load Baked Probe (SponzaAtrium_BakedProbe.dds) [B]", ImVec2(-1.0f, 22.0f)))
+									auto& ddgi = ddgiView.get<Core::DDGIProbeVolumeComponent>(de);
+									ImGui::Checkbox("Dynamic Global Illumination (DDGI)", &ddgi.enabled);
+									if (ddgi.enabled)
 									{
-										pr.bakedCubemapPath = "Assets/Textures/SponzaAtrium_BakedProbe.dds";
+										ImGui::Indent();
+										ImGui::SliderFloat("GI Bounce Intensity", &ddgi.intensity, 0.0f, 3.0f, "%.2f");
+										ImGui::Unindent();
+									}
+								}
+
+								if (env)
+								{
+									ImGui::Checkbox("Volumetric Atmospheric Fog", &env->enableFog);
+									if (env->enableFog)
+									{
+										ImGui::Indent();
+										ImGui::SliderFloat("Fog Density", &env->fogDensity, 0.0f, 0.01f, "%.4f");
+										ImGui::Unindent();
+									}
+								}
+
+								ImGui::Checkbox("Motion Blur", &pp->enableMotionBlur);
+								ImGui::Checkbox("HDR Bloom", &pp->enableBloom);
+
+								ImGui::Separator();
+								ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "Camera Exposure & Tonemapping:");
+								ImGui::Checkbox("Auto-Exposure (Eye Adaptation)", &pp->enableAutoExposure);
+								if (!pp->enableAutoExposure)
+								{
+									ImGui::SliderFloat("Manual Exposure", &pp->exposure, 0.1f, 3.0f, "%.2f");
+								}
+								const char* tonemappers[] = { "ACES Filmic (Vibrant)", "Reinhard", "Linear", "AgX", "Khronos Neutral", "Reinhard-Jodie" };
+								int curTm = static_cast<int>(pp->tonemapper);
+								if (ImGui::Combo("Tonemapper Mode", &curTm, tonemappers, 6))
+								{
+									pp->tonemapper = static_cast<Core::TonemapperType>(curTm);
+								}
+							}
+
+							ImGui::EndTabItem();
+						}
+
+						// =========================================================================
+						// TAB 2: Advanced Developer Tools (Full engine knobs, debug views)
+						// =========================================================================
+						if (ImGui::BeginTabItem("Advanced"))
+						{
+							ImGui::Spacing();
+							if (ImGui::Button("Reset Camera to Screenshot Pose [R]", ImVec2(-1.0f, 26.0f)))
+							{
+								auto camView = m_scene->view<Core::CameraComponent, Core::TransformComponent>();
+								for (auto ce : camView)
+								{
+									auto& cc = camView.get<Core::CameraComponent>(ce);
+									if (cc.isPrimary)
+									{
+										auto& tc = camView.get<Core::TransformComponent>(ce);
+										tc.position = Core::Vector3(-11.68f, 0.75f, 0.356f);
+										tc.setEulerDegrees(Core::Vector3(-12.55f, 90.0f, 0.0f));
+										cc.fov = 40.0f;
+										break;
 									}
 								}
 							}
-							ImGui::Unindent();
-						}
-						drawToggleButton("Tonemapping (HDR -> SDR)", pp->enableTonemapping, "F10");
-						if (pp->enableTonemapping)
-						{
-							ImGui::Indent();
-							ImGui::Checkbox("Auto-Exposure (Eye Adaptation)", &pp->enableAutoExposure);
-							ImGui::SliderFloat("Contrast", &pp->contrast, 0.5f, 1.8f, "%.2f");
-							ImGui::SliderFloat("Saturation", &pp->saturation, 0.0f, 2.0f, "%.2f");
-							ImGui::SliderFloat("Color Temperature", &pp->colorTemperature, -1.0f, 1.0f, "%.2f");
-							ImGui::SliderFloat("Optical Vignette", &pp->vignetteIntensity, 0.0f, 1.0f, "%.2f");
-							ImGui::Unindent();
-						}
-						drawToggleButton("FXAA 3.11 (Anti-Aliasing)", pp->enableFXAA, "F11");
-						ImGui::Indent();
-						ImGui::SliderFloat("CAS Texture Sharpening", &pp->casSharpening, 0.0f, 1.0f, "%.2f");
-						ImGui::Unindent();
 
-						drawToggleButton("TAA (Temporal Anti-Aliasing)", pp->enableTAA, "F12");
-						drawToggleButton("Clustered Light Culling (16x16x24)", pp->enableClusteredLighting, "Auto");
-						drawToggleButton("GPU-Driven Frustum Culling", pp->enableGpuCulling, "Auto");
-
-						ImGui::Separator();
-						ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "Debug Buffer Views [Keys 0 - 7]:");
-						int curDbg = static_cast<int>(pp->debugView);
-						if (curDbg < 0 || curDbg > 7) curDbg = 0;
-						if (ImGui::Combo("Debug View", &curDbg, "Lit (Final)\0SSAO\0Bloom\0Shadow Map\0World Normals\0Albedo\0Metallic / Roughness\0Velocity (Motion Vectors)\0\0"))
-						{
-							pp->debugView = static_cast<uint32_t>(curDbg);
-						}
-
-						static const char* const s_dbgLabels[] = {
-							"0: Lit", "1: SSAO", "2: Bloom", "3: Shadows", "4: Normals",
-							"5: Albedo", "6: Metal/Rough", "7: Velocity"
-						};
-						for (uint32_t i = 0; i < 8; ++i)
-						{
-							if (i % 4 != 0) ImGui::SameLine();
-							bool active = (pp->debugView == i);
-							if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.55f, 0.85f, 1.0f));
-							if (ImGui::Button(s_dbgLabels[i], ImVec2(92.0f, 22.0f)))
+							if (pp)
 							{
-								pp->debugView = i;
-							}
-							if (active) ImGui::PopStyleColor();
-						}
+								ImGui::Separator();
+								ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "Debug Buffer Views [Keys 0 - 7]:");
+								int curDbg = static_cast<int>(pp->debugView);
+								if (curDbg < 0 || curDbg > 7) curDbg = 0;
+								if (ImGui::Combo("Debug Buffer", &curDbg, "Lit (Final)\0SSAO\0Bloom\0Shadow Map\0World Normals\0Albedo\0Metallic / Roughness\0Velocity (Motion Vectors)\0\0"))
+								{
+									pp->debugView = static_cast<uint32_t>(curDbg);
+								}
 
-						ImGui::Separator();
-						if (ImGui::CollapsingHeader("Fine-Tune Effect Parameters"))
-						{
-							const char* tonemappers[] = { "ACES Filmic", "Reinhard", "Linear", "AgX", "Khronos Neutral" };
-							int curTm = static_cast<int>(pp->tonemapper);
-							if (ImGui::Combo("Tonemapper", &curTm, tonemappers, 5))
-							{
-								pp->tonemapper = static_cast<Core::TonemapperType>(curTm);
+								static const char* const s_dbgLabels[] = {
+									"0: Lit", "1: SSAO", "2: Bloom", "3: Shadows", "4: Normals",
+									"5: Albedo", "6: Metal/Rough", "7: Velocity"
+								};
+								for (uint32_t i = 0; i < 8; ++i)
+								{
+									if (i % 4 != 0) ImGui::SameLine();
+									bool active = (pp->debugView == i);
+									if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.55f, 0.85f, 1.0f));
+									if (ImGui::Button(s_dbgLabels[i], ImVec2(92.0f, 22.0f)))
+									{
+										pp->debugView = i;
+									}
+									if (active) ImGui::PopStyleColor();
+								}
+
+								ImGui::Separator();
+								ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "Geometry & Culling:");
+								ImGui::Combo("Mesh LOD Mode", &pp->meshLodBias, "Auto (Distance LOD0-LOD2)\0Force LOD0 (Full Detail)\0Force LOD1 (Medium ~50%)\0Force LOD2 (Coarse ~25%)\0\0");
+								ImGui::Checkbox("Hardware Tessellation (PN-Triangles)", &pp->enableTessellation);
+								if (pp->enableTessellation)
+								{
+									ImGui::Indent();
+									ImGui::SliderFloat("Tessellation Factor", &pp->tessellationFactor, 1.0f, 12.0f, "%.1f");
+									ImGui::Unindent();
+								}
+								ImGui::Checkbox("GPU-Driven Frustum Culling", &pp->enableGpuCulling);
+								ImGui::Checkbox("Clustered Light Culling (16x16x24)", &pp->enableClusteredLighting);
+
+								ImGui::Separator();
+								ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "Directional Sun:");
+								auto lightView = m_scene->view<Core::LightComponent, Core::TransformComponent>();
+								for (auto le : lightView)
+								{
+									auto& lc = lightView.get<Core::LightComponent>(le);
+									if (lc.type == Core::LightType::Directional)
+									{
+										auto& tc = lightView.get<Core::TransformComponent>(le);
+										Core::Vector3 degs = tc.eulerDegrees;
+										bool changed = false;
+										if (ImGui::SliderFloat("Elevation (Pitch)", &degs.x, 5.0f, 89.0f, "%.1f deg")) changed = true;
+										if (ImGui::SliderFloat("Azimuth (Yaw)", &degs.y, 0.0f, 360.0f, "%.1f deg")) changed = true;
+										if (changed) tc.setEulerDegrees(degs);
+										ImGui::SliderFloat("Sun Radiance Intensity", &lc.intensity, 0.0f, 12.0f, "%.2f");
+										break;
+									}
+								}
+
+								ImGui::Separator();
+								ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "SSAO & Micro-Occlusion:");
+								ImGui::SliderFloat("SSAO Radius", &pp->ssaoRadius, 0.1f, 2.0f, "%.2f m");
+								ImGui::SliderFloat("SSAO Bias", &pp->ssaoBias, 0.001f, 0.1f, "%.4f");
+								ImGui::SliderFloat("SSAO Direct Influence", &pp->ssaoDirectLightInfluence, 0.0f, 1.0f, "%.2f");
+
+								ImGui::Separator();
+								ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "Screen-Space Reflections (SSR):");
+								ImGui::SliderFloat("SSR Max Distance", &pp->ssrMaxDistance, 5.0f, 150.0f, "%.1f m");
+								ImGui::SliderFloat("SSR Thickness", &pp->ssrThickness, 0.05f, 2.0f, "%.2f");
+								ImGui::SliderFloat("SSR Roughness Cutoff", &pp->ssrRoughnessCutoff, 0.1f, 1.0f, "%.2f");
+								ImGui::SliderFloat("SSR Intensity", &pp->ssrIntensity, 0.0f, 2.0f, "%.2f");
+
+								ImGui::Separator();
+								ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "DDGI Advanced Parameters:");
+								auto ddgiView = m_scene->view<Core::DDGIProbeVolumeComponent>();
+								for (auto de : ddgiView)
+								{
+									auto& ddgi = ddgiView.get<Core::DDGIProbeVolumeComponent>(de);
+									ImGui::SliderFloat("Normal Bias", &ddgi.normalBias, 0.01f, 0.5f, "%.2f m");
+									ImGui::SliderFloat("Temporal Hysteresis", &ddgi.hysteresis, 0.5f, 0.99f, "%.2f");
+									ImGui::SliderFloat("Energy Preservation", &ddgi.energyPreservation, 0.1f, 1.0f, "%.2f");
+								}
+
+								ImGui::Separator();
+								ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "Motion Blur & Bloom:");
+								ImGui::SliderFloat("Shutter Angle", &pp->motionBlurShutterAngle, 0.0f, 1.0f, "%.2f");
+								ImGui::SliderFloat("Max Blur Radius", &pp->motionBlurMaxRadius, 1.0f, 64.0f, "%.0f px");
+								ImGui::SliderFloat("Bloom Threshold", &pp->bloomThreshold, 0.1f, 4.0f, "%.2f");
+								ImGui::SliderFloat("Bloom Intensity", &pp->bloomIntensity, 0.0f, 0.5f, "%.3f");
+
+								ImGui::Separator();
+								ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "Color Grading:");
+								ImGui::SliderFloat("Contrast", &pp->contrast, 0.5f, 1.8f, "%.2f");
+								ImGui::SliderFloat("Saturation", &pp->saturation, 0.0f, 2.0f, "%.2f");
+								ImGui::SliderFloat("Color Temperature", &pp->colorTemperature, -1.0f, 1.0f, "%.2f");
+								ImGui::SliderFloat("Optical Vignette", &pp->vignetteIntensity, 0.0f, 1.0f, "%.2f");
 							}
-							ImGui::SliderFloat("Exposure", &pp->exposure, 0.1f, 4.0f, "%.2f");
-							ImGui::Checkbox("Auto-Exposure (Eye Adaptation)", &pp->enableAutoExposure);
-							ImGui::SliderFloat("Contrast", &pp->contrast, 0.5f, 1.8f, "%.2f");
-							ImGui::SliderFloat("Saturation", &pp->saturation, 0.0f, 2.0f, "%.2f");
-							ImGui::SliderFloat("Color Temperature", &pp->colorTemperature, -1.0f, 1.0f, "%.2f");
-							ImGui::SliderFloat("Optical Vignette", &pp->vignetteIntensity, 0.0f, 1.0f, "%.2f");
-							ImGui::SliderFloat("SSAO Intensity", &pp->ssaoIntensity, 0.0f, 3.0f, "%.2f");
-							ImGui::SliderFloat("SSAO Radius", &pp->ssaoRadius, 0.1f, 2.0f, "%.2f m");
-							ImGui::SliderFloat("SSAO Direct Influence", &pp->ssaoDirectLightInfluence, 0.0f, 1.0f, "%.2f");
-							ImGui::SliderFloat("Bloom Intensity", &pp->bloomIntensity, 0.0f, 0.5f, "%.3f");
-							ImGui::SliderFloat("Bloom Threshold", &pp->bloomThreshold, 0.1f, 4.0f, "%.2f");
+
 							if (env)
 							{
+								ImGui::Separator();
+								ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "Environment & Atmosphere:");
+								int skyMode = (env->skyType == Core::SkyType::SkyboxTexture) ? 1 : 0;
+								if (ImGui::Combo("Sky Type", &skyMode, "Procedural Physical Sky\0HDRI Skybox (05-18_Day_D.hdr)\0\0"))
+								{
+									env->skyType = (skyMode == 1) ? Core::SkyType::SkyboxTexture : Core::SkyType::ProceduralGradient;
+									if (skyMode == 1) env->skyboxTexturePath = "Assets/Textures/05-18_Day_D.hdr";
+								}
 								ImGui::SliderFloat("Ambient Energy", &env->ambientEnergy, 0.0f, 3.0f, "%.2f");
-								ImGui::SliderFloat("Fog Density", &env->fogDensity, 0.0f, 0.05f, "%.4f");
-								ImGui::SliderFloat("Fog Sun Scatter", &env->fogSunScattering, 0.0f, 1.5f, "%.2f");
+								ImGui::SliderFloat("Fog Sun Scattering", &env->fogSunScattering, 0.0f, 2.0f, "%.2f");
+								ImGui::SliderFloat("Fog Height Falloff", &env->fogHeightFalloff, 0.001f, 0.5f, "%.3f");
 							}
+
+							ImGui::EndTabItem();
 						}
+
+						ImGui::EndTabBar();
 					}
 				}
 				ImGui::End();

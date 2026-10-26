@@ -25,7 +25,7 @@ for /f "tokens=1 delims=." %%a in ("%VS_VERSION%") do (
 )
 
 echo [DarkFire] Regenerating solution using %PREMAKE_ACTION%...
-"%ROOT_DIR%\Vendor\Binaries\Premake\Windows\premake5.exe" --file="%ROOT_DIR%\premake5.lua" %PREMAKE_ACTION%
+"%ROOT_DIR%\ThirdParty\Premake\Windows\premake5.exe" --file="%ROOT_DIR%\premake5.lua" %PREMAKE_ACTION%
 
 popd
 exit /b %ERRORLEVEL%

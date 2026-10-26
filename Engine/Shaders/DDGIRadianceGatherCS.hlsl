@@ -45,19 +45,35 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID, uint3 groupID : SV_Group
 	float3 rayDir = octDecode(octUV);
 
 	// Gather incoming indirect bounced radiance along ray direction (bounced sun + ambient sky)
-	float3 sunDir = -g_Pass.shGridMin.xyz; // primary sun direction
+	float3 sunDir = float3(0.0f, 1.0f, 0.0f);
 	float3 sunColor = float3(1.0f, 0.95f, 0.88f) * 4.2f;
+	if (g_Pass.lightCount > 0 && (int)g_Lights[0].positionType.w == 0)
+	{
+		sunDir = safeNormalize(-g_Lights[0].directionRange.xyz);
+		sunColor = g_Lights[0].colorIntensity.rgb * g_Lights[0].colorIntensity.a;
+	}
 
-	float NdotL = max(dot(rayDir, sunDir), 0.0f);
-	// Authentically scale 1st bounce indirect sunlight (diffuse inter-reflection ~5% of direct flux)
-	float3 bouncedSun = sunColor * NdotL * (INV_PI * 0.05f);
+	// Geometry normal reflecting light along rayDir into probe: N_surf = -rayDir
+	// Surface illuminated by sun faces sun: dot(N_surf, sunDir) > 0 => dot(-rayDir, sunDir) > 0
+	float sunFacing = max(dot(-rayDir, sunDir), 0.0f);
 
-	// Sample ambient sky equirectangular map for subtle ambient fill
+	// Ground/floor upward indirect bounce: downward probe rays (-rayDir.y > 0) receive bounce from sun-lit horizontal surfaces
+	float groundBounce = max(-rayDir.y, 0.0f) * max(sunDir.y, 0.0f);
+
+	// Multi-bounce diffuse ambient fill so shadowed crevices receive gentle warm stone ambient inter-reflection
+	float multiBounce = 0.38f * max(sunDir.y, 0.2f);
+	float directionalBounce = sunFacing * 0.65f + groundBounce * 0.55f;
+	float indirectBounce = saturate(multiBounce + directionalBounce);
+	// Data-driven ground/ambient bounce tint from environment pass settings
+	float3 groundAlbedo = max(g_Pass.skyGroundColor.rgb, float3(0.05f, 0.05f, 0.05f));
+	float3 bouncedSun = sunColor * groundAlbedo * indirectBounce * (INV_PI * 0.5f);
+
+	// Probe ray sky sampling: rays facing upward sample sky radiance smoothly based on elevation
+	float skyVisibility = saturate(rayDir.y);
 	float phi = atan2(rayDir.z, rayDir.x);
 	float theta = acos(clamp(rayDir.y, -1.0f, 1.0f));
 	float2 eqUV = float2(phi * (0.5f * INV_PI) + 0.5f, theta * INV_PI);
-	float3 skyLight = g_TextureSkyEquirect.SampleLevel(g_SamplerLinearWrap, eqUV, 3.0f).rgb * (g_Pass.ambientLightColor.a * 0.15f);
-
+	float3 skyLight = g_TextureSkyEquirect.SampleLevel(g_SamplerLinearWrap, eqUV, 4.0f).rgb * g_Pass.ambientLightColor.a * skyVisibility;
 	float3 gatheredRadiance = (bouncedSun + skyLight) * g_DDGI.ddgiParams.z;
 
 	// Global atlas pixel position

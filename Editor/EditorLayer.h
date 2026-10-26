@@ -13,6 +13,8 @@
 #include "Editor/Panels/ProfilerPanel.h"
 #include "Editor/Panels/ProjectManagerPanel.h"
 #include "Editor/Panels/WorldSettingsPanel.h"
+#include "Editor/Panels/ProjectSettingsPanel.h"
+#include "Editor/Panels/PackagingModal.h"
 #include "Editor/Scripting/ScriptWizardModal.h"
 #include "Editor/Viewport/SceneViewportPanel.h"
 #include "Editor/Viewport/GameViewportPanel.h"
@@ -105,6 +107,8 @@ namespace Editor
 		ProfilerPanel m_profilerPanel;
 		ProjectManagerPanel m_projectManagerPanel;
 		WorldSettingsPanel m_worldSettingsPanel;
+		ProjectSettingsPanel m_projectSettingsPanel;
+		PackagingModal m_packagingModal;
 		ScriptWizardModal m_scriptWizardModal;
 		SceneViewportPanel m_sceneViewportPanel;
 		GameViewportPanel m_gameViewportPanel;

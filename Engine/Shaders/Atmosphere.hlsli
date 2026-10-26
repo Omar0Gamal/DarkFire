@@ -3,7 +3,7 @@
 
 #include "Shadows.hlsli"
 
-// Analytic Integrated Exponential Height Fog with Geometry-Occluded Volumetric Sun In-Scattering
+// Analytic Integrated Exponential Height Fog with 3D Froxel Volumetric Fog Volume
 float3 applyAtmosphericFog(
 	float3 litColor,
 	float3 worldPos,
@@ -19,8 +19,29 @@ float3 applyAtmosphericFog(
 	float dist = length(camToFrag);
 	float3 V = camToFrag / max(dist, 0.0001f);
 
-	// Closed-form line integral of rho(y) = rho0 * exp(-b * y) from camera to surface
-	// Fully supports negative terrain elevation without artificial clamping to y = 0
+	// View-space slice depth reconstruction
+	float4 viewPosH = mul(float4(worldPos, 1.0f), g_View.viewMatrix);
+	float viewDepth = abs(viewPosH.z);
+
+	// 1. Evaluate 3D Froxel Volumetric Fog Volume (Single 3D Trilinear Sample)
+	float nearZ = 0.5f;
+	float farZ = 65.0f;
+	float sliceW = log(max(viewDepth, nearZ) / nearZ) / max(log(farZ / nearZ), 0.0001f);
+	float2 screenUV = screenPos * g_View.invViewportSize;
+
+	if (any(screenUV > 0.0001f) && sliceW >= 0.0f)
+	{
+		float3 froxelUVW = float3(screenUV, saturate(sliceW));
+		float4 froxelSample = g_TextureVolumetricFog.SampleLevel(g_SamplerLinearClamp, froxelUVW, 0);
+		// Note: Unbound or clear texture returns (0, 0, 0, 0). Valid accumulated transmittance is in (0.001, 1.0].
+		if (froxelSample.a > 0.001f && (any(froxelSample.rgb > 0.0001f) || froxelSample.a < 0.999f))
+		{
+			// Pre-integrated volume: RGB = in-scattered radiance, A = accumulated transmittance
+			return litColor * froxelSample.a + froxelSample.rgb;
+		}
+	}
+
+	// 2. Analytic closed-form exponential height fog fallback
 	float b = max(g_Pass.fogParams.x, 0.0001f);
 	float y0 = cameraPos.y;
 	float y1 = worldPos.y;
@@ -40,51 +61,23 @@ float3 applyAtmosphericFog(
 	float transmittance = exp(-opticalDepth);
 	float fogFactor = saturate(1.0f - transmittance);
 
-	// Performance optimization: skip 8-tap shadow raymarch if fog factor is negligible
-	if (fogFactor < 0.0001f)
-	{
-		return litColor;
-	}
-
-	// 8-step temporally stable volumetric sunbeam raymarch along cameraPos -> worldPos
-	float temporalOffset = float(g_Frame.frameIndex & 15u) * 0.0625f;
-	float jitter = (any(screenPos != float2(0.0f, 0.0f)))
-		? frac(InterleavedGradientNoise(screenPos) + temporalOffset)
-		: frac(worldPos.x * 17.3f + worldPos.z * 17.3f);
-
-	float marchDist = min(dist, 65.0f);
-	float stepLength = marchDist / 8.0f;
-	float shadowSum = 0.0f;
-
-	[unroll]
-	for (int s = 0; s < 8; ++s)
-	{
-		float sampleDist = (float(s) + jitter) * stepLength;
-		float3 stepPos = cameraPos + V * sampleDist;
-		shadowSum += sampleVolumetricShadow(stepPos);
-	}
-	float sunRayVisibility = shadowSum * 0.125f;
-
-	float3 fogCol = g_Pass.fogColorDensity.rgb * lerp(0.35f, 1.0f, sunRayVisibility);
+	float3 fogCol = g_Pass.fogColorDensity.rgb;
 	if (g_Pass.lightCount > 0 && (int)g_Lights[0].positionType.w == 0)
 	{
 		float3 sunDir = safeNormalize(-g_Lights[0].directionRange.xyz);
 		float cosTheta = dot(V, sunDir);
 		float g = 0.76f;
 		float g2 = g * g;
-		// Henyey-Greenstein phase function (Mie aerosol forward scattering g = 0.76f)
 		float denom = 1.0f + g2 - 2.0f * g * cosTheta;
 		float hgPhase = (1.0f / (4.0f * PI)) * ((1.0f - g2) / max(denom * sqrt(max(denom, 0.0001f)), 0.0001f));
 
-		// Soft-compressed phase peak: smooth asymptotic roll-off eliminates 29-degree flat plateau
 		float rawPeak = 4.0f * PI * hgPhase;
 		float softPeak = rawPeak / (1.0f + rawPeak / 3.5f);
 
-		// Directional sun in-scattering scaled in physical sync with light 0 intensity
 		float sunIntensity = max(g_Lights[0].colorIntensity.a, 0.0f);
 		float3 sunInscatter = g_Lights[0].colorIntensity.rgb * sunIntensity * softPeak * g_Pass.fogParams.y;
 		float twilightFade = smoothstep(-0.02f, 0.08f, sunDir.y);
-		fogCol += sunInscatter * twilightFade * sunRayVisibility;
+		fogCol += sunInscatter * twilightFade;
 	}
 
 	return lerp(litColor, fogCol, fogFactor);

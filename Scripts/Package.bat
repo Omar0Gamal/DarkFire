@@ -129,12 +129,8 @@ if exist "%ROOT_DIR%\Docs\Licenses" (
     echo [DarkFire] Packaged Third-Party Licenses.
 )
 
-:: 8. Create version.txt
-if exist "%ROOT_DIR%\version.txt" (
-    copy /Y "%ROOT_DIR%\version.txt" "%PACKAGE_DIR%\version.txt" >nul
-) else (
-    echo 2.0.0-phase6 > "%PACKAGE_DIR%\version.txt"
-)
+:: 8. Create version stamp
+echo 2.0.0 > "%PACKAGE_DIR%\version.txt"
 
 :: Ensure no d3dcompiler_47.dll or PDB files are in distribution
 if exist "%PACKAGE_DIR%\d3dcompiler_47.dll" del "%PACKAGE_DIR%\d3dcompiler_47.dll"

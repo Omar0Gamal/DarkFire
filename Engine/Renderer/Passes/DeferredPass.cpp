@@ -371,9 +371,11 @@ namespace Core::Renderer
 
 		if (m_cbShadow) m_context->setConstantBufferPS(DF_SLOT_CB_SHADOW, m_cbShadow);
 
+		if (m_volumetricFogIntegrated) m_context->setShaderResourcePS(DF_SLOT_TEX_VOLUMETRIC_FOG, m_volumetricFogIntegrated);
 		m_context->draw(3, 0);
 		m_drawCallCount++;
 
+		if (m_volumetricFogIntegrated) m_context->setShaderResourcePS(DF_SLOT_TEX_VOLUMETRIC_FOG, nullptr);
 		m_context->setShaderResourcePS(DF_SLOT_TEX_DEPTH, nullptr);
 		m_context->setShaderResourcePS(DF_SLOT_TEX_ALBEDO_METALLIC, nullptr);
 		m_context->setShaderResourcePS(DF_SLOT_TEX_NORMAL_ROUGHNESS, nullptr);

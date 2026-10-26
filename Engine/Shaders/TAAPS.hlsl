@@ -153,8 +153,9 @@ float4 main(PSInput input) : SV_Target0
 	else
 	{
 		// Camera is stationary: if an object has dynamic motion (e.g. physics body), track it
+		// Use a 0.20 pixel deadzone threshold to absorb R16G16_FLOAT quantization noise and prevent micro-jitter
 		float geomSpeed = length(geomVel * g_Resolution.xy);
-		if (geomSpeed > 0.05f)
+		if (geomSpeed > 0.20f)
 		{
 			velocity = geomVel;
 			speed = geomSpeed;
@@ -199,16 +200,17 @@ float4 main(PSInput input) : SV_Target0
 	float3 sigma = sqrt(max(float3(0.0f, 0.0f, 0.0f), (m2 / 9.0f) - (mu * mu)));
 
 	// Variance clipping box: relaxed (2.5 * sigma) when stationary to eliminate edge vibration,
-	// and tighter (1.5 * sigma) when moving to eliminate ghost trails
-	float boxSigma = (speed < 0.001f) ? 2.5f : 1.5f;
+	// smoothly transitioning to tighter (1.5 * sigma) in motion to eliminate ghost trails
+	float motionFactor = saturate(speed * 0.5f);
+	float boxSigma = lerp(2.5f, 1.5f, motionFactor);
 	float3 boxMin = max(minColor, mu - boxSigma * sigma);
 	float3 boxMax = min(maxColor, mu + boxSigma * sigma);
 
 	// 4. Sample and Clip Reprojected History
-	// When stationary (speed < 0.001), fetch exact history pixel with g_PointClamp (ZERO bilinear accumulation blur)
+	// When stationary (speed < 0.05), fetch exact history pixel with g_PointClamp (ZERO bilinear accumulation blur)
 	// When in motion, use 5-tap Catmull-Rom bicubic reconstruction to avoid linear softness
 	float3 historyColor;
-	if (speed < 0.001f)
+	if (speed < 0.05f)
 	{
 		historyColor = g_HistoryColor.SampleLevel(g_PointClamp, uv, 0).rgb;
 	}
@@ -222,7 +224,7 @@ float4 main(PSInput input) : SV_Target0
 	float3 clampedHistory = YCoCgToRGB(clampedHistoryYCoCg);
 
 	// 5. Anti-Ghosting Dynamic Blend
-	float baseBlend = offScreen ? 0.0f : ((speed < 0.001f) ? 0.94f : g_JitterAndBlend.z);
+	float baseBlend = offScreen ? 0.0f : lerp(0.94f, g_JitterAndBlend.z, motionFactor);
 
 	float motionRejection = saturate(speed * 0.20f);
 	float blend = lerp(baseBlend, 0.15f, motionRejection);
@@ -234,7 +236,7 @@ float4 main(PSInput input) : SV_Target0
 	float wHistory = 1.0f / (1.0f + lumaHistory);
 	float finalBlend = (blend * wHistory) / max(wCurrent * (1.0f - blend) + blend * wHistory, 1e-4f);
 
-	if (speed < 0.001f)
+	if (speed < 0.05f)
 	{
 		finalBlend = max(finalBlend, 0.93f);
 	}

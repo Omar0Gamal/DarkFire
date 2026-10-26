@@ -32,6 +32,9 @@ namespace Runtime
 		void pushLayer(std::shared_ptr<Layer> layer);
 		void pushOverlay(std::shared_ptr<Layer> overlay);
 
+		Platform::Window* getWindowPtr() noexcept { return m_window.get(); }
+		const Platform::Window* getWindowPtr() const noexcept { return m_window.get(); }
+		bool hasWindow() const noexcept { return m_window != nullptr; }
 		Platform::Window& getWindow() noexcept { return *m_window; }
 		const Platform::Window& getWindow() const noexcept { return *m_window; }
 
@@ -43,6 +46,7 @@ namespace Runtime
 		const ProjectConfig& getConfig() const noexcept { return m_config; }
 		void setVSync(bool vsync) noexcept { m_config.vsync = vsync; }
 		[[nodiscard]] bool isVSync() const noexcept { return m_config.vsync; }
+		float getFrameAlpha() const noexcept { return m_frameAlpha; }
 		LayerStack& getLayerStack() noexcept { return m_layerStack; }
 		const LayerStack& getLayerStack() const noexcept { return m_layerStack; }
 
@@ -57,6 +61,7 @@ namespace Runtime
 
 		ProjectConfig m_config;
 		bool m_running = false;
+		float m_frameAlpha = 1.0f;
 
 		std::unique_ptr<Platform::Window> m_window;
 		std::shared_ptr<Core::RHI::IRHIDevice> m_device;

@@ -124,7 +124,7 @@ namespace Core::Renderer
 
 			float tanHalfFov = std::tan(scene.camera.fov * 0.5f);
 			float aspect = static_cast<float>(m_width) / static_cast<float>(std::max(m_height, 1u));
-			float halfRes = static_cast<float>(kShadowMapResolution) * 0.5f;
+			float cascadeSize = (kShadowMapResolution == 4096) ? 1024.0f : static_cast<float>(kShadowMapResolution) * 0.5f;
 
 			for (int c = 0; c < 4; ++c)
 			{
@@ -163,7 +163,7 @@ namespace Core::Renderer
 				radius = std::ceil(radius * 16.0f) / 16.0f;
 
 				// Texel snapping in light projection space
-				float texelSize = (radius * 2.0f) / halfRes;
+				float texelSize = (radius * 2.0f) / cascadeSize;
 				Math::Matrix lightViewZero = Math::lookAtLH(Math::Vector3(0, 0, 0), lightDir, up);
 				Math::Vector3 centerLS = Math::Vector3::Transform(center, lightViewZero);
 				centerLS.x = std::floor(centerLS.x / texelSize) * texelSize;
@@ -412,12 +412,12 @@ namespace Core::Renderer
 
 		if (isMultiCascade)
 		{
-			float halfRes = static_cast<float>(kShadowMapResolution) * 0.5f;
+			float cascadeSize = (kShadowMapResolution == 4096) ? 1024.0f : static_cast<float>(kShadowMapResolution) * 0.5f;
 			for (uint32_t c = 0; c < 4; ++c)
 			{
-				float vpX = static_cast<float>(c % 2) * halfRes;
-				float vpY = static_cast<float>(c / 2) * halfRes;
-				RHI::Viewport cascadeVp{ vpX, vpY, halfRes, halfRes, 0.0f, 1.0f };
+				float vpX = static_cast<float>(c % 2) * cascadeSize;
+				float vpY = static_cast<float>(c / 2) * cascadeSize;
+				RHI::Viewport cascadeVp{ vpX, vpY, cascadeSize, cascadeSize, 0.0f, 1.0f };
 				m_context->setViewport(cascadeVp);
 
 				CBShadow cbPass = cbShadow;
@@ -434,6 +434,125 @@ namespace Core::Renderer
 			RHI::Viewport shadowVp{ 0.0f, 0.0f, static_cast<float>(kShadowMapResolution), static_cast<float>(kShadowMapResolution), 0.0f, 1.0f };
 			m_context->setViewport(shadowVp);
 			renderShadowCasters(lightViewProj, 0);
+		}
+
+		// Render dynamic Spot & Point lights into Shadow Atlas
+		m_shadowAtlasAllocator.reset();
+		bool lightsUpdated = false;
+		std::array<LightData, 64> lightArray{};
+
+		uint32_t activeLightCount = static_cast<uint32_t>(std::min<size_t>(scene.lights.size(), 64));
+		for (uint32_t i = 0; i < activeLightCount; ++i)
+		{
+			const auto& l = scene.lights[i];
+			LightData ld{};
+			ld.positionType = Math::Vector4(l.position.x, l.position.y, l.position.z, static_cast<float>(l.type));
+			ld.directionRange = Math::Vector4(l.direction.x, l.direction.y, l.direction.z, l.range);
+			ld.colorIntensity = Math::Vector4(l.color.x, l.color.y, l.color.z, l.intensity);
+			ld.spotAnglesPad = Math::Vector4(std::cos(l.innerConeAngle), std::cos(l.outerConeAngle), 0.0f, 0.0f);
+			ld.shadowViewProj = Math::Matrix::Identity;
+			ld.shadowAtlasRect = Math::Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+
+			if (l.castShadows && (&l != shadowLight || !isMultiCascade))
+			{
+				uint32_t outX = 0, outY = 0, outSize = 0;
+				Math::Vector4 outUV{ 0.0f, 0.0f, 0.0f, 0.0f };
+
+				if (l.type == 2) // Spot Light
+				{
+					if (m_shadowAtlasAllocator.allocate(i, 512, outX, outY, outSize, outUV) ||
+					    m_shadowAtlasAllocator.allocate(i, 256, outX, outY, outSize, outUV))
+					{
+						Math::Vector3 lightDir = l.direction;
+						if (lightDir.LengthSquared() < 1e-4f) lightDir = Math::Vector3(0.0f, -1.0f, 0.0f);
+						lightDir.Normalize();
+
+						Math::Vector3 eye = l.position;
+						Math::Vector3 center = l.position + lightDir * (l.range > 0.0f ? l.range : 25.0f);
+						Math::Vector3 up = Math::Vector3(0.0f, 1.0f, 0.0f);
+						if (std::abs(lightDir.Dot(up)) > 0.99f) up = Math::Vector3(0.0f, 0.0f, 1.0f);
+
+						Math::Matrix sView = Math::lookAtLH(eye, center, up);
+						float fov = std::clamp(l.outerConeAngle * 2.0f, 0.1f, 3.1f);
+						Math::Matrix sProj = Math::perspectiveFovLH(fov, 1.0f, 0.1f, l.range > 0.0f ? l.range : 25.0f);
+						Math::Matrix sViewProj = sView * sProj;
+
+						RHI::Viewport spotVp{ static_cast<float>(outX), static_cast<float>(outY), static_cast<float>(outSize), static_cast<float>(outSize), 0.0f, 1.0f };
+						m_context->setViewport(spotVp);
+
+						CBShadow cbSpot = cbShadow;
+						cbSpot.lightViewProj = sViewProj;
+						m_context->updateSubresource(m_cbShadow, &cbSpot, sizeof(cbSpot));
+
+						m_context->setVertexShader(m_vsShadow);
+						if (m_inputLayoutShadow) m_context->setInputLayout(m_inputLayoutShadow);
+						renderShadowCasters(sViewProj, 0);
+
+						ld.spotAnglesPad.z = 1.0f; // has shadow
+						ld.shadowViewProj = sViewProj;
+						ld.shadowAtlasRect = outUV;
+						lightsUpdated = true;
+					}
+				}
+				else if (l.type == 1) // Point Light Dual-Paraboloid
+				{
+					if (m_vsShadowParaboloid &&
+					    (m_shadowAtlasAllocator.allocate(i, 512, outX, outY, outSize, outUV) ||
+					     m_shadowAtlasAllocator.allocate(i, 256, outX, outY, outSize, outUV)))
+					{
+						Math::Vector3 eye = l.position;
+						Math::Vector3 center = eye + Math::Vector3(0.0f, 0.0f, 1.0f);
+						Math::Vector3 up = Math::Vector3(0.0f, 1.0f, 0.0f);
+						Math::Matrix pView = Math::lookAtLH(eye, center, up);
+
+						float pNear = 0.1f;
+						float pFar = l.range > 0.0f ? l.range : 20.0f;
+						float halfSlot = static_cast<float>(outSize) * 0.5f;
+
+						// Render Front Hemisphere (zSign = +1.0)
+						RHI::Viewport frontVp{ static_cast<float>(outX), static_cast<float>(outY), halfSlot, static_cast<float>(outSize), 0.0f, 1.0f };
+						m_context->setViewport(frontVp);
+
+						CBParaboloidShadow cbPara{};
+						cbPara.lightViewMatrix = pView;
+						cbPara.paraboloidParams = Math::Vector4(pNear, pFar, 1.0f, 0.0f);
+						cbPara.atlasViewport = Math::Vector4(0.0f, 0.0f, 1.0f, 1.0f);
+						if (m_cbParaboloidShadow)
+						{
+							m_context->updateSubresource(m_cbParaboloidShadow, &cbPara, sizeof(cbPara));
+							m_context->setConstantBufferVS(0, m_cbParaboloidShadow);
+						}
+
+						m_context->setVertexShader(m_vsShadowParaboloid);
+						if (m_inputLayoutShadowParaboloid) m_context->setInputLayout(m_inputLayoutShadowParaboloid);
+						renderShadowCasters(pView, 0);
+
+						// Render Back Hemisphere (zSign = -1.0)
+						RHI::Viewport backVp{ static_cast<float>(outX) + halfSlot, static_cast<float>(outY), halfSlot, static_cast<float>(outSize), 0.0f, 1.0f };
+						m_context->setViewport(backVp);
+
+						cbPara.paraboloidParams.z = -1.0f;
+						if (m_cbParaboloidShadow)
+						{
+							m_context->updateSubresource(m_cbParaboloidShadow, &cbPara, sizeof(cbPara));
+						}
+						renderShadowCasters(pView, 0);
+
+						ld.spotAnglesPad.z = 1.0f; // has shadow
+						ld.spotAnglesPad.w = 1.0f; // is point paraboloid
+						ld.shadowViewProj = pView;
+						ld.shadowAtlasRect = outUV;
+						lightsUpdated = true;
+					}
+				}
+			}
+
+			lightArray[i] = ld;
+		}
+
+		if (lightsUpdated && m_bufLights)
+		{
+			m_context->updateSubresource(m_bufLights, lightArray.data(), sizeof(LightData) * 64);
 		}
 
 		m_context->setShaderResourcePS(DF_SLOT_TEX_ALBEDO, nullptr);

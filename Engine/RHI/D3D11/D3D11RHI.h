@@ -240,7 +240,7 @@ namespace Core::RHI
 	class D3D11SwapChain : public ISwapChain
 	{
 	public:
-		D3D11SwapChain(ComPtr<IDXGISwapChain1> swapChain, std::shared_ptr<D3D11Texture> backBuffer, HWND hwnd, bool allowTearing = false);
+		D3D11SwapChain(ComPtr<IDXGISwapChain1> swapChain, std::shared_ptr<D3D11Texture> backBuffer, HWND hwnd, bool allowTearing = false, HANDLE waitableObject = nullptr);
 		~D3D11SwapChain() override;
 
 		void present(bool vsync) override;
@@ -248,11 +248,17 @@ namespace Core::RHI
 		std::shared_ptr<IGpuTexture> getBackBufferTexture() override;
 		void createRenderTarget(uint32_t width, uint32_t height);
 
+		bool setMaximumFrameLatency(uint32_t maxLatency) override;
+		bool waitForNextFrame(uint32_t timeoutMs = 1000) override;
+		bool isWaitable() const noexcept override { return m_waitableObject != nullptr; }
+
 	private:
 		ComPtr<IDXGISwapChain1> m_swapChain;
+		ComPtr<IDXGISwapChain2> m_swapChain2;
 		std::shared_ptr<D3D11Texture> m_backBuffer;
 		HWND m_hwnd = nullptr;
 		bool m_allowTearing = false;
+		HANDLE m_waitableObject = nullptr;
 	};
 
 	class D3D11StateTracker

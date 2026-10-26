@@ -14,14 +14,25 @@ namespace Platform
 #if defined(DF_DEBUG)
 		_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif
+		CreateDirectoryA("Saved", nullptr);
+		CreateDirectoryA("Saved/Crashes", nullptr);
 		SetUnhandledExceptionFilter(ExceptionFilter);
 	}
 
 	LONG WINAPI CrashHandler::ExceptionFilter(EXCEPTION_POINTERS* pExceptionPointers)
 	{
+		CreateDirectoryA("Saved", nullptr);
+		CreateDirectoryA("Saved/Crashes", nullptr);
+
+		SYSTEMTIME st;
+		GetLocalTime(&st);
+		char dumpPath[128];
+		sprintf_s(dumpPath, "Saved/Crashes/Crash_%04d-%02d-%02d_%02d-%02d-%02d.dmp",
+			st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+
 		// 1. Write MiniDump
 		HANDLE hDumpFile = CreateFileA(
-			"DarkFire_Crash.dmp",
+			dumpPath,
 			GENERIC_WRITE,
 			0,
 			nullptr,
@@ -50,7 +61,7 @@ namespace Platform
 		}
 
 		// 2. Dump last 100 log lines to crash.log
-		std::ofstream crashLog("crash.log", std::ios::out);
+		std::ofstream crashLog("Saved/Crashes/crash.log", std::ios::out);
 		if (crashLog.is_open())
 		{
 			crashLog << "=== DarkFire Engine Crash Report ===\n";
@@ -90,7 +101,7 @@ namespace Platform
 			crashLog.close();
 		}
 
-		std::cerr << "\n[CRITICAL] DarkFire Engine has crashed! MiniDump saved to DarkFire_Crash.dmp, crash log written to crash.log.\n";
+		std::cerr << "\n[CRITICAL] DarkFire Engine has crashed! MiniDump saved to " << dumpPath << ", crash log written to Saved/Crashes/crash.log.\n";
 
 		return EXCEPTION_CONTINUE_SEARCH;
 	}

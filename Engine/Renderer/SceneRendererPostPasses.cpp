@@ -506,4 +506,138 @@ namespace Core::Renderer
 			}
 		}
 	}
+
+	void SceneRenderer::passMotionBlur(const RenderScene& scene, const RenderView& view)
+	{
+		if (!scene.environment.enableMotionBlur || !m_motionBlurTexture || !m_tileMaxTexture || !m_neighborMaxTexture || !m_velocityTexture || !m_hdrTexture || !m_psMotionBlur)
+		{
+			return;
+		}
+
+		uint32_t tileW = m_tileMaxTexture->getDesc().width;
+		uint32_t tileH = m_tileMaxTexture->getDesc().height;
+
+		// 1. TileMax reduction pass (20x20 thread group)
+		struct { uint32_t screenW, screenH, tileW, tileH; } cbTile{ m_width, m_height, tileW, tileH };
+		m_csTileMax.setConstants(*m_context, cbTile);
+		m_csTileMax.setInput(*m_context, 0, m_velocityTexture);
+		m_csTileMax.setOutput(*m_context, 0, m_tileMaxTexture);
+		m_csTileMax.dispatchGroups(*m_context, tileW, tileH, 1);
+
+		m_csTileMax.setOutput(*m_context, 0, nullptr);
+		m_csTileMax.setInput(*m_context, 0, nullptr);
+
+		// 2. NeighborMax 3x3 filter pass (8x8 thread group)
+		struct { uint32_t tileCountX, tileCountY, pad0, pad1; } cbNeighbor{ tileW, tileH, 0, 0 };
+		m_csNeighborMax.setConstants(*m_context, cbNeighbor);
+		m_csNeighborMax.setInput(*m_context, 0, m_tileMaxTexture);
+		m_csNeighborMax.setOutput(*m_context, 0, m_neighborMaxTexture);
+		m_csNeighborMax.dispatchThreads(*m_context, tileW, tileH, 1, 8, 8, 1);
+
+		m_csNeighborMax.setOutput(*m_context, 0, nullptr);
+		m_csNeighborMax.setInput(*m_context, 0, nullptr);
+
+		// 3. Motion blur reconstruction pixel shader pass
+		m_context->setRenderTargets({ m_motionBlurTexture }, nullptr);
+
+		RHI::Viewport vp{ 0.0f, 0.0f, static_cast<float>(m_width), static_cast<float>(m_height), 0.0f, 1.0f };
+		m_context->setViewport(vp);
+
+		m_context->setPrimitiveTopology(RHI::PrimitiveTopology::TriangleList);
+		m_context->setInputLayout(nullptr);
+		m_context->setVertexShader(m_vsFullscreen);
+		m_context->setPixelShader(m_psMotionBlur);
+		if (m_rsSolid) m_context->setRasterizerState(m_rsSolid);
+		m_context->setDepthStencilState(nullptr, 0);
+		m_context->setBlendState(nullptr);
+
+		m_context->setShaderResourcePS(DF_SLOT_TEX_ALBEDO, m_hdrTexture);
+		m_context->setShaderResourcePS(DF_SLOT_TEX_DEPTH, m_depthTexture);
+		m_context->setShaderResourcePS(DF_SLOT_TEX_VELOCITY, m_velocityTexture);
+		m_context->setShaderResourcePS(DF_SLOT_TEX_NEIGHBOR_MAX, m_neighborMaxTexture);
+
+		if (m_samplerLinearClamp) m_context->setSamplerPS(DF_SLOT_SMP_LINEAR_CLAMP, m_samplerLinearClamp);
+		if (m_samplerPointClamp) m_context->setSamplerPS(DF_SLOT_SMP_POINT_CLAMP, m_samplerPointClamp);
+
+		CBMotionBlur cbMB{};
+		cbMB.screenResolution = Math::Vector4(static_cast<float>(m_width), static_cast<float>(m_height), 1.0f / m_width, 1.0f / m_height);
+		cbMB.motionBlurParams = Math::Vector4(
+			scene.environment.motionBlurShutterAngle > 0.001f ? scene.environment.motionBlurShutterAngle : 0.5f,
+			scene.environment.motionBlurMaxRadius > 1.0f ? scene.environment.motionBlurMaxRadius : 32.0f,
+			0.0f,
+			1.0f
+		);
+
+		if (m_cbMotionBlur)
+		{
+			m_context->updateSubresource(m_cbMotionBlur, &cbMB, sizeof(cbMB));
+			m_context->setConstantBufferPS(DF_SLOT_CB_MOTION_BLUR, m_cbMotionBlur);
+		}
+
+		m_context->draw(3, 0);
+		m_drawCallCount++;
+
+		m_context->setShaderResourcePS(DF_SLOT_TEX_ALBEDO, nullptr);
+		m_context->setShaderResourcePS(DF_SLOT_TEX_DEPTH, nullptr);
+		m_context->setShaderResourcePS(DF_SLOT_TEX_VELOCITY, nullptr);
+		m_context->setShaderResourcePS(DF_SLOT_TEX_NEIGHBOR_MAX, nullptr);
+		m_context->setRenderTargets({}, nullptr);
+
+		auto* nativeCtx = static_cast<ID3D11DeviceContext*>(m_device.getNativeContext());
+		if (nativeCtx != nullptr && m_motionBlurTexture != nullptr && m_hdrTexture != nullptr)
+		{
+			auto* srcRes = static_cast<ID3D11Resource*>(m_motionBlurTexture->getNativeHandle());
+			auto* dstRes = static_cast<ID3D11Resource*>(m_hdrTexture->getNativeHandle());
+			if (srcRes != nullptr && dstRes != nullptr)
+			{
+				nativeCtx->CopyResource(dstRes, srcRes);
+			}
+		}
+	}
+
+	void SceneRenderer::passAutoExposure(const RenderScene& scene, const RenderView& view)
+	{
+		if (!scene.environment.enableAutoExposure || !m_hdrTexture || !m_bufLuminanceHistogram || !m_bufAdaptedLuminance || !m_csLuminanceHistogram.isValid() || !m_csLuminanceAverage.isValid())
+		{
+			return;
+		}
+
+		// 1. Clear 64-bin histogram buffer with zeros
+		uint32_t zeros[64] = { 0 };
+		m_context->updateSubresource(m_bufLuminanceHistogram, zeros, sizeof(zeros));
+
+		// 2. Dispatch LuminanceHistogramCS
+		CBLuminanceHistogram cbHist{};
+		cbHist.dimensions = { m_width, m_height, 0, 0 };
+		float minEV = scene.environment.autoExposureMinEV;
+		float maxEV = scene.environment.autoExposureMaxEV;
+		if (maxEV - minEV < 0.1f) maxEV = minEV + 1.0f;
+		cbHist.evRange = Math::Vector4(minEV, maxEV, 1.0f / (maxEV - minEV), 0.0f);
+
+		m_csLuminanceHistogram.setConstants(*m_context, cbHist);
+		m_csLuminanceHistogram.setInput(*m_context, 0, m_hdrTexture);
+		m_csLuminanceHistogram.setOutputBuffer(*m_context, 0, m_bufLuminanceHistogram);
+		m_csLuminanceHistogram.dispatchThreads(*m_context, m_width, m_height, 1, 16, 16, 1);
+
+		m_csLuminanceHistogram.setOutputBuffer(*m_context, 0, nullptr);
+		m_csLuminanceHistogram.setInput(*m_context, 0, nullptr);
+
+		// 3. Dispatch LuminanceAverageCS
+		CBLuminanceAverage cbAvg{};
+		cbAvg.evRange = Math::Vector4(minEV, maxEV, 0.05f, 20.0f);
+		float dt = 0.01666f;
+		float speedUp = scene.environment.autoExposureSpeedUp > 0.01f ? scene.environment.autoExposureSpeedUp : 3.0f;
+		float speedDown = scene.environment.autoExposureSpeedDown > 0.01f ? scene.environment.autoExposureSpeedDown : 1.0f;
+		float middleGrey = 0.18f;
+		cbAvg.adaptationParams = Math::Vector4(dt, speedUp, speedDown, middleGrey);
+		cbAvg.pixelCount = { m_width * m_height, 0, 0, 0 };
+
+		m_csLuminanceAverage.setConstants(*m_context, cbAvg);
+		m_csLuminanceAverage.setInputBuffer(*m_context, 0, m_bufLuminanceHistogram);
+		m_csLuminanceAverage.setOutputBuffer(*m_context, 0, m_bufAdaptedLuminance);
+		m_csLuminanceAverage.dispatchGroups(*m_context, 1, 1, 1);
+
+		m_csLuminanceAverage.setOutputBuffer(*m_context, 0, nullptr);
+		m_csLuminanceAverage.setInputBuffer(*m_context, 0, nullptr);
+	}
 }

@@ -109,6 +109,8 @@ namespace Editor
 
 		std::filesystem::path projectDir = m_currentProjectPath.empty() ? std::filesystem::current_path() : m_currentProjectPath.parent_path();
 		m_scriptWizardModal.onImGuiRender(projectDir);
+		m_projectSettingsPanel.draw();
+		m_packagingModal.draw();
 	}
 
 	void EditorLayer::drawTopBar()
@@ -194,13 +196,14 @@ namespace Editor
 					{
 						buildAndReloadGameModule();
 					}
-					if (ImGui::MenuItem("Project Settings..."))
+					if (ImGui::MenuItem("Project Settings...")) { m_projectSettingsPanel.open(m_currentProjectPath); }
+					if (false)
 					{
 					}
 					ImGui::Separator();
 					if (ImGui::MenuItem("Export / Package Game..."))
 					{
-						Core::Log::Get().info("Editor", "Opening package export dialog...");
+						m_packagingModal.open(m_currentProjectPath);
 					}
 					ImGui::EndMenu();
 				}
@@ -269,7 +272,34 @@ namespace Editor
 				}
 
 				ImGui::SameLine();
-				if (ImGui::Button("Run Ext", ImVec2(55.0f, 24.0f)))
+				if (m_playSession.hasRunningInstances())
+				{
+					if (ImGui::Button("■ Stop PIE", ImVec2(80.0f, 24.0f)))
+					{
+						m_playSession.stopMultiInstances();
+					}
+				}
+				else if (ImGui::Button("PIE ▾", ImVec2(55.0f, 24.0f)))
+				{
+					ImGui::OpenPopup("##PIEMenuPopup");
+				}
+				if (ImGui::BeginPopup("##PIEMenuPopup"))
+				{
+					if (ImGui::MenuItem("Single Player (Standalone)"))
+					{
+						onPlayStandalone();
+					}
+					if (ImGui::MenuItem("1 Server + 1 Client"))
+					{
+						m_playSession.launchMultiInstance(m_currentProjectPath, PIEMode::ServerAnd1Client);
+					}
+					if (ImGui::MenuItem("1 Server + 2 Clients"))
+					{
+						m_playSession.launchMultiInstance(m_currentProjectPath, PIEMode::ServerAnd2Clients);
+					}
+					ImGui::EndPopup();
+				}
+				if (false)
 				{
 					onPlayStandalone();
 				}

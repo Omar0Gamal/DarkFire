@@ -175,7 +175,10 @@ namespace Core
 			.field("tessellationFactor", &PostProcessingComponent::tessellationFactor, { true, 1.0f, 8.0f })
 			.field("meshLodBias", &PostProcessingComponent::meshLodBias)
 			.field("enableTonemapping", &PostProcessingComponent::enableTonemapping)
-			.enumField("tonemapper", &PostProcessingComponent::tonemapper, { "ACES Filmic", "Reinhard", "Linear", "AgX", "Khronos Neutral" })
+			.enumField("tonemapper", &PostProcessingComponent::tonemapper, { "ACES Filmic", "Reinhard", "Linear", "AgX", "Khronos Neutral", "Reinhard-Jodie" })
+			.field("enableMotionBlur", &PostProcessingComponent::enableMotionBlur)
+			.field("motionBlurShutterAngle", &PostProcessingComponent::motionBlurShutterAngle, { true, 0.0f, 1.0f })
+			.field("motionBlurMaxRadius", &PostProcessingComponent::motionBlurMaxRadius, { true, 1.0f, 100.0f })
 			.field("exposure", &PostProcessingComponent::exposure, { true, 0.01f, 10.0f })
 			.field("gamma", &PostProcessingComponent::gamma, { true, 1.0f, 3.0f })
 			.field("enableAutoExposure", &PostProcessingComponent::enableAutoExposure)
@@ -264,6 +267,8 @@ namespace Core
 			.field("causticsIntensity", &WaterComponent::causticsIntensity, { true, 0.0f, 2.0f })
 			.field("buoyancyDensity", &WaterComponent::buoyancyDensity, { true, 0.1f, 10.0f })
 			.field("fluidDrag", &WaterComponent::fluidDrag, { true, 0.0f, 10.0f })
+			.field("sssIntensity", &WaterComponent::sssIntensity, { true, 0.0f, 5.0f })
+			.field("jacobianThreshold", &WaterComponent::jacobianThreshold, { true, 0.05f, 1.0f })
 			.registerSelf();
 
 		// 18. AudioSourceComponent

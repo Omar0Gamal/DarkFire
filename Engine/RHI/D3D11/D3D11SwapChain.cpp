@@ -4,15 +4,27 @@
 
 namespace Core::RHI
 {
-	D3D11SwapChain::D3D11SwapChain(ComPtr<IDXGISwapChain1> swapChain, std::shared_ptr<D3D11Texture> backBuffer, HWND hwnd, bool allowTearing)
+	D3D11SwapChain::D3D11SwapChain(ComPtr<IDXGISwapChain1> swapChain, std::shared_ptr<D3D11Texture> backBuffer, HWND hwnd, bool allowTearing, HANDLE waitableObject)
 		: m_swapChain(std::move(swapChain))
 		, m_backBuffer(std::move(backBuffer))
 		, m_hwnd(hwnd)
 		, m_allowTearing(allowTearing)
+		, m_waitableObject(waitableObject)
 	{
+		if (m_swapChain)
+		{
+			m_swapChain.As(&m_swapChain2);
+		}
 	}
 
-	D3D11SwapChain::~D3D11SwapChain() = default;
+	D3D11SwapChain::~D3D11SwapChain()
+	{
+		if (m_waitableObject)
+		{
+			CloseHandle(m_waitableObject);
+			m_waitableObject = nullptr;
+		}
+	}
 
 	std::shared_ptr<IGpuTexture> D3D11SwapChain::getBackBufferTexture()
 	{
@@ -80,6 +92,10 @@ namespace Core::RHI
 
 		m_backBuffer.reset();
 		UINT flags = m_allowTearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
+		if (m_waitableObject)
+		{
+			flags |= DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+		}
 		const HRESULT hr = m_swapChain->ResizeBuffers(3, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, flags);
 		if (FAILED(hr))
 		{
@@ -88,5 +104,25 @@ namespace Core::RHI
 		}
 
 		createRenderTarget(width, height);
+	}
+
+	bool D3D11SwapChain::setMaximumFrameLatency(uint32_t maxLatency)
+	{
+		if (m_swapChain2)
+		{
+			HRESULT hr = m_swapChain2->SetMaximumFrameLatency(maxLatency);
+			return SUCCEEDED(hr);
+		}
+		return false;
+	}
+
+	bool D3D11SwapChain::waitForNextFrame(uint32_t timeoutMs)
+	{
+		if (m_waitableObject)
+		{
+			DWORD result = WaitForSingleObjectEx(m_waitableObject, timeoutMs, TRUE);
+			return (result == WAIT_OBJECT_0);
+		}
+		return true;
 	}
 }

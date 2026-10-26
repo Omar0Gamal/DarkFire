@@ -15,12 +15,14 @@ Binaries/
 x64/
 Package/
 Cooked/
+Saved/
 *.cso
 *.asm
 
 # Crash dumps, logs & caches
 *.log
 *.dmp
+prof_out.txt
 Cache/
 .tracy/
 .darkfire/
@@ -30,8 +32,8 @@ Cache/
 !Templates/**/*.ini
 !Editor/Config/**/*.ini
 
-# Whitelist Vendor Binaries
-!Vendor/Binaries/**
+# Whitelist Premake Binary in ThirdParty
+!ThirdParty/Premake/**
 
 # User Projects
 Projects/*

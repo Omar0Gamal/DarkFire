@@ -14,8 +14,18 @@ namespace Core
 namespace Physics
 {
 	using Core::Vector3;
+	using Core::Quaternion;
 
 	struct DF_API RaycastHit
+	{
+		bool hasHit = false;
+		Core::Entity entity{};
+		Vector3 point = Vector3(0.0f, 0.0f, 0.0f);
+		Vector3 normal = Vector3(0.0f, 1.0f, 0.0f);
+		float distance = 0.0f;
+	};
+
+	struct DF_API SweepHit
 	{
 		bool hasHit = false;
 		Core::Entity entity{};
@@ -38,6 +48,27 @@ namespace Physics
 			const Vector3& dir,
 			float maxDist,
 			RaycastHit& outHit,
+			uint16_t layerMask = 0xFFFF
+		) = 0;
+
+		virtual bool sphereCast(
+			Core::Scene& scene,
+			const Vector3& origin,
+			float radius,
+			const Vector3& dir,
+			float maxDist,
+			SweepHit& outHit,
+			uint16_t layerMask = 0xFFFF
+		) = 0;
+
+		virtual bool boxCast(
+			Core::Scene& scene,
+			const Vector3& origin,
+			const Vector3& halfExtents,
+			const Quaternion& orientation,
+			const Vector3& dir,
+			float maxDist,
+			SweepHit& outHit,
 			uint16_t layerMask = 0xFFFF
 		) = 0;
 

@@ -190,9 +190,17 @@ namespace Editor
 			if (ImGui::CollapsingHeader("Tonemapping & Color (SDR)", ImGuiTreeNodeFlags_DefaultOpen))
 			{
 				ImGui::Checkbox("Enable Tonemapping", &pp.enableTonemapping);
-				const char* tonemappers[] = { "ACES Filmic (Unreal / Godot 4)", "Reinhard", "Linear", "AgX", "Khronos Neutral" };
+				const char* tonemappers[] = { "ACES Filmic (Unreal / Godot 4)", "Reinhard", "Linear", "AgX", "Khronos Neutral", "Reinhard-Jodie" };
 				int curTonemap = static_cast<int>(pp.tonemapper);
-				if (ImGui::Combo("Tonemapper", &curTonemap, tonemappers, 5)) pp.tonemapper = static_cast<Core::TonemapperType>(curTonemap);
+				if (ImGui::Combo("Tonemapper", &curTonemap, tonemappers, 6)) pp.tonemapper = static_cast<Core::TonemapperType>(curTonemap);
+				ImGui::Checkbox("Tile-Max Velocity Motion Blur", &pp.enableMotionBlur);
+				if (pp.enableMotionBlur)
+				{
+					ImGui::Indent();
+					ImGui::SliderFloat("Shutter Angle", &pp.motionBlurShutterAngle, 0.0f, 1.0f, "%.2f");
+					ImGui::SliderFloat("Max Blur Radius", &pp.motionBlurMaxRadius, 1.0f, 64.0f, "%.0f px");
+					ImGui::Unindent();
+				}
 				ImGui::SliderFloat("Exposure", &pp.exposure, 0.05f, 5.0f, "%.2f");
 				ImGui::SliderFloat("Gamma", &pp.gamma, 1.0f, 3.0f, "%.2f");
 				ImGui::Checkbox("Auto-Exposure (Eye Adaptation)", &pp.enableAutoExposure);

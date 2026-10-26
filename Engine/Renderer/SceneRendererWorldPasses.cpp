@@ -72,6 +72,12 @@ namespace Core::Renderer
 		auto ssaoTex = (scene.environment.enableSSAO && m_ssaoBlurredTexture) ? m_ssaoBlurredTexture : m_whiteTexture;
 		if (ssaoTex) m_context->setShaderResourcePS(DF_SLOT_TEX_SSAO, ssaoTex);
 		if (m_bufLights) m_context->setShaderResourceBufferPS(DF_SLOT_BUF_LIGHTS, m_bufLights);
+		if (m_bufClusterGrid) m_context->setShaderResourceBufferPS(DF_SLOT_BUF_CLUSTER_GRID, m_bufClusterGrid);
+		if (m_bufClusterLightIndices) m_context->setShaderResourceBufferPS(DF_SLOT_BUF_CLUSTER_INDICES, m_bufClusterLightIndices);
+		if (m_volumetricFogIntegrated) m_context->setShaderResourcePS(DF_SLOT_TEX_VOLUMETRIC_FOG, m_volumetricFogIntegrated);
+		if (m_bufClusterGrid) m_context->setShaderResourceBufferPS(DF_SLOT_BUF_CLUSTER_GRID, m_bufClusterGrid);
+		if (m_bufClusterLightIndices) m_context->setShaderResourceBufferPS(DF_SLOT_BUF_CLUSTER_INDICES, m_bufClusterLightIndices);
+		if (m_volumetricFogIntegrated) m_context->setShaderResourcePS(DF_SLOT_TEX_VOLUMETRIC_FOG, m_volumetricFogIntegrated);
 
 		// Bind Sky / Specular IBL Texture (slot 12)
 		std::shared_ptr<RHI::IGpuTexture> skyTex = scene.environment.skyboxTexture;
@@ -134,6 +140,9 @@ namespace Core::Renderer
 		m_context->setShaderResourcePS(DF_SLOT_TEX_DEPTH, nullptr);
 		m_context->setShaderResourcePS(DF_SLOT_TEX_SKY_EQUIRECT, nullptr);
 		m_context->setShaderResourcePS(DF_SLOT_TEX_BRDF_LUT, nullptr);
+		m_context->setShaderResourcePS(DF_SLOT_TEX_VOLUMETRIC_FOG, nullptr);
+		m_context->setShaderResourceBufferPS(DF_SLOT_BUF_CLUSTER_GRID, nullptr);
+		m_context->setShaderResourceBufferPS(DF_SLOT_BUF_CLUSTER_INDICES, nullptr);
 		m_context->setShaderResourceBufferPS(DF_SLOT_BUF_LIGHTS, nullptr);
 		m_context->setRenderTargets({}, nullptr);
 	}
@@ -306,6 +315,9 @@ namespace Core::Renderer
 		m_context->setShaderResourcePS(DF_SLOT_TEX_DEPTH, nullptr);
 		m_context->setShaderResourcePS(DF_SLOT_TEX_SKY_EQUIRECT, nullptr);
 		m_context->setShaderResourcePS(DF_SLOT_TEX_BRDF_LUT, nullptr);
+		m_context->setShaderResourcePS(DF_SLOT_TEX_VOLUMETRIC_FOG, nullptr);
+		m_context->setShaderResourceBufferPS(DF_SLOT_BUF_CLUSTER_GRID, nullptr);
+		m_context->setShaderResourceBufferPS(DF_SLOT_BUF_CLUSTER_INDICES, nullptr);
 		m_context->setShaderResourceBufferPS(DF_SLOT_BUF_LIGHTS, nullptr);
 		m_context->setRenderTargets({}, nullptr);
 	}
@@ -364,9 +376,14 @@ namespace Core::Renderer
 		if (skyTex) m_context->setShaderResourcePS(DF_SLOT_TEX_SKY_EQUIRECT, skyTex);
 		if (m_brdfLutTexture) m_context->setShaderResourcePS(DF_SLOT_TEX_BRDF_LUT, m_brdfLutTexture);
 		if (m_bufLights) m_context->setShaderResourceBufferPS(DF_SLOT_BUF_LIGHTS, m_bufLights);
+		if (m_bufClusterGrid) m_context->setShaderResourceBufferPS(DF_SLOT_BUF_CLUSTER_GRID, m_bufClusterGrid);
+		if (m_bufClusterLightIndices) m_context->setShaderResourceBufferPS(DF_SLOT_BUF_CLUSTER_INDICES, m_bufClusterLightIndices);
+		if (m_shadowMapTexture) m_context->setShaderResourcePS(DF_SLOT_TEX_SHADOW_MAP, m_shadowMapTexture);
+		if (m_volumetricFogIntegrated) m_context->setShaderResourcePS(DF_SLOT_TEX_VOLUMETRIC_FOG, m_volumetricFogIntegrated);
 
 		if (m_samplerLinearClamp) m_context->setSamplerPS(DF_SLOT_SMP_LINEAR_CLAMP, m_samplerLinearClamp);
 		if (m_samplerPointClamp) m_context->setSamplerPS(DF_SLOT_SMP_POINT_CLAMP, m_samplerPointClamp);
+		if (m_samplerShadow) m_context->setSamplerPS(DF_SLOT_SMP_SHADOW, m_samplerShadow);
 
 		for (const auto& wi : scene.waters)
 		{
@@ -379,7 +396,8 @@ namespace Core::Renderer
 			cb.deepColor = Math::Vector4(wi.component.deepColor.R(), wi.component.deepColor.G(), wi.component.deepColor.B(), wi.component.deepColor.A());
 			cb.foamColor = Math::Vector4(wi.component.foamColor.R(), wi.component.foamColor.G(), wi.component.foamColor.B(), wi.component.foamColor.A());
 			cb.opticalParams = Math::Vector4(wi.component.depthAbsorption, wi.component.foamDepthThreshold, wi.component.refractionStrength, wi.component.causticsIntensity);
-			cb.waterExtra = Math::Vector4(wi.component.waterLevel, wi.component.planeSize, 0.0f, 0.0f);
+			cb.waterExtra = Math::Vector4(wi.component.waterLevel, wi.component.planeSize, wi.component.sssIntensity, wi.component.jacobianThreshold);
+			cb.sssColor = Math::Vector4(wi.component.sssColor.R(), wi.component.sssColor.G(), wi.component.sssColor.B(), wi.component.windAngle);
 
 			if (m_cbWater)
 			{
@@ -408,8 +426,13 @@ namespace Core::Renderer
 
 		m_context->setShaderResourcePS(DF_SLOT_TEX_CUSTOM0, nullptr);
 		m_context->setShaderResourcePS(DF_SLOT_TEX_DEPTH, nullptr);
+		if (m_shadowMapTexture) m_context->setShaderResourcePS(DF_SLOT_TEX_SHADOW_MAP, nullptr);
+		if (m_volumetricFogIntegrated) m_context->setShaderResourcePS(DF_SLOT_TEX_VOLUMETRIC_FOG, nullptr);
 		m_context->setShaderResourcePS(DF_SLOT_TEX_SKY_EQUIRECT, nullptr);
 		m_context->setShaderResourcePS(DF_SLOT_TEX_BRDF_LUT, nullptr);
+		m_context->setShaderResourcePS(DF_SLOT_TEX_VOLUMETRIC_FOG, nullptr);
+		m_context->setShaderResourceBufferPS(DF_SLOT_BUF_CLUSTER_GRID, nullptr);
+		m_context->setShaderResourceBufferPS(DF_SLOT_BUF_CLUSTER_INDICES, nullptr);
 		m_context->setShaderResourceBufferPS(DF_SLOT_BUF_LIGHTS, nullptr);
 		m_context->setRenderTargets({}, nullptr);
 	}

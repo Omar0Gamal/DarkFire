@@ -1,3 +1,4 @@
+#include "Engine/Physics/BVH.h"
 #include "Engine/Physics/PhysicsCollisionNarrowphase.h"
 #include <algorithm>
 #include <cmath>
@@ -548,7 +549,278 @@ namespace Physics
 		}
 	}
 
-	bool TestColliderPair(
+		Vector3 ClosestPointOnTriangle(const Vector3& p, const Vector3& a, const Vector3& b, const Vector3& c)
+	{
+		Vector3 ab = b - a;
+		Vector3 ac = c - a;
+		Vector3 ap = p - a;
+
+		float d1 = ab.Dot(ap);
+		float d2 = ac.Dot(ap);
+		if (d1 <= 0.0f && d2 <= 0.0f) return a;
+
+		Vector3 bp = p - b;
+		float d3 = ab.Dot(bp);
+		float d4 = ac.Dot(bp);
+		if (d3 >= 0.0f && d4 <= d3) return b;
+
+		float vc = d1 * d4 - d3 * d2;
+		if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f)
+		{
+			float v = d1 / (d1 - d3);
+			return a + ab * v;
+		}
+
+		Vector3 cp = p - c;
+		float d5 = ab.Dot(cp);
+		float d6 = ac.Dot(cp);
+		if (d6 >= 0.0f && d5 <= d6) return c;
+
+		float vb = d5 * d2 - d1 * d6;
+		if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f)
+		{
+			float w = d2 / (d2 - d6);
+			return a + ac * w;
+		}
+
+		float va = d3 * d6 - d5 * d4;
+		if (va <= 0.0f && (d4 - d3) >= 0.0f && (d5 - d6) >= 0.0f)
+		{
+			float w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+			return b + (c - b) * w;
+		}
+
+		float denom = 1.0f / (va + vb + vc);
+		float v = vb * denom;
+		float w = vc * denom;
+		return a + ab * v + ac * w;
+	}
+
+	bool TestSphereTriangle(
+		const Vector3& sphereCenter, float sphereRadius,
+		const Vector3& a, const Vector3& b, const Vector3& c,
+		Vector3& outNormal, float& outPenetration)
+	{
+		Vector3 closest = ClosestPointOnTriangle(sphereCenter, a, b, c);
+		Vector3 diff = sphereCenter - closest;
+		float distSq = diff.LengthSquared();
+		if (distSq > sphereRadius * sphereRadius)
+		{
+			return false;
+		}
+
+		float dist = std::sqrt(distSq);
+		if (dist > 1e-6f)
+		{
+			outNormal = diff / dist;
+			outPenetration = sphereRadius - dist;
+		}
+		else
+		{
+			Vector3 e1 = b - a;
+			Vector3 e2 = c - a;
+			Vector3 n = e1.Cross(e2);
+			float nlen = n.Length();
+			outNormal = (nlen > 1e-6f) ? (n / nlen) : Vector3(0.0f, 1.0f, 0.0f);
+			outPenetration = sphereRadius;
+		}
+		return true;
+	}
+
+	bool TestOBBTriangle(
+		const OBB& obb,
+		const Vector3& a, const Vector3& b, const Vector3& c,
+		Vector3& outNormal, float& outPenetration)
+	{
+		Vector3 triNormal = (b - a).Cross(c - a);
+		float triNormLen = triNormal.Length();
+		if (triNormLen < 1e-6f) return false;
+		triNormal /= triNormLen;
+
+		Vector3 edges[3] = { b - a, c - b, a - c };
+
+		Vector3 axes[13];
+		int axisCount = 0;
+
+		axes[axisCount++] = triNormal;
+		axes[axisCount++] = obb.axes[0];
+		axes[axisCount++] = obb.axes[1];
+		axes[axisCount++] = obb.axes[2];
+
+		for (int i = 0; i < 3; ++i)
+		{
+			for (int j = 0; j < 3; ++j)
+			{
+				Vector3 crossAxis = obb.axes[i].Cross(edges[j]);
+				if (crossAxis.LengthSquared() > 1e-6f)
+				{
+					crossAxis.Normalize();
+					axes[axisCount++] = crossAxis;
+				}
+			}
+		}
+
+		float minOverlap = 1e30f;
+		Vector3 bestAxis = Vector3(0.0f, 1.0f, 0.0f);
+
+		for (int i = 0; i < axisCount; ++i)
+		{
+			const Vector3& axis = axes[i];
+
+			float pA = a.Dot(axis);
+			float pB = b.Dot(axis);
+			float pC = c.Dot(axis);
+			float tMin = std::min(pA, std::min(pB, pC));
+			float tMax = std::max(pA, std::max(pB, pC));
+
+			float obbCenterProj = obb.center.Dot(axis);
+			float obbRadius = obb.extents.x * std::abs(obb.axes[0].Dot(axis)) +
+			                  obb.extents.y * std::abs(obb.axes[1].Dot(axis)) +
+			                  obb.extents.z * std::abs(obb.axes[2].Dot(axis));
+
+			float oMin = obbCenterProj - obbRadius;
+			float oMax = obbCenterProj + obbRadius;
+
+			if (tMin > oMax || oMin > tMax)
+			{
+				return false;
+			}
+
+			float overlap = std::min(tMax, oMax) - std::max(tMin, oMin);
+			if (overlap < minOverlap)
+			{
+				minOverlap = overlap;
+				bestAxis = axis;
+				if (obbCenterProj < 0.5f * (tMin + tMax))
+				{
+					bestAxis = -bestAxis;
+				}
+			}
+		}
+
+		outPenetration = minOverlap;
+		outNormal = bestAxis;
+		return true;
+	}
+
+	bool TestSphereTriangleMesh(
+		const Core::ColliderComponent& sphereCol, const Core::TransformComponent& sphereTrans,
+		const Core::ColliderComponent& meshCol, const Core::TransformComponent& meshTrans,
+		Vector3& outNormal, float& outPenetration
+	)
+	{
+		if (!meshCol.collisionMesh || !meshCol.collisionMesh->bvh) return false;
+
+		Matrix worldMesh = meshTrans.getLocalMatrix();
+		Matrix invWorldMesh = worldMesh.Invert();
+
+		Vector3 localSphereCenter = Vector3::Transform(sphereTrans.position, invWorldMesh);
+		float avgScale = (meshTrans.scale.x + meshTrans.scale.y + meshTrans.scale.z) / 3.0f;
+		float localSphereRadius = sphereCol.radius / (avgScale > 1e-4f ? avgScale : 1.0f);
+
+		std::vector<uint32_t> candidateTris;
+		meshCol.collisionMesh->bvh->querySphere(localSphereCenter, localSphereRadius, candidateTris);
+
+		bool hit = false;
+		float maxPen = -1e30f;
+		Vector3 bestNormal;
+
+		for (uint32_t triIdx : candidateTris)
+		{
+			const auto& tri = meshCol.collisionMesh->bvh->getTriangles()[triIdx];
+			Vector3 n;
+			float pen = 0.0f;
+			if (TestSphereTriangle(localSphereCenter, localSphereRadius, tri.v0, tri.v1, tri.v2, n, pen))
+			{
+				if (pen > maxPen)
+				{
+					maxPen = pen;
+					bestNormal = n;
+					hit = true;
+				}
+			}
+		}
+
+		if (hit)
+		{
+			outPenetration = maxPen * avgScale;
+			outNormal = Vector3::TransformNormal(bestNormal, worldMesh);
+			outNormal.Normalize();
+		}
+		return hit;
+	}
+
+	bool TestOBBTriangleMesh(
+		const Core::ColliderComponent& boxCol, const Core::TransformComponent& boxTrans,
+		const Core::ColliderComponent& meshCol, const Core::TransformComponent& meshTrans,
+		Vector3& outNormal, float& outPenetration
+	)
+	{
+		if (!meshCol.collisionMesh || !meshCol.collisionMesh->bvh) return false;
+
+		OBB obb = MakeOBB(boxTrans, boxCol);
+		Matrix worldMesh = meshTrans.getLocalMatrix();
+		Matrix invWorldMesh = worldMesh.Invert();
+
+		OBB localOBB;
+		localOBB.center = Vector3::Transform(obb.center, invWorldMesh);
+		for (int i = 0; i < 3; ++i)
+		{
+			localOBB.axes[i] = Vector3::TransformNormal(obb.axes[i], invWorldMesh);
+			float len = localOBB.axes[i].Length();
+			if (len > 1e-6f) localOBB.axes[i] /= len;
+		}
+		localOBB.extents = Vector3(
+			obb.extents.x / std::max(meshTrans.scale.x, 1e-4f),
+			obb.extents.y / std::max(meshTrans.scale.y, 1e-4f),
+			obb.extents.z / std::max(meshTrans.scale.z, 1e-4f)
+		);
+
+		Vector3 localOBBAABBMin(
+			localOBB.center.x - (std::abs(localOBB.axes[0].x) * localOBB.extents.x + std::abs(localOBB.axes[1].x) * localOBB.extents.y + std::abs(localOBB.axes[2].x) * localOBB.extents.z),
+			localOBB.center.y - (std::abs(localOBB.axes[0].y) * localOBB.extents.x + std::abs(localOBB.axes[1].y) * localOBB.extents.y + std::abs(localOBB.axes[2].y) * localOBB.extents.z),
+			localOBB.center.z - (std::abs(localOBB.axes[0].z) * localOBB.extents.x + std::abs(localOBB.axes[1].z) * localOBB.extents.y + std::abs(localOBB.axes[2].z) * localOBB.extents.z)
+		);
+		Vector3 localOBBAABBMax(
+			localOBB.center.x + (std::abs(localOBB.axes[0].x) * localOBB.extents.x + std::abs(localOBB.axes[1].x) * localOBB.extents.y + std::abs(localOBB.axes[2].x) * localOBB.extents.z),
+			localOBB.center.y + (std::abs(localOBB.axes[0].y) * localOBB.extents.x + std::abs(localOBB.axes[1].y) * localOBB.extents.y + std::abs(localOBB.axes[2].y) * localOBB.extents.z),
+			localOBB.center.z + (std::abs(localOBB.axes[0].z) * localOBB.extents.x + std::abs(localOBB.axes[1].z) * localOBB.extents.y + std::abs(localOBB.axes[2].z) * localOBB.extents.z)
+		);
+
+		std::vector<uint32_t> candidateTris;
+		meshCol.collisionMesh->bvh->queryAABB(localOBBAABBMin, localOBBAABBMax, candidateTris);
+
+		bool hit = false;
+		float maxPen = -1e30f;
+		Vector3 bestNormal;
+
+		for (uint32_t triIdx : candidateTris)
+		{
+			const auto& tri = meshCol.collisionMesh->bvh->getTriangles()[triIdx];
+			Vector3 n;
+			float pen = 0.0f;
+			if (TestOBBTriangle(localOBB, tri.v0, tri.v1, tri.v2, n, pen))
+			{
+				if (pen > maxPen)
+				{
+					maxPen = pen;
+					bestNormal = n;
+					hit = true;
+				}
+			}
+		}
+
+		if (hit)
+		{
+			float avgScale = (meshTrans.scale.x + meshTrans.scale.y + meshTrans.scale.z) / 3.0f;
+			outPenetration = maxPen * avgScale;
+			outNormal = Vector3::TransformNormal(bestNormal, worldMesh);
+			outNormal.Normalize();
+		}
+		return hit;
+	}
+
+bool TestColliderPair(
 		const Core::ColliderComponent& colA, const Core::TransformComponent& transA,
 		const Core::ColliderComponent& colB, const Core::TransformComponent& transB,
 		Vector3& outNormal, float& outPenetration
@@ -625,6 +897,35 @@ namespace Physics
 			return false;
 		}
 
+		// 10. Sphere vs TriangleMesh / ConvexMesh
+		if (colA.shape == Core::ColliderShape::Sphere && (colB.shape == Core::ColliderShape::TriangleMesh || colB.shape == Core::ColliderShape::ConvexMesh))
+		{
+			return TestSphereTriangleMesh(colA, transA, colB, transB, outNormal, outPenetration);
+		}
+		if ((colA.shape == Core::ColliderShape::TriangleMesh || colA.shape == Core::ColliderShape::ConvexMesh) && colB.shape == Core::ColliderShape::Sphere)
+		{
+			if (TestSphereTriangleMesh(colB, transB, colA, transA, outNormal, outPenetration))
+			{
+				outNormal = -outNormal;
+				return true;
+			}
+			return false;
+		}
+
+		// 11. Box vs TriangleMesh / ConvexMesh
+		if (colA.shape == Core::ColliderShape::Box && (colB.shape == Core::ColliderShape::TriangleMesh || colB.shape == Core::ColliderShape::ConvexMesh))
+		{
+			return TestOBBTriangleMesh(colA, transA, colB, transB, outNormal, outPenetration);
+		}
+		if ((colA.shape == Core::ColliderShape::TriangleMesh || colA.shape == Core::ColliderShape::ConvexMesh) && colB.shape == Core::ColliderShape::Box)
+		{
+			if (TestOBBTriangleMesh(colB, transB, colA, transA, outNormal, outPenetration))
+			{
+				outNormal = -outNormal;
+				return true;
+			}
+			return false;
+		}
 		return false;
 	}
 
@@ -883,6 +1184,34 @@ namespace Physics
 			return false;
 		}
 
+		if (col.shape == Core::ColliderShape::TriangleMesh || col.shape == Core::ColliderShape::ConvexMesh)
+		{
+			if (!col.collisionMesh || !col.collisionMesh->bvh) return false;
+
+			Matrix world = trans.getLocalMatrix();
+			Matrix invWorld = world.Invert();
+
+			Vector3 localOrigin = Vector3::Transform(origin, invWorld);
+			Vector3 localDir = Vector3::TransformNormal(normalizedDir, invWorld);
+			float localDirLen = localDir.Length();
+			if (localDirLen < 1e-6f) return false;
+
+			Vector3 normLocalDir = localDir / localDirLen;
+			float localMaxDist = maxDist * localDirLen;
+
+			float localT = 0.0f;
+			Vector3 localNormal;
+			uint32_t hitTri = 0;
+			if (col.collisionMesh->bvh->raycast(localOrigin, normLocalDir, localMaxDist, localT, localNormal, hitTri))
+			{
+				outT = localT / localDirLen;
+				Matrix invWorldTranspose = invWorld.Transpose();
+				outNormal = Vector3::TransformNormal(localNormal, invWorldTranspose);
+				outNormal.Normalize();
+				return true;
+			}
+			return false;
+		}
 		return false;
 	}
 }

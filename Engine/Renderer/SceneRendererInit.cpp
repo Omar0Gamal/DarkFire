@@ -155,6 +155,65 @@ namespace Core::Renderer
 		auto sssCbRes = m_device.createBuffer(sssCbDesc);
 		if (sssCbRes.isOk()) m_cbSSS = *sssCbRes;
 
+		// Milestone 2: Atmospheric Lighting, Volumetrics & Camera VFX Constant & Structured Buffers
+		RHI::GpuBufferDesc mbCbDesc{};
+		mbCbDesc.size = sizeof(CBMotionBlur);
+		mbCbDesc.usage = RHI::BufferUsage::Default;
+		mbCbDesc.bindFlags = RHI::BufferBindFlags::ConstantBuffer;
+		auto mbCbRes = m_device.createBuffer(mbCbDesc);
+		if (mbCbRes.isOk()) m_cbMotionBlur = *mbCbRes;
+
+		RHI::GpuBufferDesc vfCbDesc{};
+		vfCbDesc.size = sizeof(CBVolumetricFog);
+		vfCbDesc.usage = RHI::BufferUsage::Default;
+		vfCbDesc.bindFlags = RHI::BufferBindFlags::ConstantBuffer;
+		auto vfCbRes = m_device.createBuffer(vfCbDesc);
+		if (vfCbRes.isOk()) m_cbVolumetricFog = *vfCbRes;
+
+		RHI::GpuBufferDesc vfiCbDesc{};
+		vfiCbDesc.size = sizeof(CBVolumetricFogIntegrate);
+		vfiCbDesc.usage = RHI::BufferUsage::Default;
+		vfiCbDesc.bindFlags = RHI::BufferBindFlags::ConstantBuffer;
+		auto vfiCbRes = m_device.createBuffer(vfiCbDesc);
+		if (vfiCbRes.isOk()) m_cbVolumetricFogIntegrate = *vfiCbRes;
+
+		RHI::GpuBufferDesc histCbDesc{};
+		histCbDesc.size = sizeof(CBLuminanceHistogram);
+		histCbDesc.usage = RHI::BufferUsage::Default;
+		histCbDesc.bindFlags = RHI::BufferBindFlags::ConstantBuffer;
+		auto histCbRes = m_device.createBuffer(histCbDesc);
+		if (histCbRes.isOk()) m_cbHistogram = *histCbRes;
+
+		RHI::GpuBufferDesc avgCbDesc{};
+		avgCbDesc.size = sizeof(CBLuminanceAverage);
+		avgCbDesc.usage = RHI::BufferUsage::Default;
+		avgCbDesc.bindFlags = RHI::BufferBindFlags::ConstantBuffer;
+		auto avgCbRes = m_device.createBuffer(avgCbDesc);
+		if (avgCbRes.isOk()) m_cbAverage = *avgCbRes;
+
+		RHI::GpuBufferDesc psCbDesc{};
+		psCbDesc.size = sizeof(CBParaboloidShadow);
+		psCbDesc.usage = RHI::BufferUsage::Default;
+		psCbDesc.bindFlags = RHI::BufferBindFlags::ConstantBuffer;
+		auto psCbRes = m_device.createBuffer(psCbDesc);
+		if (psCbRes.isOk()) m_cbParaboloidShadow = *psCbRes;
+
+		RHI::GpuBufferDesc lumaHistDesc{};
+		lumaHistDesc.size = sizeof(uint32_t) * 64;
+		lumaHistDesc.usage = RHI::BufferUsage::Default;
+		lumaHistDesc.bindFlags = RHI::BufferBindFlags::ShaderResource | RHI::BufferBindFlags::UnorderedAccess;
+		lumaHistDesc.structureByteStride = sizeof(uint32_t);
+		auto lumaHistRes = m_device.createBuffer(lumaHistDesc);
+		if (lumaHistRes.isOk()) m_bufLuminanceHistogram = *lumaHistRes;
+
+		RHI::GpuBufferDesc lumaAvgDesc{};
+		lumaAvgDesc.size = sizeof(float) * 4;
+		lumaAvgDesc.usage = RHI::BufferUsage::Default;
+		lumaAvgDesc.bindFlags = RHI::BufferBindFlags::ShaderResource | RHI::BufferBindFlags::UnorderedAccess;
+		lumaAvgDesc.structureByteStride = sizeof(float);
+		auto lumaAvgRes = m_device.createBuffer(lumaAvgDesc);
+		if (lumaAvgRes.isOk()) m_bufAdaptedLuminance = *lumaAvgRes;
+
 		// Tier 1: TAA, Clustered Lighting & GPU Culling Constant Buffers
 		RHI::GpuBufferDesc taaCbDesc{};
 		taaCbDesc.size = sizeof(CBTAA);
@@ -224,6 +283,14 @@ namespace Core::Renderer
 		m_csHiZBuild.init(m_device, m_shaderLibrary, "HiZBuildCS", "HiZBuildCS.hlsl", sizeof(Math::Vector4));
 		m_csDDGIRadianceGather.init(m_device, m_shaderLibrary, "DDGIRadianceGatherCS", "DDGIRadianceGatherCS.hlsl", sizeof(CBDDGI));
 		m_csDDGIDepthGather.init(m_device, m_shaderLibrary, "DDGIDepthGatherCS", "DDGIDepthGatherCS.hlsl", sizeof(CBDDGI));
+
+		// Milestone 2 Compute Kernels
+		m_csTileMax.init(m_device, m_shaderLibrary, "TileMaxCS", "TileMaxCS.hlsl", sizeof(uint32_t) * 4);
+		m_csNeighborMax.init(m_device, m_shaderLibrary, "NeighborMaxCS", "NeighborMaxCS.hlsl", sizeof(uint32_t) * 4);
+		m_csVolumetricFog.init(m_device, m_shaderLibrary, "VolumetricFogCS", "VolumetricFogCS.hlsl", sizeof(CBVolumetricFog));
+		m_csVolumetricFogIntegrate.init(m_device, m_shaderLibrary, "VolumetricFogIntegrateCS", "VolumetricFogIntegrateCS.hlsl", sizeof(CBVolumetricFogIntegrate));
+		m_csLuminanceHistogram.init(m_device, m_shaderLibrary, "LuminanceHistogramCS", "LuminanceHistogramCS.hlsl", sizeof(CBLuminanceHistogram));
+		m_csLuminanceAverage.init(m_device, m_shaderLibrary, "LuminanceAverageCS", "LuminanceAverageCS.hlsl", sizeof(CBLuminanceAverage));
 
 		generateSSAOKernel();
 
@@ -465,10 +532,38 @@ namespace Core::Renderer
 		auto psSubsurfRes = m_shaderLibrary.getOrCreatePixelShader("SubsurfacePS.hlsl");
 		if (psSubsurfRes.isOk()) m_psSubsurface = *psSubsurfRes;
 
+		// Milestone 2: Motion Blur & Paraboloid Shadow Shaders
+		auto psMBRes = m_shaderLibrary.getOrCreatePixelShader("MotionBlurPS.hlsl");
+		if (psMBRes.isOk()) m_psMotionBlur = *psMBRes;
+
+		auto vsParaRes = m_shaderLibrary.getOrCreateVertexShader("ShadowParaboloidVS.hlsl");
+		if (vsParaRes.isOk())
+		{
+			m_vsShadowParaboloid = *vsParaRes;
+			auto paraLayoutRes = m_device.createInputLayout(inputElements, m_vsShadowParaboloid->getBytecode());
+			if (paraLayoutRes.isOk()) m_inputLayoutShadowParaboloid = *paraLayoutRes;
+		}
+
+		// Milestone 2: 3D Froxel Volumetric Fog Textures (160x90x64 R16G16B16A16_FLOAT)
+		RHI::GpuTextureDesc froxelDesc{};
+		froxelDesc.width = 160;
+		froxelDesc.height = 90;
+		froxelDesc.depth = 64;
+		froxelDesc.format = RHI::PixelFormat::R16G16B16A16_FLOAT;
+		froxelDesc.bindFlags = RHI::BufferBindFlags::ShaderResource | RHI::BufferBindFlags::UnorderedAccess;
+		auto fRawRes = m_device.createTexture(froxelDesc);
+		if (fRawRes.isOk()) m_volumetricFogRaw = *fRawRes;
+		auto fHist0Res = m_device.createTexture(froxelDesc);
+		if (fHist0Res.isOk()) m_volumetricFogHistory[0] = *fHist0Res;
+		auto fHist1Res = m_device.createTexture(froxelDesc);
+		if (fHist1Res.isOk()) m_volumetricFogHistory[1] = *fHist1Res;
+		auto fIntRes = m_device.createTexture(froxelDesc);
+		if (fIntRes.isOk()) m_volumetricFogIntegrated = *fIntRes;
+
 		// Milestone 1 (Tier 2/3): DDGI Radiance & Depth Atlases
 		RHI::GpuTextureDesc ddgiRadDesc{};
 		ddgiRadDesc.width = 512;
-		ddgiRadDesc.height = 256;
+		ddgiRadDesc.height = 512;
 		ddgiRadDesc.format = RHI::PixelFormat::R16G16B16A16_FLOAT;
 		ddgiRadDesc.bindFlags = RHI::BufferBindFlags::ShaderResource | RHI::BufferBindFlags::UnorderedAccess;
 		auto ddgiRadRes = m_device.createTexture(ddgiRadDesc);
@@ -476,7 +571,7 @@ namespace Core::Renderer
 
 		RHI::GpuTextureDesc ddgiDepthDesc{};
 		ddgiDepthDesc.width = 512;
-		ddgiDepthDesc.height = 256;
+		ddgiDepthDesc.height = 1024;
 		ddgiDepthDesc.format = RHI::PixelFormat::R16G16_FLOAT;
 		ddgiDepthDesc.bindFlags = RHI::BufferBindFlags::ShaderResource | RHI::BufferBindFlags::UnorderedAccess;
 		auto ddgiDepthRes = m_device.createTexture(ddgiDepthDesc);
@@ -541,6 +636,7 @@ namespace Core::Renderer
 		shadowDesc.bindFlags = RHI::BufferBindFlags::DepthStencil | RHI::BufferBindFlags::ShaderResource;
 		auto shadowRes = m_device.createTexture(shadowDesc);
 		if (shadowRes.isOk()) m_shadowMapTexture = *shadowRes;
+		m_shadowAtlasAllocator.initialize(kShadowMapResolution, kShadowMapResolution);
 
 		// 12. Seed Builtin Meshes
 		auto cubeData = CreateCubeMesh(1.0f);
@@ -615,6 +711,9 @@ namespace Core::Renderer
 		m_forwardPipeline.addLambdaPass("ShadowPass", [this](SceneRenderer&, const RenderScene& s, const RenderView& v) {
 			passShadows(s, v);
 		});
+		m_forwardPipeline.addLambdaPass("VolumetricFogPass", [this](SceneRenderer&, const RenderScene& s, const RenderView& v) {
+			passVolumetricFog(s, v);
+		});
 		m_forwardPipeline.addLambdaPass("DDGIPass", [this](SceneRenderer&, const RenderScene& s, const RenderView&) {
 			passDDGI(s);
 		});
@@ -667,6 +766,12 @@ namespace Core::Renderer
 		m_forwardPipeline.addLambdaPass("TAAPass", [this](SceneRenderer&, const RenderScene& s, const RenderView& v) {
 			passTAA(s, v);
 		});
+		m_forwardPipeline.addLambdaPass("MotionBlurPass", [this](SceneRenderer&, const RenderScene& s, const RenderView& v) {
+			passMotionBlur(s, v);
+		});
+		m_forwardPipeline.addLambdaPass("AutoExposurePass", [this](SceneRenderer&, const RenderScene& s, const RenderView& v) {
+			passAutoExposure(s, v);
+		});
 		m_forwardPipeline.addLambdaPass("BloomPass", [this](SceneRenderer&, const RenderScene& s, const RenderView&) {
 			passBloom(s);
 		});
@@ -677,6 +782,9 @@ namespace Core::Renderer
 		m_deferredPipeline.clear();
 		m_deferredPipeline.addLambdaPass("ShadowPass", [this](SceneRenderer&, const RenderScene& s, const RenderView& v) {
 			passShadows(s, v);
+		});
+		m_deferredPipeline.addLambdaPass("VolumetricFogPass", [this](SceneRenderer&, const RenderScene& s, const RenderView& v) {
+			passVolumetricFog(s, v);
 		});
 		m_deferredPipeline.addLambdaPass("DDGIPass", [this](SceneRenderer&, const RenderScene& s, const RenderView&) {
 			passDDGI(s);
@@ -724,6 +832,12 @@ namespace Core::Renderer
 		});
 		m_deferredPipeline.addLambdaPass("TAAPass", [this](SceneRenderer&, const RenderScene& s, const RenderView& v) {
 			passTAA(s, v);
+		});
+		m_deferredPipeline.addLambdaPass("MotionBlurPass", [this](SceneRenderer&, const RenderScene& s, const RenderView& v) {
+			passMotionBlur(s, v);
+		});
+		m_deferredPipeline.addLambdaPass("AutoExposurePass", [this](SceneRenderer&, const RenderScene& s, const RenderView& v) {
+			passAutoExposure(s, v);
 		});
 		m_deferredPipeline.addLambdaPass("BloomPass", [this](SceneRenderer&, const RenderScene& s, const RenderView&) {
 			passBloom(s);
@@ -910,6 +1024,29 @@ namespace Core::Renderer
 		hiZDesc.bindFlags = RHI::BufferBindFlags::ShaderResource | RHI::BufferBindFlags::UnorderedAccess;
 		auto hiZRes = m_device.createTexture(hiZDesc);
 		if (hiZRes.isOk()) m_hiZTexture = *hiZRes;
+
+		// 17. Motion Blur Velocity TileMax & NeighborMax (1/20th resolution)
+		uint32_t tileW = std::max((width + 19) / 20, 1u);
+		uint32_t tileH = std::max((height + 19) / 20, 1u);
+		RHI::GpuTextureDesc tileDesc{};
+		tileDesc.width = tileW;
+		tileDesc.height = tileH;
+		tileDesc.format = RHI::PixelFormat::R16G16_FLOAT;
+		tileDesc.bindFlags = RHI::BufferBindFlags::ShaderResource | RHI::BufferBindFlags::UnorderedAccess;
+		auto tileMaxRes = m_device.createTexture(tileDesc);
+		if (tileMaxRes.isOk()) m_tileMaxTexture = *tileMaxRes;
+
+		auto neighMaxRes = m_device.createTexture(tileDesc);
+		if (neighMaxRes.isOk()) m_neighborMaxTexture = *neighMaxRes;
+
+		// 18. Motion Blur Fullscreen Target (R16G16B16A16_FLOAT)
+		RHI::GpuTextureDesc mbDesc{};
+		mbDesc.width = width;
+		mbDesc.height = height;
+		mbDesc.format = RHI::PixelFormat::R16G16B16A16_FLOAT;
+		mbDesc.bindFlags = RHI::BufferBindFlags::RenderTarget | RHI::BufferBindFlags::ShaderResource;
+		auto mbRes = m_device.createTexture(mbDesc);
+		if (mbRes.isOk()) m_motionBlurTexture = *mbRes;
 
 		m_clustersBuilt = false;
 	}

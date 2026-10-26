@@ -43,7 +43,7 @@ if not exist "%ROOT_DIR%\ThirdParty\DirectXTK\Src\Shaders\Compiled\SpriteEffect_
 )
 
 echo [DarkFire] Running Premake with action: %PREMAKE_ACTION%
-"%ROOT_DIR%\Vendor\Binaries\Premake\Windows\premake5.exe" --file="%ROOT_DIR%\premake5.lua" %PREMAKE_ACTION%
+"%ROOT_DIR%\ThirdParty\Premake\Windows\premake5.exe" --file="%ROOT_DIR%\premake5.lua" %PREMAKE_ACTION%
 
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Premake generation failed!

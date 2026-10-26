@@ -31,63 +31,70 @@ namespace Runtime
 
 	bool Application::init()
 	{
-		Core::Log::Get().info("Runtime", "Initializing Application: '{}' (v{})", m_config.name, m_config.version);
+		Core::Log::Get().info("Runtime", "Initializing Application: '{}' (v{}) [Headless: {}]", m_config.name, m_config.version, m_config.headless ? "true" : "false");
 
-		// 1. Create Window
-		Platform::WindowDesc winDesc;
-		winDesc.title = m_config.windowTitle;
-		winDesc.width = m_config.windowWidth;
-		winDesc.height = m_config.windowHeight;
-		winDesc.vsync = m_config.vsync;
-		winDesc.fullscreen = m_config.fullscreen;
-
-		m_window = std::make_unique<Platform::Window>();
-		if (!m_window->init(winDesc))
+		if (!m_config.headless)
 		{
-			Core::Log::Get().fatal("Runtime", "Failed to initialize Application window!");
-			return false;
-		}
+			// 1. Create Window
+			Platform::WindowDesc winDesc;
+			winDesc.title = m_config.windowTitle;
+			winDesc.width = m_config.windowWidth;
+			winDesc.height = m_config.windowHeight;
+			winDesc.vsync = m_config.vsync;
+			winDesc.fullscreen = m_config.fullscreen;
 
-		m_window->setResizeCallback([this](uint32_t w, uint32_t h) {
-			onWindowResize(w, h);
-		});
+			m_window = std::make_unique<Platform::Window>();
+			if (!m_window->init(winDesc))
+			{
+				Core::Log::Get().fatal("Runtime", "Failed to initialize Application window!");
+				return false;
+			}
 
-		m_window->setCloseCallback([this]() {
-			close();
-		});
+			m_window->setResizeCallback([this](uint32_t w, uint32_t h) {
+				onWindowResize(w, h);
+			});
 
-		// 2. Initialize RHI Device
-		bool debugRHI = false;
+			m_window->setCloseCallback([this]() {
+				close();
+			});
+
+			// 2. Initialize RHI Device
+			bool debugRHI = false;
 #if defined(DF_DEBUG)
-		debugRHI = true;
+			debugRHI = true;
 #endif
 
-		m_device = Core::RHI::CreateRHIDevice(Core::RHI::BackendType::D3D11, debugRHI);
-		if (!m_device)
+			m_device = Core::RHI::CreateRHIDevice(Core::RHI::BackendType::D3D11, debugRHI);
+			if (!m_device)
+			{
+				Core::Log::Get().warn("Runtime", "D3D11 RHI Device failed to create! Falling back to Null RHI Device.");
+				m_device = Core::RHI::CreateRHIDevice(Core::RHI::BackendType::Null, false);
+			}
+
+			// 3. Create SwapChain
+			if (m_device)
+			{
+				auto scRes = m_device->createSwapChain(m_window->getNativeHandle(), m_config.windowWidth, m_config.windowHeight);
+				if (scRes.isOk())
+				{
+					m_swapChain = std::move(scRes.value());
+				}
+				else
+				{
+					Core::Log::Get().warn("Runtime", "Failed to create swapchain: {}", scRes.error());
+				}
+			}
+
+			// 4. Initialize SceneRenderer
+			if (m_device)
+			{
+				m_sceneRenderer = std::make_unique<Core::Renderer::SceneRenderer>(*m_device);
+				m_sceneRenderer->resize(m_config.windowWidth, m_config.windowHeight);
+			}
+		}
+		else
 		{
-			Core::Log::Get().warn("Runtime", "D3D11 RHI Device failed to create! Falling back to Null RHI Device.");
 			m_device = Core::RHI::CreateRHIDevice(Core::RHI::BackendType::Null, false);
-		}
-
-		// 3. Create SwapChain
-		if (m_device)
-		{
-			auto scRes = m_device->createSwapChain(m_window->getNativeHandle(), m_config.windowWidth, m_config.windowHeight);
-			if (scRes.isOk())
-			{
-				m_swapChain = std::move(scRes.value());
-			}
-			else
-			{
-				Core::Log::Get().warn("Runtime", "Failed to create swapchain: {}", scRes.error());
-			}
-		}
-
-		// 4. Initialize SceneRenderer
-		if (m_device)
-		{
-			m_sceneRenderer = std::make_unique<Core::Renderer::SceneRenderer>(*m_device);
-			m_sceneRenderer->resize(m_config.windowWidth, m_config.windowHeight);
 		}
 
 		// 5. Initialize Physics
@@ -95,7 +102,10 @@ namespace Runtime
 		m_physicsWorld->init(m_config.gravity, m_config.fixedTimeStep);
 		m_physicsWorld->setCollisionMatrix(m_config.collisionMatrix);
 
-		initImGui();
+		if (!m_config.headless)
+		{
+			initImGui();
+		}
 
 		onInit();
 		Core::Log::Get().info("Runtime", "Application initialized successfully.");
@@ -157,7 +167,7 @@ namespace Runtime
 		double lastTime = timer.getElapsedSeconds();
 		int frameCount = 0;
 
-		while (m_running && !m_window->shouldClose())
+		while (m_running && (!m_window || !m_window->shouldClose()))
 		{
 			if (maxFrames > 0 && frameCount >= maxFrames)
 			{
@@ -165,7 +175,18 @@ namespace Runtime
 			}
 			++frameCount;
 
-			m_window->pollEvents();
+			if (m_window)
+			{
+				if (m_swapChain)
+				{
+					m_swapChain->waitForNextFrame();
+				}
+				m_window->pollEvents();
+			}
+			else
+			{
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			}
 
 			double currentTime = timer.getElapsedSeconds();
 			float frameTime = static_cast<float>(currentTime - lastTime);
@@ -192,8 +213,7 @@ namespace Runtime
 				accumulator -= fixedDeltaTime;
 			}
 
-			float alpha = accumulator / fixedDeltaTime;
-			(void)alpha;
+			m_frameAlpha = accumulator / fixedDeltaTime;
 
 			// Variable Frame Update
 			for (auto& layer : m_layerStack)

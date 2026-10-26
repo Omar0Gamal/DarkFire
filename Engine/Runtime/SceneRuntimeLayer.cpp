@@ -246,9 +246,16 @@ namespace Runtime
 		}
 		Core::Systems::ParticleSystem::Tick(*m_scene, deltaTime);
 
-		// 4. Render Snapshot & Extraction with window aspect
+		// 4. In headless server mode, skip rendering snapshot extraction and pass submission
+		if (Application::Get().getConfig().headless || !Application::Get().hasWindow())
+		{
+			return;
+		}
+
+		// Render Snapshot & Extraction with window aspect
 		float aspect = Application::Get().getWindow().getAspectRatio();
-		Core::ExtractRenderScene(*m_scene, m_renderScene, aspect);
+		float alpha = Application::Get().getFrameAlpha();
+		Core::ExtractRenderScene(*m_scene, m_renderScene, aspect, alpha);
 		m_renderScene.camera.aspect = aspect;
 		m_renderScene.camera.projMatrix = (m_renderScene.camera.isOrthographic)
 			? Core::Math::orthographicLH_ReversedZ(10.0f, 10.0f / aspect, m_renderScene.camera.nearZ, m_renderScene.camera.farZ)

@@ -78,7 +78,8 @@ namespace Core::Renderer
 		Reinhard,
 		Linear,
 		AgX,
-		Neutral
+		Neutral,
+		ReinhardJodie
 	};
 
 	struct DF_API RenderEnvironment
@@ -109,6 +110,12 @@ namespace Core::Renderer
 		float autoExposureMinEV = -1.5f;
 		float autoExposureMaxEV = 1.5f;
 		float autoExposureSpeed = 2.5f;
+		float autoExposureSpeedUp = 3.0f;
+		float autoExposureSpeedDown = 1.0f;
+		bool enableMotionBlur = false;
+		float motionBlurShutterAngle = 0.5f;
+		float motionBlurMaxRadius = 32.0f;
+		float volumetricFogHistoryBlend = 0.88f;
 		float contrast = 1.0f;
 		float saturation = 1.0f;
 		float vignetteIntensity = 0.0f;

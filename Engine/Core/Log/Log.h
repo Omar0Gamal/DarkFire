@@ -84,6 +84,7 @@ namespace Core
 
 		// Retrieve last N messages for crash dumps or Editor console
 		std::vector<LogMessage> getRecentMessages(size_t maxCount = 100);
+		void clear();
 
 	private:
 		Log();

@@ -104,6 +104,14 @@ namespace Core
 		return result;
 	}
 
+	void Log::clear()
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		m_ringBuffer.assign(RING_CAPACITY, LogMessage{});
+		m_ringHead = 0;
+		m_ringFull = false;
+	}
+
 	void ReportAssertionFailure(const char* expr, const char* msg, const char* file, int line)
 	{
 		Log::Get().fatal("Assert", "ASSERTION FAILED: {} | {} ({}:{})", expr, msg, file, line);

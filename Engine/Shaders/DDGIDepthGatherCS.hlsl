@@ -43,7 +43,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID, uint3 groupID : SV_Group
 	float distSq = dist * dist;
 	float2 newDepth = float2(dist, distSq);
 
-	uint numProbesPerRow = 16;
+	uint numProbesPerRow = 32;
 	uint atlasTileX = probeIndex % numProbesPerRow;
 	uint atlasTileY = probeIndex / numProbesPerRow;
 	uint2 globalAtlasCoord = uint2(atlasTileX * 16 + texelInProbe.x, atlasTileY * 16 + texelInProbe.y);

@@ -104,11 +104,6 @@ namespace Core::Renderer
 
 	void SceneRenderer::passDDGI(const RenderScene& scene)
 	{
-		if (!scene.environment.enableDDGI || !m_ddgiRadianceAtlas || !m_ddgiDepthAtlas || !m_csDDGIRadianceGather.isValid() || !m_csDDGIDepthGather.isValid())
-		{
-			return;
-		}
-
 		CBDDGI cbDDGI{};
 		cbDDGI.gridOriginSpacing = Math::Vector4(
 			scene.environment.ddgiOrigin.x,
@@ -126,7 +121,7 @@ namespace Core::Renderer
 			scene.environment.ddgiEnergyPreservation > 0.0f ? scene.environment.ddgiEnergyPreservation : 0.85f,
 			scene.environment.ddgiHysteresis > 0.0f ? scene.environment.ddgiHysteresis : 0.95f,
 			scene.environment.ddgiIntensity > 0.0f ? scene.environment.ddgiIntensity : 1.0f,
-			1.0f
+			scene.environment.enableDDGI ? 1.0f : 0.0f
 		);
 
 		if (m_cbDDGI)
@@ -134,6 +129,12 @@ namespace Core::Renderer
 			m_context->updateSubresource(m_cbDDGI, &cbDDGI, sizeof(cbDDGI));
 			m_context->setConstantBufferCS(DF_SLOT_CB_DDGI, m_cbDDGI);
 		}
+
+		if (!scene.environment.enableDDGI || !m_ddgiRadianceAtlas || !m_ddgiDepthAtlas || !m_csDDGIRadianceGather.isValid() || !m_csDDGIDepthGather.isValid())
+		{
+			return;
+		}
+
 		if (m_cbPass)
 		{
 			m_context->setConstantBufferCS(DF_SLOT_CB_PER_PASS, m_cbPass);
@@ -141,6 +142,14 @@ namespace Core::Renderer
 		if (m_cbView)
 		{
 			m_context->setConstantBufferCS(DF_SLOT_CB_PER_VIEW, m_cbView);
+		}
+		if (m_bufLights)
+		{
+			m_context->setShaderResourceBufferCS(DF_SLOT_BUF_LIGHTS, m_bufLights);
+		}
+		if (m_samplerLinearWrap)
+		{
+			m_context->setSamplerCS(DF_SLOT_SMP_LINEAR_WRAP, m_samplerLinearWrap);
 		}
 
 		uint32_t totalProbes = static_cast<uint32_t>(scene.environment.ddgiProbeCounts.x * scene.environment.ddgiProbeCounts.y * scene.environment.ddgiProbeCounts.z);
@@ -155,6 +164,11 @@ namespace Core::Renderer
 		m_csDDGIDepthGather.setOutput(*m_context, 0, m_ddgiDepthAtlas);
 		m_csDDGIDepthGather.dispatchGroups(*m_context, 1, 1, totalProbes);
 		m_context->setUnorderedAccessViewCS(0, nullptr);
+
+		if (m_bufLights) m_context->setShaderResourceBufferCS(DF_SLOT_BUF_LIGHTS, nullptr);
+		m_context->setConstantBufferCS(DF_SLOT_CB_DDGI, nullptr);
+		m_context->setConstantBufferCS(DF_SLOT_CB_PER_PASS, nullptr);
+		m_context->setConstantBufferCS(DF_SLOT_CB_PER_VIEW, nullptr);
 	}
 
 	void SceneRenderer::passSubsurface(const RenderScene& scene)
@@ -213,5 +227,102 @@ namespace Core::Renderer
 		m_context->setShaderResourcePS(0, nullptr);
 		m_context->setShaderResourcePS(DF_SLOT_TEX_DEPTH, nullptr);
 		m_context->setRenderTargets({}, nullptr);
+	}
+
+	void SceneRenderer::passVolumetricFog(const RenderScene& scene, const RenderView& view)
+	{
+		if (!m_volumetricFogRaw || !m_volumetricFogIntegrated || !m_csVolumetricFog.isValid() || !m_csVolumetricFogIntegrate.isValid())
+		{
+			return;
+		}
+
+		if (!scene.environment.enableFog || scene.environment.fogDensity <= 0.0f)
+		{
+			return;
+		}
+
+		uint32_t gridW = 160;
+		uint32_t gridH = 90;
+		uint32_t gridD = 64;
+
+		// 1. Fill CBVolumetricFog
+		CBVolumetricFog cbFog{};
+		cbFog.volumeGridSize = Math::Vector4(static_cast<float>(gridW), static_cast<float>(gridH), static_cast<float>(gridD), 1.0f / 64.0f);
+		float historyBlend = scene.environment.volumetricFogHistoryBlend > 0.0f ? scene.environment.volumetricFogHistoryBlend : 0.88f;
+		cbFog.fogDepths = Math::Vector4(0.5f, 65.0f, scene.environment.enableTAA ? historyBlend : 0.0f, 0.0f);
+		cbFog.fogParams = Math::Vector4(
+			scene.environment.fogDensity,
+			scene.environment.fogHeightFalloff > 0.0001f ? scene.environment.fogHeightFalloff : 0.05f,
+			scene.environment.fogSunScattering > 0.0f ? scene.environment.fogSunScattering : 1.0f,
+			0.0f
+		);
+		cbFog.prevViewProj = m_prevViewProjMatrix;
+
+		if (m_cbFrame)
+		{
+			m_context->setConstantBufferCS(DF_SLOT_CB_PER_FRAME, m_cbFrame);
+		}
+		if (m_cbView)
+		{
+			m_context->setConstantBufferCS(DF_SLOT_CB_PER_VIEW, m_cbView);
+		}
+		if (m_cbPass)
+		{
+			m_context->setConstantBufferCS(DF_SLOT_CB_PER_PASS, m_cbPass);
+		}
+		if (m_cbShadow)
+		{
+			m_context->setConstantBufferCS(DF_SLOT_CB_SHADOW, m_cbShadow);
+		}
+		if (m_cbVolumetricFog)
+		{
+			m_context->updateSubresource(m_cbVolumetricFog, &cbFog, sizeof(cbFog));
+			m_context->setConstantBufferCS(DF_SLOT_CB_VOLUMETRIC_FOG, m_cbVolumetricFog);
+		}
+
+		if (m_bufLights) m_context->setShaderResourceBufferCS(DF_SLOT_BUF_LIGHTS, m_bufLights);
+		if (m_shadowMapTexture) m_context->setShaderResourceCS(DF_SLOT_TEX_SHADOW_MAP, m_shadowMapTexture);
+		if (m_samplerLinearClamp) m_context->setSamplerCS(DF_SLOT_SMP_LINEAR_CLAMP, m_samplerLinearClamp);
+		if (m_samplerShadow) m_context->setSamplerCS(DF_SLOT_SMP_SHADOW, m_samplerShadow);
+
+		auto curHistory = m_volumetricFogHistory[m_volumetricFogHistoryIndex];
+		auto prevHistory = m_volumetricFogHistory[1 - m_volumetricFogHistoryIndex];
+
+		m_context->setShaderResourceCS(0, prevHistory ? prevHistory : m_volumetricFogRaw);
+		m_context->setUnorderedAccessViewCS(0, curHistory ? curHistory : m_volumetricFogRaw);
+
+		m_csVolumetricFog.dispatchGroups(*m_context, (gridW + 7) / 8, (gridH + 7) / 8, gridD);
+
+		m_context->setUnorderedAccessViewCS(0, nullptr);
+		m_context->setShaderResourceCS(0, nullptr);
+		m_context->setShaderResourceCS(DF_SLOT_TEX_SHADOW_MAP, nullptr);
+		m_context->setShaderResourceBufferCS(DF_SLOT_BUF_LIGHTS, nullptr);
+
+		// 2. Integration Pass
+		CBVolumetricFogIntegrate cbInt{};
+		cbInt.volumeGridSize = Math::Vector4(static_cast<float>(gridW), static_cast<float>(gridH), static_cast<float>(gridD), 1.0f / 64.0f);
+		cbInt.fogDepths = Math::Vector4(0.5f, 65.0f, 0.0f, 0.0f);
+
+		if (m_cbVolumetricFogIntegrate)
+		{
+			m_context->updateSubresource(m_cbVolumetricFogIntegrate, &cbInt, sizeof(cbInt));
+			m_context->setConstantBufferCS(0, m_cbVolumetricFogIntegrate);
+		}
+
+		m_context->setShaderResourceCS(0, curHistory ? curHistory : m_volumetricFogRaw);
+		m_context->setUnorderedAccessViewCS(0, m_volumetricFogIntegrated);
+
+		m_csVolumetricFogIntegrate.dispatchGroups(*m_context, (gridW + 7) / 8, (gridH + 7) / 8, 1);
+
+		m_context->setUnorderedAccessViewCS(0, nullptr);
+		m_context->setShaderResourceCS(0, nullptr);
+		m_context->setConstantBufferCS(0, nullptr);
+		m_context->setConstantBufferCS(DF_SLOT_CB_PER_FRAME, nullptr);
+		m_context->setConstantBufferCS(DF_SLOT_CB_PER_VIEW, nullptr);
+		m_context->setConstantBufferCS(DF_SLOT_CB_PER_PASS, nullptr);
+		m_context->setConstantBufferCS(DF_SLOT_CB_SHADOW, nullptr);
+		m_context->setConstantBufferCS(DF_SLOT_CB_VOLUMETRIC_FOG, nullptr);
+
+		m_volumetricFogHistoryIndex = 1 - m_volumetricFogHistoryIndex;
 	}
 }

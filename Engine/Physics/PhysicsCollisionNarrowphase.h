@@ -31,6 +31,22 @@ namespace Physics
 		Vector3& outMax
 	);
 
+	DF_API Vector3 ClosestPointOnTriangle(const Vector3& p, const Vector3& a, const Vector3& b, const Vector3& c);
+	DF_API bool TestSphereTriangle(const Vector3& sphereCenter, float sphereRadius, const Vector3& a, const Vector3& b, const Vector3& c, Vector3& outNormal, float& outPenetration);
+	DF_API bool TestOBBTriangle(const OBB& obb, const Vector3& a, const Vector3& b, const Vector3& c, Vector3& outNormal, float& outPenetration);
+
+	DF_API bool TestSphereTriangleMesh(
+		const Core::ColliderComponent& sphereCol, const Core::TransformComponent& sphereTrans,
+		const Core::ColliderComponent& meshCol, const Core::TransformComponent& meshTrans,
+		Vector3& outNormal, float& outPenetration
+	);
+
+	DF_API bool TestOBBTriangleMesh(
+		const Core::ColliderComponent& boxCol, const Core::TransformComponent& boxTrans,
+		const Core::ColliderComponent& meshCol, const Core::TransformComponent& meshTrans,
+		Vector3& outNormal, float& outPenetration
+	);
+
 	DF_API bool TestColliderPair(
 		const Core::ColliderComponent& colA, const Core::TransformComponent& transA,
 		const Core::ColliderComponent& colB, const Core::TransformComponent& transB,

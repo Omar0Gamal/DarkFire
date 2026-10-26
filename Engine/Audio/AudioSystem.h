@@ -2,6 +2,7 @@
 
 #include "Engine/Core/Defines.h"
 #include "Engine/Core/Scene/Scene.h"
+#include "Engine/Core/Scene/Components.h"
 #include <memory>
 
 namespace Audio
@@ -23,6 +24,9 @@ namespace Audio
 		void shutdown();
 		void update(Core::Scene& scene, float deltaTime);
 		bool isInitialized() const noexcept;
+
+		void setBusVolume(Core::AudioBus bus, float volume);
+		float getBusVolume(Core::AudioBus bus) const;
 
 		static AudioSystem& Get();
 

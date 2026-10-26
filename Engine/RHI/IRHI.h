@@ -82,6 +82,11 @@ namespace Core::RHI
 		virtual void present(bool vsync) = 0;
 		virtual void resize(uint32_t width, uint32_t height) = 0;
 		virtual std::shared_ptr<IGpuTexture> getBackBufferTexture() = 0;
+
+		// Milestone 4.1: Low-latency waitable object controls
+		virtual bool setMaximumFrameLatency(uint32_t maxLatency) { (void)maxLatency; return false; }
+		virtual bool waitForNextFrame(uint32_t timeoutMs = 1000) { (void)timeoutMs; return true; }
+		virtual bool isWaitable() const noexcept { return false; }
 	};
 
 	class DF_API IDeviceContext

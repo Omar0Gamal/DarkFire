@@ -92,6 +92,7 @@ Texture2D g_TextureHiZDepth           : HLSL_REG_T(DF_SLOT_TEX_HIZ);
 Texture2D g_TextureDDGIRadiance       : HLSL_REG_T(DF_SLOT_TEX_DDGI_IRRADIANCE);
 Texture2D g_TextureDDGIDepth          : HLSL_REG_T(DF_SLOT_TEX_DDGI_DEPTH);
 Texture2D g_TextureSSS                : HLSL_REG_T(DF_SLOT_TEX_SSS);
+Texture3D g_TextureVolumetricFog      : HLSL_REG_T(DF_SLOT_TEX_VOLUMETRIC_FOG);
 
 cbuffer CBSSRBuffer : HLSL_REG_B(DF_SLOT_CB_SSR)
 {

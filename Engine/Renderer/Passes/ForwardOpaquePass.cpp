@@ -335,10 +335,24 @@ namespace Core::Renderer
 		if (m_samplerPointClamp) m_context->setSamplerPS(DF_SLOT_SMP_POINT_CLAMP, m_samplerPointClamp);
 		if (m_samplerShadow) m_context->setSamplerPS(DF_SLOT_SMP_SHADOW, m_samplerShadow);
 
-		// Bind Lights Structured Buffer
+		// Bind Lights Structured Buffer & Cluster Buffers
 		if (m_bufLights)
 		{
 			m_context->setShaderResourceBufferPS(DF_SLOT_BUF_LIGHTS, m_bufLights);
+		}
+		if (m_bufClusterGrid)
+		{
+			m_context->setShaderResourceBufferPS(DF_SLOT_BUF_CLUSTER_GRID, m_bufClusterGrid);
+		}
+		if (m_bufClusterLightIndices)
+		{
+			m_context->setShaderResourceBufferPS(DF_SLOT_BUF_CLUSTER_INDICES, m_bufClusterLightIndices);
+		}
+
+		// Bind Volumetric Fog (slot 29)
+		if (m_volumetricFogIntegrated)
+		{
+			m_context->setShaderResourcePS(DF_SLOT_TEX_VOLUMETRIC_FOG, m_volumetricFogIntegrated);
 		}
 
 		// Bind Shadow Map & CBShadow
@@ -534,6 +548,9 @@ namespace Core::Renderer
 		m_context->setShaderResourcePS(DF_SLOT_TEX_SSR, nullptr);
 		m_context->setShaderResourcePS(DF_SLOT_TEX_DDGI_IRRADIANCE, nullptr);
 		m_context->setShaderResourcePS(DF_SLOT_TEX_DDGI_DEPTH, nullptr);
+		m_context->setShaderResourcePS(DF_SLOT_TEX_VOLUMETRIC_FOG, nullptr);
+		m_context->setShaderResourceBufferPS(DF_SLOT_BUF_CLUSTER_GRID, nullptr);
+		m_context->setShaderResourceBufferPS(DF_SLOT_BUF_CLUSTER_INDICES, nullptr);
 		m_context->setShaderResourceBufferPS(DF_SLOT_BUF_LIGHTS, nullptr);
 		m_context->setHullShader(nullptr);
 		m_context->setDomainShader(nullptr);

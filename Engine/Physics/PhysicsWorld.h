@@ -24,6 +24,27 @@ namespace Physics
 			uint16_t layerMask = 0xFFFF
 		) override;
 
+		bool sphereCast(
+			Core::Scene& scene,
+			const Vector3& origin,
+			float radius,
+			const Vector3& dir,
+			float maxDist,
+			SweepHit& outHit,
+			uint16_t layerMask = 0xFFFF
+		) override;
+
+		bool boxCast(
+			Core::Scene& scene,
+			const Vector3& origin,
+			const Vector3& halfExtents,
+			const Quaternion& orientation,
+			const Vector3& dir,
+			float maxDist,
+			SweepHit& outHit,
+			uint16_t layerMask = 0xFFFF
+		) override;
+
 		void setCollisionMatrix(const std::array<uint16_t, 16>& matrix) override { m_collisionMatrix = matrix; }
 		const std::array<uint16_t, 16>& getCollisionMatrix() const override { return m_collisionMatrix; }
 

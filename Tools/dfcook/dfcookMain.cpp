@@ -244,7 +244,10 @@ namespace dfcook
 		f.close();
 		std::cout << "[dfcook] Wrote cook manifest to: " << manifestPath.filename().string() << std::endl;
 	}
+
+
 }
+
 
 int main(int argc, char** argv)
 {
@@ -258,6 +261,7 @@ int main(int argc, char** argv)
 	bool cookTextures = false;
 	bool cookPaks = false;
 	bool cookLighting = false;
+	bool useCache = false;
 	dfcook::BakeQuality bakeQuality = dfcook::BakeQuality::Production;
 
 	for (int i = 1; i < argc; ++i)
@@ -294,6 +298,10 @@ int main(int argc, char** argv)
 			if (qStr == "fast" || qStr == "0") bakeQuality = dfcook::BakeQuality::Fast;
 			else if (qStr == "balanced" || qStr == "1") bakeQuality = dfcook::BakeQuality::Balanced;
 			else bakeQuality = dfcook::BakeQuality::Production;
+		}
+		else if (arg == "--cache")
+		{
+			useCache = true;
 		}
 		else if (arg == "--all")
 		{

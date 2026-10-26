@@ -16,7 +16,7 @@
 
 namespace dfcook
 {
-	bool CookTextures(const std::filesystem::path& inDir, const std::filesystem::path& outDir)
+	bool CookTextures(const std::filesystem::path& inDir, const std::filesystem::path& outDir, CookCache* cache)
 	{
 		std::cout << "[dfcook] Cooking textures from: " << inDir.string() << " to: " << outDir.string() << std::endl;
 		if (!std::filesystem::exists(inDir)) return true;
@@ -37,6 +37,12 @@ namespace dfcook
 				auto outDdsPath = outDir / relPath;
 				outDdsPath.replace_extension(".dds");
 				std::filesystem::create_directories(outDdsPath.parent_path());
+
+				std::string vkey = relPath.string();
+				if (cache && std::filesystem::exists(outDdsPath) && cache->isUpToDate(entry.path(), vkey))
+				{
+					continue; // Up to date in cache
+				}
 
 				DirectX::TexMetadata metadata;
 				DirectX::ScratchImage image;
@@ -87,12 +93,14 @@ namespace dfcook
 				{
 					DirectX::SaveToDDSFile(compressed.GetImages(), compressed.GetImageCount(), compressed.GetMetadata(), DirectX::DDS_FLAGS_NONE, outDdsPath.c_str());
 					std::cout << "[dfcook] Compressed texture " << relPath.string() << " -> " << outDdsPath.filename().string() << std::endl;
+					if (cache) cache->update(entry.path(), vkey);
 				}
 				else
 				{
 					// Fallback to uncompressed DDS
 					DirectX::SaveToDDSFile(imageToCompress.GetImages(), imageToCompress.GetImageCount(), imageToCompress.GetMetadata(), DirectX::DDS_FLAGS_NONE, outDdsPath.c_str());
 					std::cout << "[dfcook] Saved uncompressed texture " << relPath.string() << " -> " << outDdsPath.filename().string() << std::endl;
+					if (cache) cache->update(entry.path(), vkey);
 				}
 			}
 		}

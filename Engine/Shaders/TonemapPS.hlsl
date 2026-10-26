@@ -91,6 +91,15 @@ float3 TonemapAgX(float3 val)
 }
 
 // Reinhard tonemapper
+// Reinhard-Jodie tonemapper (eliminates highlight hue shifts)
+float3 TonemapReinhardJodie(float3 c)
+{
+	float luma = dot(c, float3(0.2126f, 0.7152f, 0.0722f));
+	float3 tc = c / (1.0f + c);
+	return lerp(c / (1.0f + luma), tc, tc);
+}
+
+// Reinhard tonemapper
 float3 TonemapReinhard(float3 x)
 {
 	return x / (1.0f + x);
@@ -230,6 +239,10 @@ float4 main(FullscreenVSOutput input) : SV_Target
 	else if (g_Post.tonemapper == 3u)
 	{
 		color = TonemapAgX(color);
+	}
+	else if (g_Post.tonemapper == 5u)
+	{
+		color = TonemapReinhardJodie(color);
 	}
 	else if (g_Post.tonemapper == 4u)
 	{

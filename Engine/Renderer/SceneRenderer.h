@@ -12,6 +12,7 @@
 #include "Engine/Renderer/RenderPipeline.h"
 #include "Engine/Renderer/ComputeKernel.h"
 #include "Engine/Shaders/Shared/Bindings.h"
+#include "Engine/Renderer/ShadowAtlasAllocator.h"
 #include <unordered_map>
 
 #include <memory>
@@ -100,6 +101,10 @@ namespace Core::Renderer
 		float exposure = 1.0f;
 		float bloomThreshold = 1.0f;
 		float bloomIntensity = 0.5f;
+		bool enableMotionBlur = false;
+		float motionBlurShutterAngle = 0.5f;
+		float motionBlurMaxRadius = 32.0f;
+		uint32_t shadowAtlasResolution = 4096;
 	};
 
 	class DF_API SceneRenderer
@@ -143,6 +148,9 @@ namespace Core::Renderer
 		[[nodiscard]] std::shared_ptr<RHI::IGpuTexture> getDDGIRadianceAtlas() const noexcept { return m_ddgiRadianceAtlas; }
 		[[nodiscard]] std::shared_ptr<RHI::IGpuTexture> getDDGIDepthAtlas() const noexcept { return m_ddgiDepthAtlas; }
 		[[nodiscard]] const GpuMesh& getGrassBladeMesh() const noexcept { return m_grassBladeMesh; }
+		[[nodiscard]] std::shared_ptr<RHI::IGpuTexture> getVolumetricFogTexture() const noexcept { return m_volumetricFogIntegrated; }
+		[[nodiscard]] std::shared_ptr<RHI::IGpuTexture> getMotionBlurTexture() const noexcept { return m_motionBlurTexture; }
+		[[nodiscard]] const ShadowAtlasAllocator& getShadowAtlasAllocator() const noexcept { return m_shadowAtlasAllocator; }
 		[[nodiscard]] RenderPipeline& getPipeline(RenderPipelineType type) noexcept;
 		[[nodiscard]] const RenderPipeline& getPipeline(RenderPipelineType type) const noexcept;
 
@@ -161,7 +169,7 @@ namespace Core::Renderer
 		[[nodiscard]] uint32_t getInstanceCount() const noexcept { return m_instanceCount; }
 		[[nodiscard]] const RHI::UploadRing& getUploadRing() const noexcept { return m_uploadRing; }
 
-		static constexpr uint32_t kShadowMapResolution = 2048;
+		static constexpr uint32_t kShadowMapResolution = 4096;
 
 	private:
 		RHI::IRHIDevice& m_device;
@@ -372,6 +380,40 @@ namespace Core::Renderer
 		std::shared_ptr<RHI::IPixelShader> m_psSSR;
 		std::shared_ptr<RHI::IPixelShader> m_psSubsurface;
 
+		// Milestone 2 (Atmospheric Lighting, Volumetrics & Camera VFX)
+		std::shared_ptr<RHI::IGpuTexture> m_tileMaxTexture;
+		std::shared_ptr<RHI::IGpuTexture> m_neighborMaxTexture;
+		std::shared_ptr<RHI::IGpuTexture> m_motionBlurTexture;
+
+		std::shared_ptr<RHI::IGpuTexture> m_volumetricFogRaw;
+		std::shared_ptr<RHI::IGpuTexture> m_volumetricFogHistory[2];
+		std::shared_ptr<RHI::IGpuTexture> m_volumetricFogIntegrated;
+		uint32_t m_volumetricFogHistoryIndex = 0;
+
+		std::shared_ptr<RHI::IGpuBuffer> m_bufLuminanceHistogram;
+		std::shared_ptr<RHI::IGpuBuffer> m_bufAdaptedLuminance;
+
+		std::shared_ptr<RHI::IGpuBuffer> m_cbMotionBlur;
+		std::shared_ptr<RHI::IGpuBuffer> m_cbVolumetricFog;
+		std::shared_ptr<RHI::IGpuBuffer> m_cbVolumetricFogIntegrate;
+		std::shared_ptr<RHI::IGpuBuffer> m_cbHistogram;
+		std::shared_ptr<RHI::IGpuBuffer> m_cbAverage;
+		std::shared_ptr<RHI::IGpuBuffer> m_cbParaboloidShadow;
+
+		ComputeKernel m_csTileMax;
+		ComputeKernel m_csNeighborMax;
+		std::shared_ptr<RHI::IPixelShader> m_psMotionBlur;
+
+		ComputeKernel m_csVolumetricFog;
+		ComputeKernel m_csVolumetricFogIntegrate;
+		ComputeKernel m_csLuminanceHistogram;
+		ComputeKernel m_csLuminanceAverage;
+
+		std::shared_ptr<RHI::IVertexShader> m_vsShadowParaboloid;
+		std::shared_ptr<RHI::IInputLayout>  m_inputLayoutShadowParaboloid;
+
+		ShadowAtlasAllocator m_shadowAtlasAllocator;
+
 		// Staging texture for readEntityId
 		mutable void* m_stagingEntityId = nullptr;
 
@@ -410,6 +452,9 @@ namespace Core::Renderer
 		void passSSR(const RenderScene& scene, const RenderView& view);
 		void passDDGI(const RenderScene& scene);
 		void passSubsurface(const RenderScene& scene);
+		void passVolumetricFog(const RenderScene& scene, const RenderView& view);
+		void passMotionBlur(const RenderScene& scene, const RenderView& view);
+		void passAutoExposure(const RenderScene& scene, const RenderView& view);
 		void passBloom(const RenderScene& scene);
 		void passTonemap(const RenderScene& scene, const RenderView& view, const std::shared_ptr<RHI::IGpuTexture>& destination);
 		void passFXAA(const RenderScene& scene, const std::shared_ptr<RHI::IGpuTexture>& source, const std::shared_ptr<RHI::IGpuTexture>& destination);

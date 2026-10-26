@@ -49,7 +49,8 @@ float sampleCascadeSlice(float3 biasedPos, int cascadeIndex, float2 screenPos, f
 		return 1.0f;
 	}
 
-	float2 atlasUV = uv * 0.5f + quadOffset;
+	float atlasScale = (g_Shadow.shadowParams.z < 0.00035f) ? 0.5f : 1.0f;
+	float2 atlasUV = (uv * 0.5f + quadOffset) * atlasScale;
 
 	// Softness filter: invSize is for full 2048x2048 atlas. Each cascade quadrant is 1024x1024.
 	float invSize = g_Shadow.shadowParams.z;
@@ -331,8 +332,97 @@ float sampleVolumetricShadow(float3 posWS)
 		return 1.0f;
 	}
 
-	float2 atlasUV = isMultiCascade ? (uv * 0.5f + quadOffset) : uv;
+	float atlasScale = (g_Shadow.shadowParams.z < 0.00035f) ? 0.5f : 1.0f;
+	float2 atlasUV = isMultiCascade ? ((uv * 0.5f + quadOffset) * atlasScale) : uv;
 	return g_TextureShadowMap.SampleCmpLevelZero(g_SamplerShadow, atlasUV, shadowCoord.z - 0.0025f);
+}
+
+// Spot Light Shadow Evaluation in Dynamic Shadow Atlas
+float evaluateSpotShadow(LightData light, float3 worldPos, float3 N, float3 L, float2 screenPos)
+{
+	if (light.spotAnglesPad.z < 0.5f) return 1.0f;
+
+	float NdotL = saturate(dot(N, L));
+	float normalBias = g_Shadow.shadowParams.y * sqrt(max(0.0f, 1.0f - NdotL * NdotL));
+	float3 biasedPos = worldPos + N * normalBias;
+
+	float4 lightPosH = mul(float4(biasedPos, 1.0f), light.shadowViewProj);
+	float3 shadowCoord = lightPosH.xyz / max(abs(lightPosH.w), 0.00001f);
+	float2 uv = shadowCoord.xy * float2(0.5f, -0.5f) + float2(0.5f, 0.5f);
+
+	if (any(uv < 0.001f) || any(uv > 0.999f) || shadowCoord.z < 0.0f || shadowCoord.z > 1.0f)
+	{
+		return 1.0f;
+	}
+
+	float2 atlasUV = uv * light.shadowAtlasRect.zw + light.shadowAtlasRect.xy;
+	float invSize = g_Shadow.shadowParams.z;
+	float filterRadius = invSize * 1.5f;
+	float depthBias = g_Shadow.shadowParams.x * 2.0f;
+	float compareDepth = shadowCoord.z - depthBias;
+
+	float noise = InterleavedGradientNoise(screenPos);
+	float phi = noise * 6.2831853f;
+	float sinP, cosP;
+	sincos(phi, sinP, cosP);
+	float2x2 rotMat = float2x2(cosP, -sinP, sinP, cosP);
+
+	float shadow = 0.0f;
+	[unroll]
+	for (int i = 0; i < 8; ++i)
+	{
+		float2 rotatedOffset = mul(s_vogelDisk16[i * 2], rotMat) * filterRadius;
+		shadow += g_TextureShadowMap.SampleCmpLevelZero(g_SamplerShadow, atlasUV + rotatedOffset, compareDepth);
+	}
+	return shadow * 0.125f;
+}
+
+// Omni-directional Point Light Dual-Paraboloid Shadow Evaluation
+float evaluatePointShadow(LightData light, float3 worldPos, float3 N, float3 L, float2 screenPos)
+{
+	if (light.spotAnglesPad.z < 0.5f) return 1.0f;
+
+	float NdotL = saturate(dot(N, L));
+	float normalBias = g_Shadow.shadowParams.y * sqrt(max(0.0f, 1.0f - NdotL * NdotL));
+	float3 biasedPos = worldPos + N * normalBias;
+
+	float4 lightPos = mul(float4(biasedPos, 1.0f), light.shadowViewProj);
+	float dist = length(lightPos.xyz);
+	float range = max(light.directionRange.w, 0.1f);
+	if (dist > range) return 1.0f;
+
+	float3 P = lightPos.xyz / max(dist, 0.0001f);
+	bool isFront = (P.z >= 0.0f);
+	float zSign = isFront ? 1.0f : -1.0f;
+	P.z *= zSign;
+
+	float2 proj = P.xy / max(P.z + 1.0f, 0.001f);
+	float2 uv = proj * float2(0.5f, -0.5f) + float2(0.5f, 0.5f);
+	if (any(uv < 0.001f) || any(uv > 0.999f)) return 1.0f;
+
+	float2 tileOffset = isFront ? float2(0.0f, 0.0f) : float2(light.shadowAtlasRect.z * 0.5f, 0.0f);
+	float2 atlasUV = uv * float2(light.shadowAtlasRect.z * 0.5f, light.shadowAtlasRect.w) + light.shadowAtlasRect.xy + tileOffset;
+
+	float normDepth = (dist - 0.1f) / (range - 0.1f);
+	float compareDepth = normDepth - 0.005f;
+
+	float invSize = g_Shadow.shadowParams.z;
+	float filterRadius = invSize * 1.5f;
+
+	float noise = InterleavedGradientNoise(screenPos);
+	float phi = noise * 6.2831853f;
+	float sinP, cosP;
+	sincos(phi, sinP, cosP);
+	float2x2 rotMat = float2x2(cosP, -sinP, sinP, cosP);
+
+	float shadow = 0.0f;
+	[unroll]
+	for (int i = 0; i < 8; ++i)
+	{
+		float2 rotatedOffset = mul(s_vogelDisk16[i * 2], rotMat) * filterRadius;
+		shadow += g_TextureShadowMap.SampleCmpLevelZero(g_SamplerShadow, atlasUV + rotatedOffset, compareDepth);
+	}
+	return shadow * 0.125f;
 }
 
 // Horizon Micro-Shadowing (Chan 2018, Unity HDRP Classic-Sponza MicroShadowing opacity: 0.5)

@@ -4,6 +4,8 @@
 #include "Engine/Core/Scene/Scene.h"
 #include <memory>
 #include <functional>
+#include <vector>
+#include <filesystem>
 
 namespace Editor
 {
@@ -20,6 +22,13 @@ namespace Editor
 		Stopped = 0,
 		Playing,
 		Paused
+	};
+
+	enum class PIEMode : uint8_t
+	{
+		SinglePlayer = 0,
+		ServerAnd1Client,
+		ServerAnd2Clients
 	};
 
 	class PlaySession
@@ -42,6 +51,11 @@ namespace Editor
 		void onSimulate(std::shared_ptr<Core::Scene>& activeScene, std::function<void()> onSceneChanged);
 		void onStop(std::shared_ptr<Core::Scene>& activeScene, std::function<void()> onSceneChanged);
 
+		// Multi-Instance PIE Launcher (Milestone 8.3)
+		void launchMultiInstance(const std::filesystem::path& projectPath, PIEMode mode);
+		void stopMultiInstances();
+		bool hasRunningInstances() const;
+
 		// Simulation ticks
 		void onFixedUpdate(std::shared_ptr<Core::Scene>& activeScene, float fixedDeltaTime);
 		void onUpdate(std::shared_ptr<Core::Scene>& activeScene, float deltaTime);
@@ -50,5 +64,7 @@ namespace Editor
 		EditorMode m_editorMode = EditorMode::Edit;
 		PlayState m_playState = PlayState::Stopped;
 		std::shared_ptr<Core::Scene> m_editScene;
+
+		std::vector<void*> m_spawnedProcessHandles;
 	};
 }

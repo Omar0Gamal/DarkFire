@@ -232,6 +232,8 @@ namespace Core::RHI
 		void present(bool vsync) override;
 		void resize(uint32_t width, uint32_t height) override;
 		std::shared_ptr<IGpuTexture> getBackBufferTexture() override { return m_backBuffer; }
+		bool setMaximumFrameLatency(uint32_t) override { return true; }
+		bool waitForNextFrame(uint32_t) override { return true; }
 
 		[[nodiscard]] uint32_t getPresentCount() const noexcept { return m_presentCount; }
 		[[nodiscard]] uint32_t getWidth() const noexcept { return m_width; }

@@ -90,6 +90,7 @@ namespace Core
 				j["rotation"] = { comp.rotation.x, comp.rotation.y, comp.rotation.z, comp.rotation.w };
 				SerializeVec3(j, "scale", comp.scale);
 				SerializeVec3(j, "eulerDegrees", comp.eulerDegrees);
+				j["interpolate"] = comp.interpolate;
 			},
 			[](Scene& scene, entt::entity e, const void* jsonNode) {
 				const auto& j = *static_cast<const nlohmann::ordered_json*>(jsonNode);
@@ -101,6 +102,7 @@ namespace Core
 				}
 				DeserializeVec3(j, "scale", comp.scale);
 				DeserializeVec3(j, "eulerDegrees", comp.eulerDegrees);
+				if (j.contains("interpolate")) comp.interpolate = j["interpolate"].get<bool>();
 			});
 
 		// 3. CameraComponent
@@ -115,6 +117,7 @@ namespace Core
 				j["isOrthographic"] = comp.isOrthographic;
 				j["orthoWidth"] = comp.orthoWidth;
 				j["orthoHeight"] = comp.orthoHeight;
+				j["interpolate"] = comp.interpolate;
 			},
 			[](Scene& scene, entt::entity e, const void* jsonNode) {
 				const auto& j = *static_cast<const nlohmann::ordered_json*>(jsonNode);
@@ -126,6 +129,7 @@ namespace Core
 				if (j.contains("isOrthographic")) comp.isOrthographic = j["isOrthographic"].get<bool>();
 				if (j.contains("orthoWidth")) comp.orthoWidth = j["orthoWidth"].get<float>();
 				if (j.contains("orthoHeight")) comp.orthoHeight = j["orthoHeight"].get<float>();
+				if (j.contains("interpolate")) comp.interpolate = j["interpolate"].get<bool>();
 			});
 
 		// 4. MeshRendererComponent

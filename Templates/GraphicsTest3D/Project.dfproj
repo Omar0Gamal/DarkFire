@@ -9,8 +9,8 @@
   },
   "Window": {
     "Title": "DarkFire Engine 2.0 - GraphicsTest3D Benchmark [F1/F2: Scene | F12/T: TAA | L: Clustered Lights | 0-7: Debug Views | Tab: Menu]",
-    "Width": 1600,
-    "Height": 900,
+    "Width": 1920,
+    "Height": 1080,
     "VSync": false,
     "Fullscreen": false
   },

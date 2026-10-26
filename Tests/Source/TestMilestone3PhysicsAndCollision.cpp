@@ -27,7 +27,7 @@ TEST_CASE("Milestone 3.1: Decoupled 60 Hz Physics & Sub-Frame Transform Interpol
 	Matrix m1 = tc.getInterpolatedMatrix(1.0f);
 	CHECK(Math::getTranslation(m1).y == doctest::Approx(20.0f));
 
-	// 2. Verify SceneRendererBridge with alpha
+	// 2. Verify SceneRendererBridge with alpha and explicit interpolation policy
 	Scene scene;
 	auto camEntity = scene.createEntity("MainCamera");
 	auto& cam = camEntity.addComponent<CameraComponent>();
@@ -35,11 +35,14 @@ TEST_CASE("Milestone 3.1: Decoupled 60 Hz Physics & Sub-Frame Transform Interpol
 	auto& camTrans = camEntity.getComponent<TransformComponent>();
 	camTrans.position = Vector3(0.0f, 5.0f, -10.0f);
 	camTrans.syncPreviousTransform();
+	camTrans.position = Vector3(0.0f, 5.0f, 0.0f); // Variable freelook moved camera forward
+	scene.updateTransforms();
 
 	auto meshEntity = scene.createEntity("MovingMesh");
 	auto& meshComp = meshEntity.addComponent<MeshRendererComponent>();
 	meshComp.meshPath = "Mesh.obj";
 	auto& meshTrans = meshEntity.getComponent<TransformComponent>();
+	meshTrans.interpolate = true; // Explicit simulation tick ownership
 	meshTrans.position = Vector3(0.0f, 10.0f, 0.0f);
 	meshTrans.syncPreviousTransform();
 	meshTrans.position = Vector3(0.0f, 30.0f, 0.0f); // Physics moved it to 30
@@ -48,9 +51,17 @@ TEST_CASE("Milestone 3.1: Decoupled 60 Hz Physics & Sub-Frame Transform Interpol
 	Renderer::RenderScene renderScene;
 	ExtractRenderScene(scene, renderScene, 16.0f / 9.0f, 0.5f);
 
+	// By default, camera does NOT interpolate against fixed step (no rubber-banding)
+	CHECK(renderScene.camera.position.z == doctest::Approx(0.0f));
+
 	REQUIRE(renderScene.meshes.size() == 1);
 	Vector3 extractedPos = Math::getTranslation(renderScene.meshes[0].world);
 	CHECK(extractedPos.y == doctest::Approx(20.0f)); // Lerp(10, 30, 0.5) = 20
+
+	// If explicit camera interpolation is enabled:
+	cam.interpolate = true;
+	ExtractRenderScene(scene, renderScene, 16.0f / 9.0f, 0.5f);
+	CHECK(renderScene.camera.position.z == doctest::Approx(-5.0f)); // Lerp(-10, 0, 0.5) = -5
 }
 
 TEST_CASE("Milestone 3.2: Arbitrary TriangleMesh Collider & BVH Tree Construction")

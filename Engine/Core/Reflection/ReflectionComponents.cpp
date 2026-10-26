@@ -23,6 +23,7 @@ namespace Core
 			.field("rotation", &TransformComponent::rotation)
 			.field("scale", &TransformComponent::scale)
 			.field("eulerDegrees", &TransformComponent::eulerDegrees)
+			.field("interpolate", &TransformComponent::interpolate, { true, 0.0f, 1.0f, "Enable fixed-step sub-frame interpolation" })
 			.registerSelf();
 
 		// 3. CameraComponent
@@ -34,6 +35,7 @@ namespace Core
 			.field("isOrthographic", &CameraComponent::isOrthographic)
 			.field("orthoWidth", &CameraComponent::orthoWidth)
 			.field("orthoHeight", &CameraComponent::orthoHeight)
+			.field("interpolate", &CameraComponent::interpolate, { true, 0.0f, 1.0f, "Enable fixed-step sub-frame interpolation" })
 			.registerSelf();
 
 		// 4. MeshRendererComponent

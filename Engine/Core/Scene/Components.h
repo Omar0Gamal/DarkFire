@@ -45,6 +45,7 @@ namespace Core
 
 		Vector3 prevPosition = Vector3(0.0f, 0.0f, 0.0f);
 		Quaternion prevRotation = Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
+		bool interpolate = false; // Explicit simulation tick ownership for sub-frame interpolation
 
 		TransformComponent() = default;
 		TransformComponent(const Vector3& pos, const Quaternion& rot, const Vector3& scl)
@@ -58,6 +59,22 @@ namespace Core
 		{
 			prevPosition = position;
 			prevRotation = rotation;
+		}
+
+		void teleport(const Vector3& newPos) noexcept
+		{
+			position = newPos;
+			prevPosition = newPos;
+		}
+
+		void teleport(const Vector3& newPos, const Quaternion& newRot) noexcept
+		{
+			position = newPos;
+			prevPosition = newPos;
+			rotation = newRot;
+			prevRotation = newRot;
+			Vector3 rads = newRot.ToEuler();
+			eulerDegrees = Vector3(Math::toDegrees(rads.x), Math::toDegrees(rads.y), Math::toDegrees(rads.z));
 		}
 
 		Matrix getInterpolatedMatrix(float alpha) const noexcept
@@ -141,6 +158,7 @@ namespace Core
 		bool isOrthographic = false;
 		float orthoWidth = 10.0f;
 		float orthoHeight = 10.0f;
+		bool interpolate = false; // Explicit camera interpolation policy: disabled by default to prevent rubber-banding on variable-rate/freelook cameras and avoid double interpolation
 
 		Matrix getProjection(float aspectRatio) const noexcept
 		{

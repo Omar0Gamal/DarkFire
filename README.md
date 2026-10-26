@@ -2,10 +2,6 @@
 
 DarkFire is a modern, high-performance, game-agnostic C++20 3D game engine and standalone desktop editor built for Windows x64 and DirectX 11. Designed with data-driven ECS architecture, reversed-Z floating-point HDR rendering, clustered lighting, and an integrated asset cooking and packaging pipeline.
 
-![DarkFire Engine](Docs/images/engine.png)
-
-> _Note: Screenshot placeholder. Place your editor capture at `Docs/images/engine.png`._
-
 ---
 
 ## Architecture & Feature Highlights

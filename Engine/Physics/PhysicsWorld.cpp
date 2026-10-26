@@ -48,6 +48,17 @@ namespace Physics
 	{
 		auto& reg = scene.getRegistry();
 
+		// Sync previous transforms for all explicitly interpolated entities
+		auto interpView = reg.view<Core::TransformComponent>();
+		for (auto entity : interpView)
+		{
+			auto& tc = interpView.get<Core::TransformComponent>(entity);
+			if (tc.interpolate)
+			{
+				tc.syncPreviousTransform();
+			}
+		}
+
 		// 1. Integrate dynamic rigidbodies
 		auto rbView = reg.view<Core::RigidbodyComponent, Core::TransformComponent>();
 		for (auto entity : rbView)
@@ -55,6 +66,8 @@ namespace Physics
 			auto& rb = rbView.get<Core::RigidbodyComponent>(entity);
 			auto& transform = rbView.get<Core::TransformComponent>(entity);
 			auto& state = reg.get_or_emplace<Core::RigidbodyRuntimeState>(entity);
+
+			transform.syncPreviousTransform();
 
 			if (!rb.isKinematic)
 			{

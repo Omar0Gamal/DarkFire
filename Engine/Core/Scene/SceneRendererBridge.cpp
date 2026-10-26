@@ -21,13 +21,30 @@ namespace Core
 			if (cam.isPrimary || !cameraFound)
 			{
 				Matrix camWorld = worldTransform.worldMatrix;
-				if (alpha < 0.999f)
+				if (cam.interpolate && alpha < 0.999f)
 				{
 					if (const auto* tc = registry.try_get<TransformComponent>(entity))
 					{
 						Vector3 p = Vector3::Lerp(tc->prevPosition, tc->position, alpha);
 						Quaternion q = Quaternion::Slerp(tc->prevRotation, tc->rotation, alpha);
-						camWorld = Math::createTransformTRS(p, q, tc->scale);
+						Matrix localInterp = Math::createTransformTRS(p, q, tc->scale);
+
+						const auto* h = registry.try_get<HierarchyComponent>(entity);
+						if (h && h->parent != entt::null && registry.valid(h->parent))
+						{
+							if (const auto* parentWT = registry.try_get<WorldTransform>(h->parent))
+							{
+								camWorld = localInterp * parentWT->worldMatrix;
+							}
+							else
+							{
+								camWorld = localInterp;
+							}
+						}
+						else
+						{
+							camWorld = localInterp;
+						}
 					}
 				}
 				outRenderScene.camera.position = Math::getTranslation(camWorld);
@@ -71,7 +88,27 @@ namespace Core
 			{
 				if (const auto* tc = registry.try_get<TransformComponent>(entity))
 				{
-					meshWorld = tc->getInterpolatedMatrix(alpha);
+					bool shouldInterpolate = tc->interpolate || registry.any_of<RigidbodyComponent>(entity);
+					if (shouldInterpolate)
+					{
+						Matrix localInterp = tc->getInterpolatedMatrix(alpha);
+						const auto* h = registry.try_get<HierarchyComponent>(entity);
+						if (h && h->parent != entt::null && registry.valid(h->parent))
+						{
+							if (const auto* parentWT = registry.try_get<WorldTransform>(h->parent))
+							{
+								meshWorld = localInterp * parentWT->worldMatrix;
+							}
+							else
+							{
+								meshWorld = localInterp;
+							}
+						}
+						else
+						{
+							meshWorld = localInterp;
+						}
+					}
 				}
 			}
 

@@ -9,9 +9,46 @@
 
 namespace Runtime
 {
+static int s_screenshotCountdown = 0;
+static std::string s_screenshotDestination = "Docs/images/engine.png";
+static float s_screenshotToastTimer = 0.0f;
+static std::string s_screenshotToastText;
+
 	void SceneRuntimeLayer::onImGuiRender()
 	{
 		if (!m_scene || !ImGui::GetCurrentContext()) return;
+
+		// [F12] Take Screenshot
+		if (Platform::Input::isKeyJustPressed(Platform::KeyCode::F12))
+		{
+			s_screenshotCountdown = 2;
+			s_screenshotDestination = "Docs/images/engine.png";
+		}
+
+		// Brief ImGui deactivation: skip UI rendering for the capture frame so only the 3D scene is captured
+		if (s_screenshotCountdown > 0)
+		{
+			--s_screenshotCountdown;
+			if (s_screenshotCountdown == 0)
+			{
+				auto& app = Application::Get();
+				bool ok = app.getRenderer().saveScreenshot(s_screenshotDestination, app.getSwapChain());
+				if (!ok)
+				{
+					ok = app.getRenderer().saveScreenshot(s_screenshotDestination, nullptr);
+				}
+				if (ok)
+				{
+					s_screenshotToastText = "Screenshot saved to " + s_screenshotDestination;
+				}
+				else
+				{
+					s_screenshotToastText = "Failed to save screenshot!";
+				}
+				s_screenshotToastTimer = 3.5f;
+			}
+			return; // Briefly deactivate ImGui for pristine capture
+		}
 
 		if (Platform::Input::isKeyJustPressed(Platform::KeyCode::G) ||
 		    Platform::Input::isKeyJustPressed(Platform::KeyCode::Tab))
@@ -59,6 +96,18 @@ namespace Runtime
 				ImGui::Text("FPS: %.1f (%.2f ms) | %s", fps, ms, app.isVSync() ? "VSync: ON" : "VSync: OFF");
 				const auto& r = Application::Get().getRenderer();
 				ImGui::Text("Draw Calls: %u | Batches: %u | Instances: %u", r.getDrawCallCount(), r.getBatchCount(), r.getInstanceCount());
+
+				ImGui::Spacing();
+				ImGui::Spacing();
+				ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.35f, 1.0f));
+				ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.72f, 0.42f, 1.0f));
+				ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.15f, 0.5f, 0.28f, 1.0f));
+				if (ImGui::Button("Take Screenshot [F12]", ImVec2(-1.0f, 28.0f)))
+				{
+					s_screenshotCountdown = 2;
+					s_screenshotDestination = "Docs/images/engine.png";
+				}
+				ImGui::PopStyleColor(3);
 
 				ImGui::Spacing();
 				if (ImGui::Button(m_showEffectsMenu ? "Hide Effects & Shaders Menu [G / Tab]" : "Open Effects & Shaders Menu [G / Tab]", ImVec2(-1.0f, 26.0f)))
@@ -456,6 +505,20 @@ namespace Runtime
 				}
 				ImGui::End();
 			}
+		}
+
+		if (s_screenshotToastTimer > 0.0f)
+		{
+			s_screenshotToastTimer -= ImGui::GetIO().DeltaTime;
+			ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, 24.0f), ImGuiCond_Always, ImVec2(0.5f, 0.0f));
+			ImGui::SetNextWindowBgAlpha(0.9f);
+			if (ImGui::Begin("##ScreenshotToast", nullptr,
+				ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+				ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav))
+			{
+				ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.5f, 1.0f), " %s ", s_screenshotToastText.c_str());
+			}
+			ImGui::End();
 		}
 	}
 }

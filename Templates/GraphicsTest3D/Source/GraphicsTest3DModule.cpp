@@ -89,8 +89,9 @@ namespace GraphicsTest3D
 		void snapToScreenshotCamera()
 		{
 			auto& t = transform();
-			t.position = Vector3(-11.68f, 0.75f, 0.356f);
+			t.teleport(Vector3(-11.68f, 0.75f, 0.356f));
 			t.setEulerDegrees(Vector3(-12.55f, 90.0f, 0.0f));
+			t.syncPreviousTransform();
 			if (getEntity().hasComponent<Core::CameraComponent>())
 			{
 				getEntity().getComponent<Core::CameraComponent>().fov = 40.0f;

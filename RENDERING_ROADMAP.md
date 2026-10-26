@@ -32,6 +32,7 @@ flowchart TD
         Milestone7["Milestone 7: Advanced GPU Pipeline Specialization & Occlusion\n(Shader permutations, Two-phase Hi-Z GPU occlusion, Dithered LOD cross-fade)"]
         Milestone8["Milestone 8: Studio Tooling, Editor Infrastructure & Headless Player Runtime\n(Project Settings panel, 1-click packaging, multi-client PIE, headless server, meshoptimizer LODs)"]
         Milestone9["Milestone 9: Visual Editor Authoring, Prefabs & Developer Ergonomics\n(Visual Material Editor, Full Prefab system, Universal drag-and-drop, PIE Eject, Collider handles)"]
+        Milestone10["Milestone 10: Character Animation, Kinematic Controller & World Authoring\n(GPU Skeletal Skinning, KCC move-and-slide, GPU particles & ribbon trails, Spline road extrusion, Foliage brush)"]
     end
 
     Tier0 --> Tier1
@@ -45,6 +46,7 @@ flowchart TD
     Milestone6 --> Milestone7
     Milestone7 --> Milestone8
     Milestone8 --> Milestone9
+    Milestone9 --> Milestone10
 ```
 
 ---
@@ -174,6 +176,15 @@ flowchart TD
         M9_6["9.6 Visual Input Action & Axis Mapping Editor\n(Named action/axis bindings for Keyboard, Mouse, Gamepad, no hardcoded keys)"]
     end
 
+    subgraph M10["Milestone 10: Character Animation, Kinematic Controller & World Authoring"]
+        M10_1["10.1 Skeletal Animation & GPU Skinning\n(4-bone vertex weights, compute/vertex skinning, blend trees, cross-fading)"]
+        M10_2["10.2 Kinematic Character Controller (KCC)\n(Capsule move-and-slide, step-climbing, slope limits, ground adhesion)"]
+        M10_3["10.3 GPU Compute Particles & Ribbon Trails\n(100k+ ParticleSimCS, depth collisions, tire skidmark trails, sword slashes)"]
+        M10_4["10.4 In-Viewport Spline Curve Editing & Mesh Extruder\n(Interactive spline handles, procedural road/track geometry extrusion)"]
+        M10_5["10.5 Terrain Sculpting & Foliage Scatter Brush\n(Heightmap sculpting, instanced tree/rock painting with slope masking)"]
+        M10_6["10.6 Async Asset Streaming & Texture Mip Streaming\n(Background worker I/O, progressive mip streaming, hitch-free level traversal)"]
+    end
+
     M2 --> M3
     M3 --> M4
     M4 --> M5
@@ -181,6 +192,7 @@ flowchart TD
     M6 --> M7
     M7 --> M8
     M8 --> M9
+    M9 --> M10
 ```
 
 ---
@@ -842,6 +854,106 @@ flowchart TD
 
 ---
 
+### Milestone 10: Character Animation, Kinematic Controller & World Authoring Systems
+
+Milestone 10 unlocks the **core creative pillars** required to build full-scale character-driven action games, first/third-person adventures, and open-world titles in DarkFire. It delivers a hardware-accelerated GPU skeletal animation pipeline, a robust Kinematic Character Controller (KCC), 100,000+ GPU compute particles with skidmark ribbon trails, in-viewport spline road/track mesh extrusion, interactive terrain sculpting/foliage painting, and asynchronous background texture mip-streaming.
+
+```mermaid
+flowchart TD
+    subgraph CharacterSystems["Character & Animation Pipeline"]
+        SkeletalAnim["10.1 Skeletal Animation & GPU Skinning\n(4-bone weights, SkinningCS.hlsl, blend trees, cross-fades)"]
+        KCC["10.2 Kinematic Character Controller (KCC)\n(Capsule move-and-slide, step-climbing, slope limits, platform stick)"]
+    end
+
+    subgraph VisualVFX["High-Density VFX & Trails"]
+        ComputeParticles["10.3 GPU Compute Particles (ParticleSimCS)\n(100,000+ particles, scene depth bounce, turbulence fields)"]
+        RibbonTrails["10.3 Dynamic Ribbon & Streak Trails\n(Tire skidmarks, weapon slashes, projectile smoke ribbons)"]
+    end
+
+    subgraph WorldAuthoring["Level Design & World Authoring Tools"]
+        SplineRoads["10.4 In-Viewport Spline Road & Track Extruder\n(3D curve handles, procedural cross-section mesh extrusion)"]
+        TerrainBrush["10.5 Terrain Sculpting & Foliage Scatter Brush\n(Elevation brushes, instanced tree/rock painting with slope masks)"]
+        AsyncStream["10.6 Async Asset & Texture Mip Streaming\n(Multi-threaded I/O worker, zero-stutter background mip loading)"]
+    end
+
+    SkeletalAnim --> KCC
+    KCC --> RibbonTrails
+    ComputeParticles --> RibbonTrails
+    SplineRoads --> TerrainBrush
+    TerrainBrush --> AsyncStream
+```
+
+---
+
+#### 10.1 Skeletal Animation Pipeline & GPU Skinning (`SkinningCS.hlsl`)
+* **Hardware-Accelerated Character Skinning**:
+  - Adds bone weighting attributes to `VertexPositionNormalTangentTexture`:
+    - 4 bone indices (`uint4 boneIndices`) and 4 normalized bone weights (`float4 boneWeights`).
+  - **GPU Linear Blend Skinning (LBS)**:
+    - Structured bone matrix buffer containing up to 256 transformation matrices per skeleton.
+    - Two-path execution: Direct vertex shader skinning for dynamic meshes, or compute shader stream-out (`SkinningCS.hlsl`) into cached vertex buffers for multi-pass rendering (G-Buffer + Shadow Cascades) to evaluate skinning exactly once per frame.
+  - **Animation State Machine & Blend Trees**:
+    - Skeletal hierarchy with inverse bind pose matrices.
+    - Animation clip playback with translation/scale cubic interpolation and rotation quaternion Spherical Linear Interpolation (`slerp`).
+    - 1D/2D blend spaces (e.g., Idle $\to$ Walk $\to$ Run speed blending, strafe direction 2D blend trees).
+    - Cross-fading and additive upper-body action poses (e.g., aiming/shooting while moving).
+
+#### 10.2 Kinematic Character Controller (KCC) (`CharacterControllerComponent`)
+* **Responsive, Non-Jittery Player Movement**:
+  - Eliminates the erratic bouncing and tumbling of dynamic rigidbodies for player characters.
+  - **Move-and-Slide Iterative Solver**:
+    - Sweeps a player capsule through the physics world using `IPhysicsWorld::sphereCast` / `capsuleCast`.
+    - Handles multiple collision planes sequentially by projecting velocity along contact normal tangents.
+  - **Slope Limits & Friction Transitions**:
+    - Walkable slope angles up to $45^\circ$; automatically slides down steep inclines ($> 50^\circ$) with gravity acceleration.
+  - **Automatic Step-Climbing (Step-Offset)**:
+    - Smoothly steps up curbs and staircases up to $0.35\text{ m}$ in height without halting horizontal momentum.
+  - **Ground Adhesion Rays**:
+    - Downward ground-snapping raycasts prevent the character from unintentionally launching airborne when running down steep hills or stairs.
+  - **Moving Platform Attachment**:
+    - Detects elevators, trains, or floating platforms beneath the character's feet; inherits platform translation and rotational momentum when jumping off.
+
+#### 10.3 GPU Compute Particles & Ribbon/Streak Trails
+* **100,000+ Real-Time Particles (`ParticleSimCS.hlsl`)**:
+  - Replaces the CPU billboard particle loop with a massively parallel GPU compute simulation:
+    - Particle state held in structured UAV buffers (`float3 position`, `float3 velocity`, `float lifetime`, `float size`, `float4 color`).
+    - Bitonic / parallel prefix sum indirect argument generation (`DrawInstancedIndirect`) for dead particle recycling without CPU readbacks.
+    - **Scene Depth Collisions**: Evaluates screen-space depth buffer to bounce particles off floors, walls, and vehicle chasses.
+    - **Curl Noise & Vector Fields**: Generates realistic turbulence for smoke plumes, fire embers, magic spells, and spark showers.
+* **Dynamic Ribbon / Strip Trail Renderer (`RibbonMesh`)**:
+  - Procedurally generates connected quad strips oriented toward the camera or aligned to surface normals:
+    - **Surface Skidmarks**: Leaves continuous rubber tire marks on tracks/terrain with fading opacity.
+    - **Weapon Slashes & Bullet Tracers**: Generates high-speed sword slash arcs and weapon tracer streaks.
+
+#### 10.4 In-Viewport Spline Curve Editing & Road/Track Mesh Extruder
+* **Interactive 3D Splines in Viewport (`SplineComponent`)**:
+  - Renders spline curves in the 3D viewport with interactive tangent handles, point insertion, and loop closing.
+* **Procedural Road & Track Extruder Tool**:
+  - Takes a 2D cross-section profile (road surface, curbs, guardrails, race track barriers, pipes, or tunnels) and procedurally extrudes it along a 3D spline.
+  - Automatically calculates smooth UV coordinates along the curve and generates simplified collision meshes for the physics engine without leaving the Editor.
+
+#### 10.5 Interactive Terrain Sculpting & Foliage Scatter Brush
+* **Real-Time Heightmap Sculpting Tools**:
+  - Circular brush projection in the 3D viewport:
+    - **Raise / Lower**: Modifies terrain height smoothly with Gaussian, linear, or flat falloffs.
+    - **Smooth**: Relaxes high-frequency terrain spikes and jagged cliffs.
+    - **Flatten / Ramp**: Creates level plateaus and slopes between two elevation targets.
+* **Foliage & Prop Painting Brush**:
+  - Paints instanced meshes (trees, bushes, rocks, grass clusters) directly onto terrain surfaces.
+  - Configurable brush radius, density, random scale jitter, random yaw rotation, and slope angle filters (e.g., paint grass only on slopes $< 30^\circ$, rocks on steep cliffs).
+  - Automatically feeds `GrassPass` and GPU instancing buffers.
+
+#### 10.6 Asynchronous Asset Streaming & Texture Mip Streaming
+* **Hitch-Free Large-World Traversal**:
+  - **Multi-Threaded Disk I/O Worker**:
+    - Background loading thread loads textures, meshes, and audio clips from loose files or `.pak` archives without stalling the main render thread.
+  - **GPU Texture Mip-Level Streaming**:
+    - Initially loads lowest 3 mip levels (tiny memory footprint, instantaneous boot).
+    - As the camera approaches an entity, requests higher-resolution mip chains asynchronously and uploads them to the GPU via staging rings.
+    - Slashes VRAM consumption by up to 60% and completely eliminates level transition loading screens.
+
+---
+
 ## Testing & Performance Benchmarks
 
 Every milestone must maintain **100% pass rate** on the automated test suite and conform to DarkFire's performance standards:
@@ -869,4 +981,5 @@ Every milestone must maintain **100% pass rate** on the automated test suite and
 | **+ Milestone 5 & 6 (Multiplayer & Physics Toolkit)** | **9.4 / 10** | Production-grade game-agnostic framework. Studio-grade prediction netcode, rollback resimulation, modular non-linear spring & friction math. |
 | **+ Milestone 7 (Pipeline Specialization)** | **9.6 / 10** | Full-Stack Commercial AAA Rendering Standard. Zero-CPU two-phase Hi-Z occlusion culling, specialized permutation passes (<1,200 instructions), dithered LOD fading. |
 | **+ Milestone 8 (Studio Tooling & Runtime)** | **9.7 / 10** | Complete Commercial Studio Ecosystem. One-click game distribution, headless dedicated server, multi-instance PIE, incremental asset cooking, meshoptimizer LODs. |
-| **+ Milestone 9 (Visual Editor & Prefabs)** | **9.8 / 10** | **Apex Commercial Studio Environment.** 100% visual game authoring with zero text-file editing; visual material editor with live 3D preview, recursive prefabs, universal drag-and-drop, interactive collider handles, PIE eject mode, and visual input mappings. |
+| **+ Milestone 9 (Visual Editor & Prefabs)** | **9.8 / 10** | Apex Commercial Studio Environment. 100% visual game authoring with zero text-file editing; visual material editor with live 3D preview, recursive prefabs, universal drag-and-drop, interactive collider handles, PIE eject mode, and visual input mappings. |
+| **+ Milestone 10 (Animation & World Systems)** | **9.9 / 10** | **Comprehensive Full-Spectrum Game Engine.** GPU skeletal skinning, kinematic character controller, 100k+ GPU compute particles & skidmark trails, in-viewport spline track extrusion, terrain sculpting brush, and async texture mip-streaming. |

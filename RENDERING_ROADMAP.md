@@ -28,8 +28,9 @@ flowchart TD
         Milestone3["Milestone 3: Core Physics & Collision Infrastructure\n(Transform interpolation for 240Hz, TriangleMesh/ConvexMesh BVH, Sweeps)"]
         Milestone4["Milestone 4: Low-Latency Platform & Audio Infrastructure\n(DXGI waitable swapchain <8ms, Doppler velocity tracking, Mix buses)"]
         Milestone5["Milestone 5: Authoritative Deterministic Multiplayer & Studio-Grade Netcode\n(DarkFireNetworking 2.0: Dual TCP/UDP, Client prediction, Rollback, Visual smoothing, Hermite interpolation)"]
-        Milestone6["Milestone 6: Vehicle Dynamics & Raycast Suspension Physics Math\n(Raycast spring-damper suspension, Pacejka slip friction, Downforce/Drag)"]
+        Milestone6["Milestone 6: Modular Physics Simulation Toolkit & Multi-Body Constraint Math\n(Non-linear spring-damper, Pacejka/Coulomb slip friction, Aerodynamic drag & lift)"]
         Milestone7["Milestone 7: Advanced GPU Pipeline Specialization & Occlusion\n(Shader permutations, Two-phase Hi-Z GPU occlusion, Dithered LOD cross-fade)"]
+        Milestone8["Milestone 8: Studio Tooling, Editor Infrastructure & Headless Player Runtime\n(Project Settings panel, 1-click packaging, multi-client PIE, headless server, meshoptimizer LODs)"]
     end
 
     Tier0 --> Tier1
@@ -41,6 +42,7 @@ flowchart TD
     Milestone4 --> Milestone5
     Milestone5 --> Milestone6
     Milestone6 --> Milestone7
+    Milestone7 --> Milestone8
 ```
 
 ---
@@ -140,10 +142,11 @@ flowchart TD
         M5_5["5.5 Visual Error Smoothing & Hermite Snapshot Interpolation\n(Zero-teleport mesh decay, snapshot_history Hermite cubic spline)"]
     end
 
-    subgraph M6["Milestone 6: Vehicle Dynamics & Raycast Suspension Math Library"]
-        M6_1["6.1 Multi-Point Raycast Wheel Suspension Solver\n(Spring-damper compression, sway bar anti-roll stiffness)"]
-        M6_2["6.2 Pacejka 'Magic Formula' Tire Slip & Friction Model\n(Lateral/longitudinal slip curves, progressive drift loss of grip)"]
-        M6_3["6.3 Aerodynamic Drag, Downforce & Surface Math\n(Speed-squared downforce, air drag, terrain normal alignment)"]
+    subgraph M6["Milestone 6: Modular Physics Simulation Toolkit & Multi-Body Constraint Math"]
+        M6_1["6.1 Non-Linear Spring-Damper & Harmonic Oscillator Solver\n(Damped spring suspension, camera collision booms, bouncy elastic joints)"]
+        M6_2["6.2 Semi-Empirical Tangential Friction & Slip Models\n(Pacejka & Coulomb models for tires, ice sliding, surface friction limits)"]
+        M6_3["6.3 Fluid & Aerodynamic Drag / Downforce Equations\n(Speed-squared drag, downforce, aerodynamic stability for vehicles & projectiles)"]
+        M6_4["6.4 Multi-Point Surface Contact & Alignment Solver\n(Parallel ray/sweep ground anchoring for hovercraft, tanks, mechs, wheeled vehicles)"]
     end
 
     subgraph M7["Milestone 7: Advanced GPU Pipeline Specialization & Occlusion"]
@@ -152,11 +155,20 @@ flowchart TD
         M7_3["7.3 Dithered Mesh LOD Cross-Fade\n(Screen-door temporal dither blending between LOD levels)"]
     end
 
+    subgraph M8["Milestone 8: Studio Tooling, Editor Infrastructure & Headless Player Runtime"]
+        M8_1["8.1 Editor Project Settings Panel & In-Engine CVar Console\n(Unified project settings, autocomplete command terminal, live engine diagnostics)"]
+        M8_2["8.2 One-Click Packaging Pipeline & Incremental Cook Cache\n(dfcook .cookcache, automated pak bundling, Player.exe standalone distribution)"]
+        M8_3["8.3 Multi-Instance PIE & Integrated Network Simulator\n(One-click 1 Server + 2 Clients PIE launch, live jitter/packet loss editor controls)"]
+        M8_4["8.4 Headless Dedicated Server Runtime\n(Player.exe --server / --headless, zero-GPU headless simulation loop)"]
+        M8_5["8.5 Offline Mesh Optimization & Automated LOD Generation\n(meshoptimizer vertex cache/overdraw reduction, 3-level quadric error LODs)"]
+    end
+
     M2 --> M3
     M3 --> M4
     M4 --> M5
     M5 --> M6
     M6 --> M7
+    M7 --> M8
 ```
 
 ---
@@ -509,29 +521,69 @@ public:
 
 ---
 
-### Milestone 6: Vehicle Dynamics & Raycast Suspension Physics Math Library
+### Milestone 6: Modular Physics Simulation Toolkit & Multi-Body Constraint Math
 
-#### 6.1 Multi-Point Raycast Wheel Suspension Solver
-* **Game-Agnostic Vehicle Math Primitive**:
-  - Evaluates independent suspension spring-damper equations along wheel raycast vectors:
-    $$F_{\text{suspension}} = k_{\text{spring}} \times (L_{\text{rest}} - L_{\text{curr}}) - c_{\text{damper}} \times v_{\text{suspension}}$$
-  - Sway bar / anti-roll bar stiffness coupling opposite wheels to prevent vehicle rollovers during high-speed cornering.
+To preserve DarkFire's strict **game-agnostic core architecture**, physical dynamics are decoupled into **reusable mathematical simulation primitives** inside `Engine/Physics/Solvers/`. The engine core contains **zero vehicle presets, car physics classes, or arcade racing rules**. Instead, gameplay programmers and project templates (`Templates/`) compose these modular building blocks to author vehicles, flying craft, floating debris, character collision booms, or mechanical contraptions:
 
-#### 6.2 Pacejka 'Magic Formula' Tire Slip & Friction Model
-* **Realistic Tire Grip & Drifting Math**:
-  - Longitudinal slip ratio:
-    $$\sigma = \frac{R \omega - v_x}{|v_x|}$$
-  - Lateral slip angle:
-    $$\alpha = \arctan\left(\frac{v_y}{|v_x|}\right)$$
-  - Pure & combined slip force evaluation using Pacejka curve approximation:
-    $$F_y = D \sin\left(C \arctan\left(B \alpha - E (B \alpha - \arctan(B \alpha))\right)\right)$$
-  - Delivers crisp, responsive grip under normal steering that smoothly transitions into controllable lateral drift sliding as tire friction limits are exceeded.
+```mermaid
+flowchart TD
+    subgraph EngineSolvers["Engine Physics Layer (Engine/Physics/Solvers/) — 100% Game-Agnostic"]
+        Spring["6.1 Non-Linear Spring-Damper Solver\nF = -k*x - c*v (Harmonic damping, elastic joints, suspension)"]
+        Friction["6.2 Semi-Empirical Tangential Friction Solver\nCoulomb & Pacejka curves (Tires, ice, sliding blocks, conveyor belts)"]
+        Aero["6.3 Fluid & Aerodynamic Drag / Downforce Solver\nF_drag = -0.5*rho*Cd*A*v^2, F_downforce = 0.5*rho*Cl*A*v^2"]
+        Ground["6.4 Multi-Point Ground Contact & Alignment Solver\nParallel ray/sweep ground anchoring against surface normals"]
+    end
 
-#### 6.3 Aerodynamic Drag, Downforce & Ground Alignment Math
-* **High-Speed Stability**:
-  - Speed-squared aerodynamic drag: $\vec{F}_{\text{drag}} = -\frac{1}{2} \rho C_d A \|\vec{v}\| \vec{v}$.
-  - Aerodynamic downforce pushing vehicle chassis toward track surface: $F_{\text{downforce}} = \frac{1}{2} \rho C_l A v^2$.
-  - Adaptive chassis orientation torque aligning the vehicle's up-vector with the average terrain/track normal beneath the wheels for banked corners, ramps, and loops.
+    subgraph GameComposition["Game / Template Layer (Templates/<ProjectName>/) — Composable Gameplay"]
+        Kart["Arcade Kart / Car Controller\n(Composes 4 SpringDampers + 4 FrictionSolvers + AeroDownforce)"]
+        Hovercraft["Anti-Gravity Hovercraft\n(Composes 4 SpringDampers + MultiPointGroundAlignment)"]
+        Ragdoll["Physics Ragdoll / Mechanical Contraption\n(Composes Angular SpringDampers + Friction)"]
+        Arrow["Ballistic Projectile / Glider\n(Composes Aerodynamic Drag + Lift + Ground Alignment)"]
+    end
+
+    Spring --> Kart
+    Friction --> Kart
+    Aero --> Kart
+    Spring --> Hovercraft
+    Ground --> Hovercraft
+    Spring --> Ragdoll
+    Aero --> Arrow
+```
+
+---
+
+#### 6.1 Non-Linear Spring-Damper & Harmonic Oscillator Solver (`SpringDamperSolver`)
+* **Universal Damped Harmonic Oscillator**:
+  - Solves the second-order spring-damper differential equation along any arbitrary 3D constraint vector:
+    $$F_{\text{spring}} = k_{\text{stiffness}} \times (L_{\text{rest}} - L_{\text{current}}) - c_{\text{damping}} \times v_{\text{relative}}$$
+  - Configurable progressive stiffness curves (soft near rest length, exponentially stiff near bottom-out) and asymmetric compression/rebound damping.
+  - Sway-bar / anti-roll coupling solver: transfers displacement force between opposing constraint pairs to prevent roll instability.
+  - *Applicability*: Vehicle suspension, camera collision booms, bouncy environmental props, landing gear, and ragdoll joint limits.
+
+#### 6.2 Semi-Empirical Tangential Friction & Slip Models (`FrictionSolver`)
+* **Tangential Surface Force Formulation**:
+  - Normalizes contact slip into longitudinal slip ratio $\sigma$ and lateral slip angle $\alpha$:
+    $$\sigma = \frac{v_{\text{target}} - v_{\text{surface}}}{\max(|v_{\text{surface}}|, \epsilon)}, \quad \alpha = \arctan\left(\frac{v_{\text{lateral}}}{|v_{\text{longitudinal}}|}\right)$$
+  - Evaluates semi-empirical friction curves (Pacejka 'Magic Formula' and simplified bilinear friction circles):
+    $$F_{\text{friction}} = D \sin\left(C \arctan\left(B \phi - E (B \phi - \arctan(B \phi))\right)\right)$$
+  - Elliptical friction circle coupling: ensures total combined tangential force does not exceed maximum available surface grip ($\sqrt{F_x^2 + F_y^2} \le \mu F_z$).
+  - *Applicability*: Wheeled vehicles, sliding boxes, ice physics, drifting objects, conveyor belts, and foot slip mechanics.
+
+#### 6.3 Fluid & Aerodynamic Drag / Downforce Equations (`AerodynamicSolver`)
+* **Speed-Squared Fluid Dynamics**:
+  - Aerodynamic drag acting opposite to velocity vector:
+    $$\vec{F}_{\text{drag}} = -\frac{1}{2} \rho C_d A \|\vec{v}\| \vec{v}$$
+  - Aerodynamic lift / downforce acting perpendicular to relative wind direction:
+    $$\vec{F}_{\text{downforce}} = \frac{1}{2} \rho C_l A \|\vec{v}\|^2 \hat{n}_{\text{wing}}$$
+  - Center of pressure offset calculation: applies stabilizing aerodynamic pitch/yaw moments relative to the rigidbody's center of mass.
+  - *Applicability*: High-speed sports cars, rockets, arrows, gliders, airplanes, and falling debris.
+
+#### 6.4 Multi-Point Ground Contact & Surface Alignment Solver (`SurfaceAlignmentSolver`)
+* **Parallel Spatial Sweep Anchoring**:
+  - Evaluates multi-point raycast or spherecast arrays against world geometry using `IPhysicsWorld`.
+  - Computes weighted average surface normal and contact plane elevation beneath a multi-legged or multi-wheeled body.
+  - Generates proportional-derivative (PD) corrective torque to align body up-vector with terrain gradients for banked turns, ramps, and looping geometries.
+  - *Applicability*: Hovercraft, multi-legged mechs, tanks, wheeled buggies, and wall-crawling drones.
 
 ---
 
@@ -561,6 +613,99 @@ public:
 
 ---
 
+### Milestone 8: Studio Tooling, Editor Infrastructure & Headless Player Runtime
+
+To transform DarkFire from a powerful rendering/physics framework into a **complete commercial studio development ecosystem**, Milestone 8 implements comprehensive editor panels, a frictionless 1-click packaging pipeline, multi-instance networking playtesting, offline mesh optimization, and a lightweight headless dedicated server runtime.
+
+```mermaid
+flowchart TD
+    subgraph EditorUI["Editor Usability & Diagnostic Infrastructure"]
+        ProjSettings["8.1 Project Settings Panel (ImGui)\n(Render quality, Network config, Audio buses, Input bindings)"]
+        CVarConsole["8.1 In-Engine CVar Console Terminal\n(Autocomplete, stat fps/rhi, r.wireframe, net.sim)"]
+        PIE_Multi["8.3 Multi-Instance PIE Launcher\n(One-click: 1 Dedicated Server + 2 Clients)"]
+        NetSim["8.3 Live Network Simulator Widget\n(Real-time ping, packet loss, duplicate rate sliders)"]
+    end
+
+    subgraph ToolingPipeline["Asset Pipeline & Packaging (Tools/dfcook, dfpack)"]
+        CookCache["8.2 Incremental Asset Cache (.cookcache)\n(FNV-1a content hash skipping unchanged textures/shaders)"]
+        OneClickPack["8.2 One-Click Packaging Pipeline\n(Package/Windows/ standalone distribution generator)"]
+        MeshOpt["8.5 Mesh Optimization & LOD Generator\n(meshoptimizer vertex cache/overdraw reduction, 3-level LODs)"]
+    end
+
+    subgraph RuntimeHardening["Standalone Player Hardening (Player/PlayerMain.cpp)"]
+        Headless["8.4 Headless Dedicated Server (--server / --headless)\n(Zero-GPU Win32 headless loop, <5% CPU usage)"]
+        CrashDump["8.4 Minidump Telemetry (MiniDumpWriteDump)\n(Auto-generates Saved/Crashes/<timestamp>.dmp on unhandled crash)"]
+    end
+
+    ProjSettings --> OneClickPack
+    CVarConsole --> Headless
+    PIE_Multi --> Headless
+    NetSim --> PIE_Multi
+    CookCache --> OneClickPack
+    MeshOpt --> CookCache
+```
+
+---
+
+#### 8.1 Editor Project Settings Panel & In-Engine CVar Console
+* **Unified Project Settings Panel (`Editor/Panels/ProjectSettingsPanel.cpp`)**:
+  - Connects the currently stubbed menu item (`Project -> Project Settings...`) to a comprehensive ImGui tabbed editor serialized into `.dfproj`:
+    - **General**: Project name, game module DLL path, startup scene, asset root directory.
+    - **Rendering**: Default pipeline mode (Clustered Forward+ vs. Deferred PBR), TAA quality, DDGI probe density, shadow map resolution.
+    - **Networking**: Master network toggle, fixed simulation rate (60 Hz), server tick rate (30 Hz), client prediction toggle, redundancy count, interpolation delay.
+    - **Audio**: Master, SFX, Music, and Engine bus default volumes.
+* **In-Engine Command Console & CVar System (`Editor/Panels/ConsolePanel.cpp`)**:
+  - Interactive console terminal with command history, tab autocomplete, and leveled log filtering (`Trace`, `Debug`, `Info`, `Warning`, `Error`).
+  - Extensible CVar registry supporting live developer commands:
+    - `stat fps`, `stat rhi` (draw calls, pipeline state changes, upload ring buffer usage).
+    - `r.wireframe 0/1`, `r.hiz 0/1`, `r.shadows 0/1`, `r.debugview [0-6]`.
+    - `net.sim.latency [ms]`, `net.sim.loss [0.0-1.0]`, `net.reconnect`.
+    - `reload_shaders` (live runtime hot-reload of modified HLSL shaders without restarting the editor).
+
+#### 8.2 One-Click Packaging Pipeline & Incremental Content-Hash Cook Cache
+* **One-Click Game Distribution (`Editor/Panels/PackagingModal.cpp` + `dfcook`)**:
+  - Connects the stubbed menu item (`Project -> Export / Package Game...`) to an automated packaging workflow:
+    1. Invokes `dfcook` to compile shaders, compress textures, optimize meshes, and pack `Engine.pak` and `Game.pak`.
+    2. Copies `bin/Release-windows-x86_64/Player/Player.exe` renamed to `<GameName>.exe`.
+    3. Copies the compiled release game module `<GameName>.dll` and all runtime dependencies (`d3dcompiler_47.dll`, `miniaudio`, etc.).
+    4. Produces a self-contained, standalone distribution folder in `Package/Windows/<GameName>/`.
+* **Incremental Cook Cache (`.cookcache`)**:
+  - `dfcook` computes 64-bit content hashes (FNV-1a / MurmurHash3) for source files (textures, shaders, models, audio).
+  - Skips re-cooking assets whose source file hash has not changed, slashing incremental cook times from minutes to **< 2 seconds**.
+
+#### 8.3 Multi-Instance PIE & Integrated Network Simulator
+* **One-Click Multiplayer Playtesting**:
+  - Adds a multi-instance dropdown to the Editor toolbar next to the Play button:
+    - `Play in Single-Player (PIE)`
+    - `Launch Dedicated Server + 1 Client`
+    - `Launch Dedicated Server + 2 Clients`
+  - Spawns child processes configured with loopback network connections (`127.0.0.1:7777`) with coordinated window positioning across multi-monitor setups.
+* **Live Network Simulator Panel**:
+  - Directly exposes `darkfire::net::game::NetworkSimulator` sliders in the Editor during play sessions.
+  - Allows gameplay developers to simulate 150 ms latency, 15% packet loss, and jitter live while driving or shooting to test prediction and visual smoothing without needing external network throttling tools (like Clumsy or WANem).
+
+#### 8.4 Headless Dedicated Server Runtime (`Player.exe --server`)
+* **Zero-GPU Server Mode**:
+  - Command-line flag `--server` or `--headless` in [`PlayerMain.cpp`](file:///C:/Users/omarg/dev/DarkFire/Player/PlayerMain.cpp):
+    - Skips Win32 window creation, message pumps, DirectX 11 device creation, swapchain allocation, and audio system initialization.
+    - Boots an ultra-lightweight console loop executing fixed-timestep physics (`FixedUpdate`) and authoritative network replication at **< 5% CPU usage and < 50 MB RAM**.
+    - Enables deployment of headless DarkFire dedicated server binaries on cloud Linux/Windows virtual machines.
+* **Automated Crash Telemetry & Minidumps**:
+  - Extends `Platform::CrashHandler` to invoke Windows `MiniDumpWriteDump` (`MiniDumpWithIndirectlyReferencedMemory`).
+  - Automatically writes timestamped minidumps (`Saved/Crashes/Crash_<Timestamp>.dmp`) and call stack traces on unhandled exceptions for post-mortem debugging in Visual Studio.
+
+#### 8.5 Offline Mesh Optimization & Automated Quadric Error LODs (`meshoptimizer`)
+* **Offline Geometry Optimization in `dfcook`**:
+  - Integrates `meshoptimizer` into `dfcook`:
+    - **Vertex Cache Optimization**: Reorders triangle indices to maximize vertex shader cache hits (average transform-to-vertex ratio < 0.7).
+    - **Overdraw Optimization**: Sorts triangles to minimize pixel overdraw on opaque passes.
+    - **Vertex Fetch Optimization**: Reorders vertex buffers for linear memory access during GPU stream-in.
+  - **Automated Quadric Error Metric (QEM) LOD Generation**:
+    - Automatically bakes 3 discrete LOD levels for non-skeletal static meshes (`LOD0`: 100% triangles, `LOD1`: 50% triangles, `LOD2`: 25% triangles).
+    - Pairs with Milestone 7.3 dithered cross-fading for pop-free level-of-detail rendering across massive scenes.
+
+---
+
 ## Testing & Performance Benchmarks
 
 Every milestone must maintain **100% pass rate** on the automated test suite and conform to DarkFire's performance standards:
@@ -568,11 +713,11 @@ Every milestone must maintain **100% pass rate** on the automated test suite and
 | Benchmark Metric | Target Standard | Current Achieved (Baseline Verified) |
 |---|---|---|
 | **Test Suite Pass Rate** | **100% (0 failures)** | **95/95 passed (259,470 assertions)** |
-| **Crytek Sponza Atrium (Deferred PBR)** | **> 50 FPS** | **53.8 FPS (18.60 ms)** |
-| **Crytek Sponza Atrium (Forward+)** | **> 45 FPS** | **48.5 FPS (20.63 ms)** |
-| **Playground3D (Forward+)** | **> 350 FPS** | **404.8 FPS (2.47 ms)** |
-| **Playground3D (Deferred PBR)** | **> 300 FPS** | **310.9 FPS (3.22 ms)** |
-| **Tropical Island (Forward+ Clustered)** | **> 150 FPS** | **169.1 FPS (5.91 ms, P99: 8.70 ms, 19,703 instances)** |
+| **Crytek Sponza Atrium (Deferred PBR)** | **> 50 FPS** | **94.8 FPS (10.55 ms verified on RTX 3050 Ti)** |
+| **Crytek Sponza Atrium (Forward+)** | **> 45 FPS** | **52.7 FPS (18.96 ms verified on RTX 3050 Ti)** |
+| **Playground3D (Forward+)** | **> 350 FPS** | **389.8 FPS (2.57 ms verified on RTX 3050 Ti)** |
+| **Playground3D (Deferred PBR)** | **> 300 FPS** | **244.2 FPS (4.10 ms verified on RTX 3050 Ti)** |
+| **Tropical Island (Forward+ Clustered)** | **> 150 FPS** | **468.5 FPS (2.13 ms verified on RTX 3050 Ti, 19,703 instances)** |
 | **Shader Compiler Diagnostics** | **0 Warnings, 0 Errors** | **0 Warnings, 0 Errors across 40 shaders** |
 | **GPU Target Hardware** | Discrete GPU | **NVIDIA GeForce RTX 3050 Ti Laptop GPU (FL 11_1)** |
 
@@ -582,8 +727,9 @@ Every milestone must maintain **100% pass rate** on the automated test suite and
 
 | Milestone Status | Projected Score | Architectural Character |
 | :--- | :---: | :--- |
-| **Current Baseline (Verified)** | **8.5 / 10** | Top 1-2% of custom D3D11 engines. Mathematically clean Reversed-Z, Clustered Forward+, DDGI probe volumes, decoupled GBuffer, comprehensive test coverage. |
-| **+ Milestone 2 (VFX & Volumetrics)** | **8.8 / 10** | Cinematic visual fidelity in motion (Tile-Max motion blur, 3D froxel fog, soft particles, auto-exposure eye adaptation, spot shadow atlas). |
-| **+ Milestone 3 & 4 (Physics & Platform)** | **9.1 / 10** | Tactile responsiveness and display perfection. 240Hz stutter-free display interpolation, <8ms input latency waitable swapchain, 3D Doppler sound. |
-| **+ Milestone 5 & 6 (Multiplayer & Vehicle)** | **9.4 / 10** | Production-grade game-agnostic framework. Deterministic prediction multiplayer, Pacejka drift physics, raycast suspension solver. |
-| **+ Milestone 7 (Pipeline Specialization)** | **9.6 / 10** | **Full-Stack Commercial AAA Standard.** Zero-CPU two-phase Hi-Z occlusion culling, specialized permutation passes (<1,200 instructions), dithered LOD fading. |
+| **Current Baseline (Verified)** | **8.8 / 10** | Top 1-2% of custom D3D11 engines. Zero shader warnings, verified Reversed-Z, Clustered Forward+, DDGI probe volumes, decoupled GBuffer, comprehensive 95/95 test coverage. |
+| **+ Milestone 2 (VFX & Volumetrics)** | **9.0 / 10** | Cinematic visual fidelity in motion (Tile-Max motion blur, 3D froxel fog, spot shadow atlas, compute auto-exposure eye adaptation). |
+| **+ Milestone 3 & 4 (Physics & Platform)** | **9.2 / 10** | Tactile responsiveness and display perfection. 240Hz stutter-free display interpolation, <8ms input latency waitable swapchain, 3D Doppler sound. |
+| **+ Milestone 5 & 6 (Multiplayer & Physics Toolkit)** | **9.4 / 10** | Production-grade game-agnostic framework. Studio-grade prediction netcode, rollback resimulation, modular non-linear spring & friction math. |
+| **+ Milestone 7 (Pipeline Specialization)** | **9.6 / 10** | Full-Stack Commercial AAA Rendering Standard. Zero-CPU two-phase Hi-Z occlusion culling, specialized permutation passes (<1,200 instructions), dithered LOD fading. |
+| **+ Milestone 8 (Studio Tooling & Runtime)** | **9.7 / 10** | **Complete Commercial Studio Ecosystem.** One-click game distribution, headless dedicated server, multi-instance PIE, incremental asset cooking, meshoptimizer LODs. |

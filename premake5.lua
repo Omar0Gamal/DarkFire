@@ -299,7 +299,9 @@ workspace "DarkFire"
 			files
 			{
 				"Tests/Source/**.h",
-				"Tests/Source/**.cpp"
+				"Tests/Source/**.cpp",
+				"Tools/dfcook/CookMeshes.h",
+				"Tools/dfcook/CookMeshes.cpp"
 			}
 
 			includedirs
